@@ -22,7 +22,9 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 # ===================== Global random seed =====================
-SEED = 42
+# Override via env (e.g. SEED=123) for multi-seed ensemble runs; non-default
+# seeds write to outputs/<dataset>-s<seed>/ so runs never clobber each other
+SEED = int(os.environ.get("SEED", "42"))
 random.seed(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
@@ -60,7 +62,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATASET = os.environ.get("DATASET", "dataset2")
 assert DATASET in ("dataset1", "dataset2"), f"unknown dataset: {DATASET}"
 DATA_DIR = PROJECT_ROOT / "data" / "data_A" / DATASET
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / DATASET
+OUTPUT_DIR = PROJECT_ROOT / "outputs" / (DATASET if SEED == 42 else f"{DATASET}-s{SEED}")
 ckpt_dir = OUTPUT_DIR / "checkpoints"
 os.makedirs(ckpt_dir, exist_ok=True)
 
@@ -167,17 +169,25 @@ def split_train_val_by_tail(df):
     return train_df, val_df
 
 # ===================== Tool 2: negative sampling =====================
-def gen_neg_batch(batch_pos_cpu, full_pos_set, all_node_list):
-    neg_s, neg_d = [], []
-    for u, _ in batch_pos_cpu:
-        for _ in range(neg_ratio):
-            while True:
-                rand_v = random.choice(all_node_list)
-                if (int(u), rand_v) not in full_pos_set:
-                    neg_s.append(u)
-                    neg_d.append(rand_v)
-                    break
-    return torch.LongTensor(neg_s).to(device), torch.LongTensor(neg_d).to(device)
+def build_pos_csr(pos_set, n_node: int):
+    # Sparse membership matrix over positive pairs, for vectorized rejection
+    arr = np.array(list(pos_set), dtype=np.int64)
+    return sp.coo_matrix(
+        (np.ones(len(arr), dtype=np.int8), (arr[:, 0], arr[:, 1])),
+        shape=(n_node, n_node),
+    ).tocsr()
+
+def gen_neg_batch(s_pos_np, pos_csr, n_node: int):
+    # Vectorized rejection sampling: uniform draws, redraw the few that hit a
+    # positive pair (same distribution as the original per-sample loop)
+    s_rep = np.repeat(s_pos_np, neg_ratio)
+    d = np.random.randint(0, n_node, size=len(s_rep))
+    for _ in range(30):
+        hits = np.asarray(pos_csr[s_rep, d]).ravel() > 0
+        if not hits.any():
+            break
+        d[hits] = np.random.randint(0, n_node, size=int(hits.sum()))
+    return torch.LongTensor(s_rep).to(device), torch.LongTensor(d).to(device)
 
 # ===================== Cache utilities =====================
 def add_src_dst_record(cache_dict, src_id: int, dst_id: int):
@@ -537,7 +547,6 @@ if __name__ == "__main__":
     print(f"Test rows: {len(test_df)} (original order preserved)")
 
     num_entity = int(max(df_raw.src.max(), df_raw.dst.max())) + 1
-    all_node_list = list(range(num_entity))
 
     train_src_set = set(df_raw["src"].unique())
     test_src_set = set(test_df["src"].unique())
@@ -586,6 +595,8 @@ if __name__ == "__main__":
         current_virt_bi_edges = torch.repeat_interleave(virt_tensor, repeats=VIRT_REPEAT_TIMES, dim=0)
     else:
         print(f"\n[WARN] Virtual edge file {virtual_edge_csv} not found, none used this round")
+
+    pos_csr = build_pos_csr(base_pos_set, num_entity)
 
     model = LINE(num_entity, sub_dim).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=INIT_LR)
@@ -653,6 +664,7 @@ if __name__ == "__main__":
                 base_pos_set.add((v, u))
             virt_tensor = torch.LongTensor(virt_bi_list).to(device)
             current_virt_bi_edges = torch.repeat_interleave(virt_tensor, repeats=VIRT_REPEAT_TIMES, dim=0)
+            pos_csr = build_pos_csr(base_pos_set, num_entity)
             print("[OK] Switched to this round's virtual edges")
 
         # Train on real edges + current virtual edges
@@ -669,8 +681,7 @@ if __name__ == "__main__":
             batch_pos = pos_shuffle[start_idx:end_idx]
             s_pos = batch_pos[:, 0]
             d_pos = batch_pos[:, 1]
-            batch_cpu = batch_pos.cpu()
-            s_neg, d_neg = gen_neg_batch(batch_cpu, base_pos_set, all_node_list)
+            s_neg, d_neg = gen_neg_batch(s_pos.cpu().numpy(), pos_csr, num_entity)
 
             s_all = torch.cat([s_pos, s_neg])
             d_all = torch.cat([d_pos, d_neg])
