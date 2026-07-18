@@ -86,6 +86,12 @@ ADD_TOP_K_HIST = 2
 BACK_FILL_THRESHOLD = 0.97
 REPLACE_WEIGHT_INSTEAD_ADD = False
 MCC_SAMPLE_COUNT = 10000
+# Per-dataset history policy, measured on train tails: in dataset1 66% of next
+# interactions repeat a past partner, in dataset2 0% do. So dataset2 masks
+# historical dsts to zero, while dataset1 boosts them instead (offline MRR on
+# dataset1: mask 0.284 / no-mask 0.802 / boost x20 0.915).
+MASK_HISTORY = DATASET == "dataset2"
+HIST_BOOST = 20.0 if DATASET == "dataset1" else 0.0
 
 # Global caches
 src_dst_cache = dict()
@@ -182,6 +188,16 @@ def get_dst_before_time(src_id: int, cutoff_time: float) -> np.ndarray:
         return np.array([], dtype=np.int64)
     k = np.searchsorted(times, cutoff_time, side="left")
     return src_hist_dsts[src_id][:k]
+
+def count_in_history(candidates: np.ndarray, hist: np.ndarray) -> np.ndarray:
+    # Occurrence count of each candidate in the (possibly repeating) history
+    if hist.size == 0:
+        return np.zeros(candidates.shape[0], dtype=np.float32)
+    values, counts = np.unique(hist, return_counts=True)
+    idx = np.searchsorted(values, candidates)
+    idx[idx >= len(values)] = 0
+    hit = values[idx] == candidates
+    return np.where(hit, counts[idx], 0).astype(np.float32)
 
 # Pointwise scoring (used by the MRR evaluation)
 def get_sim_agg_score(target_src: int, dst_id: int, cache_dict):
@@ -314,11 +330,14 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
 
         raw_scores = batch_sim_score(src, all_candidates, cache_mat)
 
-        # Mask only real historical interactions before the query time;
-        # duplicates within this round are not masked
         history_real_d = get_dst_before_time(src, curr_time)
-        hist_mask = np.isin(all_candidates, history_real_d)
-        raw_scores[hist_mask] = 0.0
+        if MASK_HISTORY:
+            # dataset2: real interactions before the query time never repeat
+            hist_mask = np.isin(all_candidates, history_real_d)
+            raw_scores[hist_mask] = 0.0
+        else:
+            # dataset1: repeats dominate, boost candidates by own history count
+            raw_scores = raw_scores + HIST_BOOST * count_in_history(all_candidates, history_real_d)
 
         row_max = raw_scores.max()
         if row_max > 5:
@@ -331,6 +350,10 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
         cand_prob.sort(key=lambda x: x[1], reverse=True)
         top_k_items = cand_prob[:ADD_TOP_K_HIST]
         valid_items = [(d, p) for d, p in top_k_items if p > BACK_FILL_THRESHOLD]
+        if not MASK_HISTORY:
+            # Pairs already in real history are real edges — no virtual copy
+            hist_set = set(history_real_d.tolist())
+            valid_items = [(d, p) for d, p in valid_items if d not in hist_set]
 
         for d, p in valid_items:
             # Set dedupes automatically
@@ -389,13 +412,17 @@ def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000):
             if cand != src_id and cand != true_dst and cand not in negs:
                 negs.append(cand)
         candidates = negs + [true_dst]
-        history_d_set = set(get_dst_before_time(src_id, pred_t).tolist())
+        history_d = get_dst_before_time(src_id, pred_t)
+        history_d_set = set(history_d.tolist())
         score_map = {}
         for d in candidates:
-            if d in history_d_set:
+            if MASK_HISTORY and d in history_d_set:
                 score_map[d] = 0.0
             else:
-                score_map[d] = get_sim_agg_score(src_id, d, src_dst_cache)
+                sc = get_sim_agg_score(src_id, d, src_dst_cache)
+                if HIST_BOOST > 0 and d in history_d_set:
+                    sc += HIST_BOOST * float((history_d == d).sum())
+                score_map[d] = sc
         scores = [score_map[d] for d in candidates]
 
         row_max = max(scores)
