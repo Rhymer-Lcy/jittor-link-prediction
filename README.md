@@ -85,8 +85,9 @@ resume).
   numpy/scipy. Port and verify on CPU (RTX 5080/5090 are Blackwell sm_120;
   no reliable evidence of Jittor GPU support on them — use the competition
   server for Jittor GPU runs).
-- [ ] Obtain data package B (`data_B`): the teammate mentioned two data
-  packages, a and b; only `data_A.zip` is present locally.
+- [ ] Data package B (`data_B`): not yet released by the organizers (confirmed
+  by teammate 2026-07-18); `data_A.zip` with its two datasets is everything
+  currently available. Rerun the pipeline on `data_B` once it is released.
 - [ ] Re-run after fix #1 and compare against the historical 0.424.
 - [ ] `gen_neg_batch` is still a per-sample Python loop and the training
   throughput bottleneck; vectorize.
