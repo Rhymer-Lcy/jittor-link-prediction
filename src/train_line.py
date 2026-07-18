@@ -1,19 +1,25 @@
+# -*- coding: utf-8 -*-
+"""LINE 图嵌入 + 相似用户协同打分 + 虚拟边自训练迭代管线。
+
+流程：每训练 TRAIN_CYCLE 轮 LINE，导出节点嵌入 -> 基于嵌入余弦相似度构建
+双区间衰减相似用户缓存 -> 对 test 集候选(c1..c100)矢量化协同打分并输出
+提交文件 -> 高置信候选生成虚拟边并入下一轮训练 -> 尾部留一 MRR 评估。
+
+历史成绩备注（原 1.py 头部记录）："21：重来：0.424"。
+"""
 import os
 import random
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from tqdm import tqdm
 from torch.cuda.amp import autocast, GradScaler
-from sklearn.metrics import matthews_corrcoef
-from collections import defaultdict
-"""
-21 ：      重来：0.424
-31
+from tqdm import tqdm
 
-"""
 # ===================== 全局随机种子 =====================
 SEED = 42
 random.seed(SEED)
@@ -33,12 +39,6 @@ neg_ratio = 5
 epochs = 400
 batch_size = 1024
 save_interval = 5
-ckpt_dir = "line_checkpoint401预测"
-os.makedirs(ckpt_dir, exist_ok=True)
-best_ckpt_path = os.path.join(ckpt_dir, "line_best.pt")
-last_ckpt_path = os.path.join(ckpt_dir, "line_last.pt")
-# 新增虚拟边存储文件
-virtual_edge_csv = os.path.join(ckpt_dir, "virtual_edges.csv")
 EMB_PRECISION = 6
 LOSS_ALPHA = 0.5
 USE_FP16 = False
@@ -53,22 +53,31 @@ LR_RESET_EVERY_N_PREDICT = 1
 # 虚拟边重复复制倍数，提升样本训练频次
 VIRT_REPEAT_TIMES = 2
 
-# 路径配置
-train_csv = r"C:\Users\1\PycharmProjects\机器学习比赛\new\data_A\dataset2\train.csv"
-test_csv = r"C:\Users\1\PycharmProjects\机器学习比赛\new\data_A\dataset2\test.csv"
-latest_emb_path = r"C:\Users\1\PycharmProjects\机器学习比赛\new\data_A\line_latestfinal.csv"
-# Test预测结果输出模板，按epoch区分文件
-test_result_template = r"C:\Users\1\PycharmProjects\机器学习比赛\new\data_A\dataset2_result_epoch_{}.csv"
+# ===================== 路径配置（相对项目根目录） =====================
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DATASET = "dataset2"  # 可切换 dataset1 / dataset2
+DATA_DIR = PROJECT_ROOT / "data" / "data_A" / DATASET
+OUTPUT_DIR = PROJECT_ROOT / "outputs" / DATASET
+ckpt_dir = OUTPUT_DIR / "checkpoints"
+os.makedirs(ckpt_dir, exist_ok=True)
 
-# 预测配置
+train_csv = DATA_DIR / "train.csv"
+test_csv = DATA_DIR / "test.csv"
+latest_emb_path = OUTPUT_DIR / "line_latest_emb.csv"
+# Test预测结果输出模板，按epoch区分文件
+test_result_template = str(OUTPUT_DIR / "result_epoch_{}.csv")
+best_ckpt_path = ckpt_dir / "line_best.pt"
+last_ckpt_path = ckpt_dir / "line_last.pt"
+# 虚拟边存储文件
+virtual_edge_csv = ckpt_dir / "virtual_edges.csv"
+
+# ===================== 预测配置 =====================
 NEG_SAMPLE_NUM = 99
 # 相似度两段衰减配置
 TOP_N_FIRST = 200
 TOP_N_SECOND = 2000
 DECAY_W1 = 1.0
 DECAY_W2 = 0.2
-MIN_WEIGHT = 1
-K = 0
 VAL_PER_SRC_TAIL = 1
 ADD_TOP_K_HIST = 2
 BACK_FILL_THRESHOLD = 0.97
@@ -85,6 +94,9 @@ sim_weight_arr = None
 base_src_dst_cache = dict()
 prev_virt_single_for_cache = set()
 global_real_src_np = np.array([])
+# 按src预建的历史交互索引：src -> (升序time数组, 对应dst数组)
+src_hist_times = dict()
+src_hist_dsts = dict()
 # Test候选列
 c_cols = [f"c{i}" for i in range(1, 101)]
 # 记录已执行的预测周期次数
@@ -121,22 +133,11 @@ class LINE(nn.Module):
 
 # ===================== 工具1：按用户尾部切分train/val =====================
 def split_train_val_by_tail(df):
+    # 每个src取时间序尾部 VAL_PER_SRC_TAIL 条为val；不足的src整组进val、不进train
     df = df.sort_values(["src", "time"]).reset_index(drop=True)
-    train_parts = []
-    val_parts = []
-    for _, g in df.groupby("src"):
-        g = g.sort_values("time").reset_index(drop=True)
-        if len(g) > VAL_PER_SRC_TAIL:
-            train_slice = g.iloc[:-VAL_PER_SRC_TAIL]
-            val_slice = g.iloc[-VAL_PER_SRC_TAIL:]
-        else:
-            train_slice = g.iloc[100000:]
-            val_slice = g
-        train_parts.append(train_slice)
-        if len(val_slice) > 0:
-            val_parts.append(val_slice)
-    train_df = pd.concat(train_parts).reset_index(drop=True)
-    val_df = pd.concat(val_parts).reset_index(drop=True) if len(val_parts) else pd.DataFrame()
+    val_df = df.groupby("src", sort=False).tail(VAL_PER_SRC_TAIL)
+    train_df = df.drop(val_df.index).reset_index(drop=True)
+    val_df = val_df.reset_index(drop=True)
     return train_df, val_df
 
 # ===================== 工具2：负采样 =====================
@@ -160,17 +161,25 @@ def add_src_dst_record(cache_dict, src_id: int, dst_id: int):
     if REPLACE_WEIGHT_INSTEAD_ADD:
         dst_dict[dst_id] = 1.0
     else:
-        if dst_id in dst_dict:
-            dst_dict[dst_id] += 1.0
-        else:
-            dst_dict[dst_id] = 1.0
+        dst_dict[dst_id] = dst_dict.get(dst_id, 0.0) + 1.0
 
-def get_dst_before_time(src_id: int, cutoff_time: float, full_df) -> set:
-    sub = full_df[full_df["src"] == src_id]
-    sub = sub[sub["time"] < cutoff_time]
-    return sub["dst"].values
+def build_history_index(full_df):
+    # 一次性预建 src -> 按time升序的(dst,time)索引，替代逐行全表扫描
+    src_hist_times.clear()
+    src_hist_dsts.clear()
+    df = full_df.sort_values("time", kind="mergesort")
+    for src, g in df.groupby("src", sort=False):
+        src_hist_times[int(src)] = g["time"].values.astype(float)
+        src_hist_dsts[int(src)] = g["dst"].values.astype(np.int64)
 
-# 原始逐点打分（兼容val与MCC）
+def get_dst_before_time(src_id: int, cutoff_time: float) -> np.ndarray:
+    times = src_hist_times.get(src_id)
+    if times is None:
+        return np.array([], dtype=np.int64)
+    k = np.searchsorted(times, cutoff_time, side="left")
+    return src_hist_dsts[src_id][:k]
+
+# 原始逐点打分（兼容val与MRR评估）
 def get_sim_agg_score(target_src: int, dst_id: int, cache_dict):
     sim_list = src_top_sim.get(target_src, [])
     total = 0.0
@@ -179,33 +188,35 @@ def get_sim_agg_score(target_src: int, dst_id: int, cache_dict):
         total += sim_w * dst_w
     return total
 
-def build_base_pair_set(base_cache: dict):
-    pair_set = set()
-    for u, ddict in base_cache.items():
-        for d in ddict.keys():
-            pair_set.add((u, d))
-    return pair_set
-
 # ===================== 矢量化全套工具 =====================
 def cache_dict_to_matrix(base_cache: dict, add_pair_set: set, max_node: int):
-    mat = np.zeros((max_node + 1, max_node + 1), dtype=np.float32)
+    # 稀疏CSR矩阵：dataset2节点id超12万，稠密(N+1)^2 float32需60+GB内存
+    rows, cols, vals = [], [], []
     for src, ddict in base_cache.items():
-        ds = np.array(list(ddict.keys()), dtype=np.int64)
-        ws = np.array(list(ddict.values()), dtype=np.float32)
-        mat[src, ds] = ws
+        for d, w in ddict.items():
+            rows.append(src)
+            cols.append(d)
+            vals.append(w)
     for u, d in add_pair_set:
-        mat[u, d] += 1.0
+        rows.append(u)
+        cols.append(d)
+        vals.append(1.0)
+    n = max_node + 1
+    mat = sp.coo_matrix(
+        (np.array(vals, dtype=np.float32), (np.array(rows), np.array(cols))),
+        shape=(n, n),
+    ).tocsr()
     return mat
 
-def batch_sim_score(target_src: int, dst_batch: np.ndarray, cache_mat: np.ndarray):
+def batch_sim_score(target_src: int, dst_batch: np.ndarray, cache_mat):
     row_idx = src2row.get(target_src, -1)
     if row_idx == -1:
         return np.zeros_like(dst_batch, dtype=np.float32)
     neigh_ids = sim_neigh_arr[row_idx]
     neigh_w = sim_weight_arr[row_idx]
-    weight_slice = cache_mat[neigh_ids[:, None], dst_batch[None, :]]
+    weight_slice = cache_mat[neigh_ids][:, dst_batch].toarray()
     scores = neigh_w @ weight_slice
-    return scores
+    return scores.astype(np.float32)
 
 def build_sim_cache(emb_matrix, real_src_np):
     global src_top_sim, src2row, sim_neigh_arr, sim_weight_arr
@@ -213,68 +224,70 @@ def build_sim_cache(emb_matrix, real_src_np):
     src2row.clear()
     all_node_emb = emb_matrix.astype(np.float32)
     max_emb_id = all_node_emb.shape[0] - 1
-    emb_index_set = set(range(all_node_emb.shape[0]))
-    target_src_list = real_src_np
 
-    valid_targets = [s for s in target_src_list if s in emb_index_set]
-    all_candidate_ids = np.array([n for n in range(max_emb_id + 1) if n in emb_index_set])
+    valid_targets = [int(s) for s in real_src_np if 0 <= s <= max_emb_id]
+    all_candidate_ids = np.arange(max_emb_id + 1, dtype=np.int64)
 
-    if len(valid_targets) > 0 and len(all_candidate_ids) > 0:
-        target_vecs = all_node_emb[valid_targets]
-        candidate_vecs = all_node_emb[all_candidate_ids]
-        id2idx = {node: idx for idx, node in enumerate(all_candidate_ids)}
+    if len(valid_targets) == 0:
+        sim_neigh_arr = np.zeros((0, TOP_N_SECOND), dtype=np.int64)
+        sim_weight_arr = np.zeros((0, TOP_N_SECOND), dtype=np.float32)
+        return
 
-        target_norm = np.linalg.norm(target_vecs, axis=1, keepdims=True)
-        target_norm[target_norm < 1e-8] = 1.0
-        target_vecs_norm = target_vecs / target_norm
+    target_vecs = all_node_emb[valid_targets]
 
-        candidate_norm = np.linalg.norm(candidate_vecs, axis=1, keepdims=True)
-        candidate_norm[candidate_norm < 1e-8] = 1.0
-        candidate_vecs_norm = candidate_vecs / candidate_norm
+    target_norm = np.linalg.norm(target_vecs, axis=1, keepdims=True)
+    target_norm[target_norm < 1e-8] = 1.0
+    target_vecs_norm = target_vecs / target_norm
 
-        sim_matrix = target_vecs_norm @ candidate_vecs_norm.T
-        decay_mask = np.full(TOP_N_SECOND, DECAY_W2, dtype=np.float32)
-        decay_mask[:TOP_N_FIRST] = DECAY_W1
+    candidate_norm = np.linalg.norm(all_node_emb, axis=1, keepdims=True)
+    candidate_norm[candidate_norm < 1e-8] = 1.0
+    candidate_vecs_norm = all_node_emb / candidate_norm
 
-        neigh_list = []
-        weight_list = []
-        for row_idx, src_id in enumerate(tqdm(valid_targets, desc="构建双区间衰减相似用户缓存+矢量化数组")):
-            sim_row = sim_matrix[row_idx]
-            self_idx = id2idx[src_id]
-            sim_row[self_idx] = 0.0
-            row_len = len(sim_row)
-            if row_len > TOP_N_SECOND:
-                top_idx = np.argpartition(sim_row, -TOP_N_SECOND)[-TOP_N_SECOND:]
-                top_idx = top_idx[np.argsort(sim_row[top_idx])[::-1]]
-            else:
-                top_idx = np.argsort(sim_row)[::-1]
-                pad_num = TOP_N_SECOND - len(top_idx)
-                top_idx = np.pad(top_idx, (0, pad_num), mode="constant", constant_values=-1)
-            top_sim_node = all_candidate_ids[top_idx]
-            top_sim_val = sim_row[top_idx]
-            top_sim_val[top_sim_node == -1] = 0.0
-            weighted_sim = top_sim_val * decay_mask
-            weighted_sim[weighted_sim < 1e-8] = 0.0
-            sim_list = []
-            for nid, w in zip(top_sim_node, weighted_sim):
-                if w > 1e-8:
-                    sim_list.append((int(nid), float(w)))
-            src_top_sim[int(src_id)] = sim_list
-            src2row[int(src_id)] = row_idx
-            neigh_list.append(top_sim_node)
-            weight_list.append(weighted_sim)
-        sim_neigh_arr = np.array(neigh_list, dtype=np.int64)
-        sim_weight_arr = np.array(weight_list, dtype=np.float32)
+    sim_matrix = target_vecs_norm @ candidate_vecs_norm.T
+    decay_mask = np.full(TOP_N_SECOND, DECAY_W2, dtype=np.float32)
+    decay_mask[:TOP_N_FIRST] = DECAY_W1
 
-# ===================== Test矢量化预测函数（简化屏蔽逻辑，仅过滤真实历史交互） =====================
-def predict_test(test_df, full_train_df, emb_matrix, last_pair_set, real_src_np, current_epoch):
+    neigh_list = []
+    weight_list = []
+    for row_idx, src_id in enumerate(tqdm(valid_targets, desc="构建双区间衰减相似用户缓存+矢量化数组")):
+        sim_row = sim_matrix[row_idx]
+        sim_row[src_id] = 0.0
+        row_len = len(sim_row)
+        if row_len > TOP_N_SECOND:
+            top_idx = np.argpartition(sim_row, -TOP_N_SECOND)[-TOP_N_SECOND:]
+            top_idx = top_idx[np.argsort(sim_row[top_idx])[::-1]]
+            valid_mask = np.ones(TOP_N_SECOND, dtype=bool)
+        else:
+            top_idx = np.argsort(sim_row)[::-1]
+            pad_num = TOP_N_SECOND - len(top_idx)
+            valid_mask = np.concatenate(
+                [np.ones(len(top_idx), dtype=bool), np.zeros(pad_num, dtype=bool)]
+            )
+            top_idx = np.pad(top_idx, (0, pad_num), mode="constant", constant_values=0)
+        top_sim_node = all_candidate_ids[top_idx].copy()
+        top_sim_val = sim_row[top_idx].copy()
+        # 补位条目权重置0（节点id无影响），修复原版用-1索引回绕导致的补位污染
+        top_sim_val[~valid_mask] = 0.0
+        weighted_sim = top_sim_val * decay_mask
+        weighted_sim[weighted_sim < 1e-8] = 0.0
+        sim_list = [
+            (int(nid), float(w)) for nid, w in zip(top_sim_node, weighted_sim) if w > 1e-8
+        ]
+        src_top_sim[int(src_id)] = sim_list
+        src2row[int(src_id)] = row_idx
+        neigh_list.append(top_sim_node)
+        weight_list.append(weighted_sim)
+    sim_neigh_arr = np.array(neigh_list, dtype=np.int64)
+    sim_weight_arr = np.array(weight_list, dtype=np.float32)
+
+# ===================== Test矢量化预测函数（仅屏蔽真实历史交互） =====================
+def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch):
     global src_dst_cache
     src_dst_cache.clear()
     build_sim_cache(emb_matrix, real_src_np)
 
-    # 字典推导式拷贝基础真实交互
+    # 拷贝基础真实交互，打分缓存合并当前虚拟边
     curr_cache = {usr: ddict.copy() for usr, ddict in base_src_dst_cache.items()}
-    # 打分缓存合并当前虚拟边
     for (u, d) in last_pair_set:
         add_src_dst_record(curr_cache, u, d)
 
@@ -282,31 +295,25 @@ def predict_test(test_df, full_train_df, emb_matrix, last_pair_set, real_src_np,
     max_node_id = emb_matrix.shape[0] - 1
     cache_mat = cache_dict_to_matrix(curr_cache, set(), max_node_id)
 
+    test_src_arr = test_df["src"].values.astype(np.int64)
+    test_time_arr = test_df["time"].values.astype(float)
+    cand_mat = test_df[c_cols].values.astype(np.int64)
+
     test_prob_rows = []
 
-    for _, row in tqdm(test_df.iterrows(), desc="Test集时序打分生成虚拟边【矢量化批量打分】"):
-        src = int(row["src"])
-        curr_time = float(row["time"])
-        all_candidates = np.array([int(row[col]) for col in c_cols], dtype=np.int64)
-
-        # 仅获取当前src真实历史dst，用来屏蔽打分
-        history_real_d_set = get_dst_before_time(src, curr_time, full_train_df)
-
+    for i in tqdm(range(len(test_df)), desc="Test集时序打分生成虚拟边【矢量化批量打分】"):
+        src = int(test_src_arr[i])
+        curr_time = float(test_time_arr[i])
+        all_candidates = cand_mat[i]
 
         raw_scores = batch_sim_score(src, all_candidates, cache_mat)
-        # 只屏蔽真实历史交互，本轮内部重复预测不做屏蔽
-        # for idx, d in enumerate(all_candidates):
-        #     if d in history_real_d_set:
-        #         raw_scores[idx] = 0.0
 
-                # 历史交互dst置0
-        hist_mask = np.isin(all_candidates, history_real_d_set)
+        # 仅屏蔽当前时间前真实历史交互dst；本轮内部重复候选不屏蔽
+        history_real_d = get_dst_before_time(src, curr_time)
+        hist_mask = np.isin(all_candidates, history_real_d)
         raw_scores[hist_mask] = 0.0
-        #raw_scores=raw_scores-5
+
         row_max = raw_scores.max()
-
-
-
         if row_max > 5:
             prob_list = (raw_scores / row_max).tolist()
         else:
@@ -319,13 +326,12 @@ def predict_test(test_df, full_train_df, emb_matrix, last_pair_set, real_src_np,
         valid_items = [(d, p) for d, p in top_k_items if p > BACK_FILL_THRESHOLD]
 
         for d, p in valid_items:
-            pair = (src, d)
             # set自动去重，重复预测不会重复存入
-            curr_round_all_pair.add(pair)
+            curr_round_all_pair.add((src, d))
 
     # 覆盖写入新虚拟边，替换旧文件
     if len(curr_round_all_pair) > 0:
-        df_virt = pd.DataFrame(list(curr_round_all_pair), columns=["src", "dst"])
+        df_virt = pd.DataFrame(sorted(curr_round_all_pair), columns=["src", "dst"])
         df_virt.to_csv(virtual_edge_csv, mode="w", header=True, index=False)
         print(f"✅ 本轮新虚拟边覆盖写入 {virtual_edge_csv}，共{len(curr_round_all_pair)}条，旧边已替换")
     else:
@@ -340,21 +346,23 @@ def predict_test(test_df, full_train_df, emb_matrix, last_pair_set, real_src_np,
 
     return curr_round_all_pair
 
-# ===================== MCC评估函数 =====================
-def calc_mcc_eval(train_df, emb_matrix, real_src_np, sample_num=10000):
+# ===================== MRR评估函数（尾部留一） =====================
+def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000):
     global src_dst_cache
-    src_dst_cache.clear()
     src_dst_cache = {src: dst_map.copy() for src, dst_map in base_src_dst_cache.items()}
-    # MCC打分同步加载当前虚拟边
+    # 打分同步加载当前虚拟边
     for (u, d) in prev_virt_single_for_cache:
         add_src_dst_record(src_dst_cache, u, d)
     build_sim_cache(emb_matrix, real_src_np)
 
     tail_records = []
     for src, g in train_df.groupby("src"):
-        g = g.sort_values("time").reset_index(drop=True)
-        last_row = g.iloc[-1]
-        tail_records.append({"src": int(last_row["src"]), "true_dst": int(last_row["dst"]), "time": float(last_row["time"])})
+        last_row = g.loc[g["time"].idxmax()]
+        tail_records.append({
+            "src": int(last_row["src"]),
+            "true_dst": int(last_row["dst"]),
+            "time": float(last_row["time"]),
+        })
     if len(tail_records) > sample_num:
         eval_samples = random.sample(tail_records, sample_num)
     else:
@@ -362,10 +370,9 @@ def calc_mcc_eval(train_df, emb_matrix, real_src_np, sample_num=10000):
 
     dst_all = train_df["dst"].values
     dst_min, dst_max = int(dst_all.min()), int(dst_all.max())
-    y_true_all = []
-    y_pred_all = []
     total_cnt = len(eval_samples)
-    for item in tqdm(eval_samples, desc="Mrr指标评估打分【原始单循环】"):
+    total_mrr = 0.0
+    for item in tqdm(eval_samples, desc="MRR指标评估打分"):
         src_id = item["src"]
         true_dst = item["true_dst"]
         pred_t = item["time"]
@@ -375,7 +382,7 @@ def calc_mcc_eval(train_df, emb_matrix, real_src_np, sample_num=10000):
             if cand != src_id and cand != true_dst and cand not in negs:
                 negs.append(cand)
         candidates = negs + [true_dst]
-        history_d_set = get_dst_before_time(src_id, pred_t, train_df)
+        history_d_set = set(get_dst_before_time(src_id, pred_t).tolist())
         score_map = {}
         for d in candidates:
             if d in history_d_set:
@@ -390,19 +397,10 @@ def calc_mcc_eval(train_df, emb_matrix, real_src_np, sample_num=10000):
         cand_prob = list(zip(candidates, scores))
         cand_prob.sort(key=lambda x: x[1], reverse=True)
 
-        # MRR计算
-        total_mrr=0
-        rank = None
-        for idx, (d, p) in enumerate(cand_prob):
-            if d == true_dst:
-                rank = idx + 1
-                break
+        rank = next(idx + 1 for idx, (d, _) in enumerate(cand_prob) if d == true_dst)
         total_mrr += 1.0 / rank
-        avg_mrr = total_mrr / total_cnt if total_cnt > 0 else 0.0
-        # for d, p in cand_prob:
-    #     #     y_true_all.append(1 if d == true_dst else 0)
-    #     #     y_pred_all.append(1 if p > BACK_FILL_THRESHOLD else 0)
-    # mcc = matthews_corrcoef(y_true_all, y_pred_all) if len(y_true_all) > 0 else 0.0
+
+    avg_mrr = total_mrr / total_cnt if total_cnt > 0 else 0.0
     return avg_mrr
 
 # ===================== 主训练入口 =====================
@@ -422,22 +420,22 @@ if __name__ == "__main__":
     test_df["time"] = test_df["time"].astype(float)
     print(f"测试集样本数：{len(test_df)}，未做时间排序，保留原始读取顺序")
 
-    num_entity = max(df_raw.src.max(), df_raw.dst.max()) + 1
+    num_entity = int(max(df_raw.src.max(), df_raw.dst.max())) + 1
     all_node_list = list(range(num_entity))
 
     train_src_set = set(df_raw["src"].unique())
     test_src_set = set(test_df["src"].unique())
-    union_src = sorted(list(train_src_set.union(test_src_set)))
+    union_src = sorted(train_src_set.union(test_src_set))
     global_real_src_np = np.array(union_src)
     print(f"相似度计算候选用户总数(全量train+test)：{len(global_real_src_np)}")
 
-    print("预构建全量训练交互基础缓存（train+val全部边）...")
-    for src, g in df_raw.groupby("src"):
-        g = g.sort_values("time")
-        for _, row in g.iterrows():
-            s = int(row["src"])
-            d = int(row["dst"])
-            add_src_dst_record(base_src_dst_cache, s, d)
+    print("预构建全量训练交互基础缓存与按src历史索引...")
+    pair_w = df_raw.groupby(["src", "dst"], sort=False).size()
+    for (s, d), w in pair_w.items():
+        base_src_dst_cache.setdefault(int(s), dict())[int(d)] = (
+            1.0 if REPLACE_WEIGHT_INSTEAD_ADD else float(w)
+        )
+    build_history_index(df_raw)
     print("全量基础交互缓存构建完成")
 
     all_train_edges = df_raw[["src", "dst"]].values
@@ -456,10 +454,9 @@ if __name__ == "__main__":
     # 程序启动读取历史虚拟边csv
     if os.path.exists(virtual_edge_csv):
         df_load = pd.read_csv(virtual_edge_csv, dtype={"src": int, "dst": int})
-        load_set = set()
-        for _, row in df_load.iterrows():
-            load_set.add((int(row["src"]), int(row["dst"])))
-        prev_virt_single_for_cache = load_set
+        prev_virt_single_for_cache = set(
+            zip(df_load["src"].astype(int), df_load["dst"].astype(int))
+        )
         print(f"\n✅ 加载初始虚拟边文件 {virtual_edge_csv}，读取 {len(prev_virt_single_for_cache)} 条虚拟边，本轮纳入训练与打分")
         # 初始加载的虚拟边构建双向训练样本
         virt_bi_list = []
@@ -469,8 +466,7 @@ if __name__ == "__main__":
             base_pos_set.add((u, v))
             base_pos_set.add((v, u))
         virt_tensor = torch.LongTensor(virt_bi_list).to(device)
-        aug_virt_tensor = torch.repeat_interleave(virt_tensor, repeats=VIRT_REPEAT_TIMES, dim=0)
-        current_virt_bi_edges = aug_virt_tensor
+        current_virt_bi_edges = torch.repeat_interleave(virt_tensor, repeats=VIRT_REPEAT_TIMES, dim=0)
     else:
         print(f"\n⚠️ 虚拟边文件 {virtual_edge_csv} 不存在，本轮无虚拟边参与训练")
 
@@ -491,7 +487,7 @@ if __name__ == "__main__":
             scaler.load_state_dict(ckpt["scaler_state"])
         print(f"✅ 加载断点，从epoch {start_epoch} 继续训练，已完成预测周期数：{predict_run_count}")
 
-    cycle_counter = start_epoch%10
+    cycle_counter = start_epoch % TRAIN_CYCLE
     total_line_epoch = epochs
     for ep in range(start_epoch, total_line_epoch):
         if cycle_counter >= TRAIN_CYCLE:
@@ -500,21 +496,20 @@ if __name__ == "__main__":
             print(f"\n===== 完成{TRAIN_CYCLE}轮LINE训练，执行Test矢量化预测 + MRR评估（Epoch:{current_epoch_num}） ====")
             current_emb = model.get_final_emb().cpu().numpy()
             emb_np = np.round(current_emb, decimals=EMB_PRECISION)
-            node_ids = list(range(num_entity))
             emb_df = pd.DataFrame(emb_np)
-            emb_df.insert(0, "node_id", node_ids)
+            emb_df.insert(0, "node_id", list(range(num_entity)))
             emb_df.to_csv(latest_emb_path, index=False)
 
             # 预测生成新虚拟边，覆盖替换文件
-            new_virt_set = predict_test(test_df, df_raw, emb_np, prev_virt_single_for_cache, global_real_src_np, current_epoch_num)
+            new_virt_set = predict_test(test_df, emb_np, prev_virt_single_for_cache, global_real_src_np, current_epoch_num)
             print(f"Test本轮生成单向虚拟交互：{len(new_virt_set)} 条")
-            val_mrr = calc_mcc_eval(df_raw, emb_np, global_real_src_np, sample_num=MCC_SAMPLE_COUNT)
-            print(f"全量数据尾部验证MRR:{val_mcc:.4f}")
+            val_mrr = calc_mrr_eval(df_raw, emb_np, global_real_src_np, sample_num=MCC_SAMPLE_COUNT)
+            print(f"全量数据尾部验证MRR:{val_mrr:.4f}")
 
             predict_run_count += 1
             print(f"当前累计完成预测周期：{predict_run_count}")
 
-            # 重置Adam动量缓存
+            # 重置Adam动量缓存，适配新增虚拟样本训练
             print("执行Adam动量缓存重置，适配新增虚拟样本训练...")
             for group in opt.param_groups:
                 for p in group["params"]:
@@ -523,9 +518,12 @@ if __name__ == "__main__":
                         state["exp_avg"].zero_()
                     if "exp_avg_sq" in state:
                         state["exp_avg_sq"].zero_()
-                    # 补充重置迭代步数
+                    # 就地清零保留dtype/device：新建int64张量会与torch 2.x的float step不符导致崩溃
                     if "step" in state:
-                        state["step"] = torch.tensor(0, device=p.device)
+                        if torch.is_tensor(state["step"]):
+                            state["step"].zero_()
+                        else:
+                            state["step"] = 0
 
             # 更新全局虚拟边集合，重建下一轮训练样本
             prev_virt_single_for_cache = new_virt_set
@@ -536,13 +534,11 @@ if __name__ == "__main__":
                 base_pos_set.add((u, v))
                 base_pos_set.add((v, u))
             virt_tensor = torch.LongTensor(virt_bi_list).to(device)
-            aug_virt_tensor = torch.repeat_interleave(virt_tensor, repeats=VIRT_REPEAT_TIMES, dim=0)
-            current_virt_bi_edges = aug_virt_tensor
-            print(f"✅ 已切换至本轮新生成虚拟边，下一轮训练/打分使用该批数据")
+            current_virt_bi_edges = torch.repeat_interleave(virt_tensor, repeats=VIRT_REPEAT_TIMES, dim=0)
+            print("✅ 已切换至本轮新生成虚拟边，下一轮训练/打分使用该批数据")
 
         # 拼接原始真实边 + 当前虚拟边联合训练
         full_train_graph = torch.cat([base_single_edges, current_virt_bi_edges], dim=0)
-        #full_train_graph=current_virt_bi_edges
         pos_cnt = full_train_graph.shape[0]
         perm = torch.randperm(pos_cnt, device=device)
         pos_shuffle = full_train_graph[perm]
@@ -559,7 +555,7 @@ if __name__ == "__main__":
             s_neg, d_neg = gen_neg_batch(batch_cpu, base_pos_set, all_node_list)
 
             s_all = torch.cat([s_pos, s_neg])
-            d_all = torch.cat([s_pos, d_neg])
+            d_all = torch.cat([d_pos, d_neg])
             label = torch.cat([torch.ones_like(s_pos), torch.zeros_like(s_neg)])
 
             opt.zero_grad()
@@ -597,12 +593,12 @@ if __name__ == "__main__":
             "node_num": num_entity,
             "scaler_state": scaler.state_dict(),
             "seed": SEED,
-            "predict_run_count": predict_run_count
+            "predict_run_count": predict_run_count,
         }
         torch.save(save_dict, last_ckpt_path)
         if (ep + 1) % save_interval == 0:
-            torch.save(save_dict, os.path.join(ckpt_dir, f"line_epoch_{ep+1}.pt"))
+            torch.save(save_dict, ckpt_dir / f"line_epoch_{ep+1}.pt")
         if avg_loss < best_loss:
             best_loss = avg_loss
             torch.save(save_dict, best_ckpt_path)
-            print(f"🏆 更新最优模型权重")
+            print("🏆 更新最优模型权重")
