@@ -92,10 +92,17 @@ MCC_SAMPLE_COUNT = 10000
 # dataset1: mask 0.284 / no-mask 0.802 / boost x20 0.915).
 MASK_HISTORY = DATASET == "dataset2"
 HIST_BOOST = 20.0 if DATASET == "dataset1" else 0.0
-# Submission ranking blends embedding-CF with popularity-normalized
-# co-occurrence CF (offline-tuned: ds1 0.917->0.948, ds2 0.758->0.793).
+# Submission ranking policy per dataset, tuned on a real-candidate offline eval
+# (negatives drawn from actual test candidate pools, which reproduced the
+# online ordering; random-negative MRR was misleading for dataset2):
+# - dataset1: blend embedding-CF with co-occurrence CF (online 0.776 -> 0.803)
+# - dataset2: co-occurrence hurts online (0.526 -> 0.505, candidates skew
+#   unpopular so cooc yields false positives); use pure embedding-CF plus a
+#   small recent-popularity prior (last 20% of train time, +0.005 offline).
 # Virtual-edge generation keeps using the raw embedding-CF signal.
-COOC_GAMMA = 1.0 if DATASET == "dataset1" else 5.0
+COOC_GAMMA = 1.0 if DATASET == "dataset1" else 0.0
+RPOP_DELTA = 0.3 if DATASET == "dataset2" else 0.0
+RPOP_TIME_QUANTILE = 0.8
 
 # Global caches
 src_dst_cache = dict()
@@ -110,6 +117,7 @@ prev_virt_single_for_cache = set()
 ui_mat = None
 ui_mat_csc = None
 dst_pop = None
+dst_rpop_log = None
 global_real_src_np = np.array([])
 # Per-src history index: src -> (time array sorted ascending, matching dst array)
 src_hist_times = dict()
@@ -212,13 +220,19 @@ def rownorm(v: np.ndarray) -> np.ndarray:
     return v / mx if mx > 1e-12 else v
 
 def build_cooc(df, n_node: int):
-    global ui_mat, ui_mat_csc, dst_pop
+    global ui_mat, ui_mat_csc, dst_pop, dst_rpop_log
     ui_mat = sp.coo_matrix(
         (np.ones(len(df), dtype=np.float32), (df["src"].values, df["dst"].values)),
         shape=(n_node, n_node),
     ).tocsr()
     ui_mat_csc = ui_mat.tocsc()
     dst_pop = np.asarray(ui_mat.sum(axis=0)).ravel() + 1.0
+    # Recent popularity: dst interaction counts in the last time window
+    tcut = df["time"].quantile(RPOP_TIME_QUANTILE)
+    rpop = np.zeros(n_node, dtype=np.float64)
+    for d, c in df[df["time"] >= tcut].groupby("dst").size().items():
+        rpop[int(d)] = float(c)
+    dst_rpop_log = np.log1p(rpop)
 
 def cooc_scores(src: int, cands: np.ndarray) -> np.ndarray:
     # Popularity-normalized co-occurrence CF: users overlapping src's history,
@@ -373,8 +387,11 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
     test_time_arr = test_df["time"].values.astype(float)
     cand_mat = test_df[c_cols].values.astype(np.int64)
 
-    print("Precomputing co-occurrence CF scores...")
-    cooc_rows = precompute_cooc_rows(test_src_arr, cand_mat)
+    if COOC_GAMMA > 0:
+        print("Precomputing co-occurrence CF scores...")
+        cooc_rows = precompute_cooc_rows(test_src_arr, cand_mat)
+    else:
+        cooc_rows = None
 
     test_prob_rows = []
 
@@ -384,21 +401,26 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
         all_candidates = cand_mat[i]
 
         collab = batch_sim_score(src, all_candidates, cache_mat)
-        cooc = cooc_rows[i]
         history_real_d = get_dst_before_time(src, curr_time)
+
+        extra = np.zeros(len(all_candidates), dtype=np.float64)
+        if COOC_GAMMA > 0:
+            extra += COOC_GAMMA * rownorm(cooc_rows[i])
+        if RPOP_DELTA > 0:
+            extra += RPOP_DELTA * rownorm(dst_rpop_log[np.clip(all_candidates, 0, len(dst_rpop_log) - 1)])
 
         if MASK_HISTORY:
             # dataset2: real interactions before the query time never repeat
             hist_mask = np.isin(all_candidates, history_real_d)
             raw_scores = collab.copy()
             raw_scores[hist_mask] = 0.0
-            blend = rownorm(collab.astype(np.float64)) + COOC_GAMMA * rownorm(cooc)
+            blend = rownorm(collab.astype(np.float64)) + extra
             blend[hist_mask] = 0.0
         else:
             # dataset1: repeats dominate, boost candidates by own history count
             own_cnt = count_in_history(all_candidates, history_real_d)
             raw_scores = collab + HIST_BOOST * own_cnt
-            blend = HIST_BOOST * own_cnt.astype(np.float64) + rownorm(collab.astype(np.float64)) + COOC_GAMMA * rownorm(cooc)
+            blend = HIST_BOOST * own_cnt.astype(np.float64) + rownorm(collab.astype(np.float64)) + extra
 
         # Legacy confidence-gated probabilities drive virtual-edge generation only
         row_max = raw_scores.max()
@@ -477,13 +499,17 @@ def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000):
         cand_arr = np.array(negs + [true_dst], dtype=np.int64)
         history_d = get_dst_before_time(src_id, pred_t)
         collab = np.array([get_sim_agg_score(src_id, int(d), src_dst_cache) for d in cand_arr], dtype=np.float64)
-        cooc = cooc_scores(src_id, cand_arr)
         cnt = count_in_history(cand_arr, history_d).astype(np.float64)
+        extra = np.zeros(len(cand_arr), dtype=np.float64)
+        if COOC_GAMMA > 0:
+            extra += COOC_GAMMA * rownorm(cooc_scores(src_id, cand_arr))
+        if RPOP_DELTA > 0:
+            extra += RPOP_DELTA * rownorm(dst_rpop_log[np.clip(cand_arr, 0, len(dst_rpop_log) - 1)])
         if MASK_HISTORY:
-            blend = rownorm(collab) + COOC_GAMMA * rownorm(cooc)
+            blend = rownorm(collab) + extra
             blend[cnt > 0] = 0.0
         else:
-            blend = HIST_BOOST * cnt + rownorm(collab) + COOC_GAMMA * rownorm(cooc)
+            blend = HIST_BOOST * cnt + rownorm(collab) + extra
 
         # Pessimistic tie handling: true dst ranks after all equal scores
         rank = 1 + int((blend > blend[-1]).sum()) + int((blend[:-1] == blend[-1]).sum())
