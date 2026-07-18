@@ -1,0 +1,13 @@
+# 数据与产物不入库
+data/
+outputs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
