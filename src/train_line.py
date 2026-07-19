@@ -63,7 +63,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATASET = os.environ.get("DATASET", "dataset2")
 assert DATASET in ("dataset1", "dataset2"), f"unknown dataset: {DATASET}"
 DATA_DIR = PROJECT_ROOT / "data" / "data_A" / DATASET
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / (DATASET if SEED == 42 else f"{DATASET}-s{SEED}")
+# Staged self-training (teammate's idea): virtual edges are only harvested
+# from test rows whose time falls inside the current stage window, which
+# advances one stage per predict cycle. Scoring/output always covers all rows.
+STAGED = os.environ.get("STAGED", "0") == "1"
+N_STAGES = int(os.environ.get("N_STAGES", "5"))
+
+_suffix = ("" if SEED == 42 else f"-s{SEED}") + ("-staged" if STAGED else "")
+OUTPUT_DIR = PROJECT_ROOT / "outputs" / (DATASET + _suffix)
 ckpt_dir = OUTPUT_DIR / "checkpoints"
 os.makedirs(ckpt_dir, exist_ok=True)
 
@@ -420,6 +427,14 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
     max_node_id = emb_matrix.shape[0] - 1
     cache_mat = cache_dict_to_matrix(curr_cache, set(), max_node_id)
 
+    # Stage window for virtual-edge harvesting (all rows are always scored)
+    if STAGED:
+        stage_frac = min(1.0, (predict_run_count + 1) / N_STAGES)
+        stage_cut = float(test_df["time"].quantile(stage_frac))
+        print(f"[staged] cycle {predict_run_count + 1}: harvesting virtual edges from test rows with time <= {stage_frac:.0%} quantile")
+    else:
+        stage_cut = float("inf")
+
     test_src_arr = test_df["src"].values.astype(np.int64)
     test_time_arr = test_df["time"].values.astype(float)
     cand_mat = test_df[c_cols].values.astype(np.int64)
@@ -470,6 +485,8 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
 
         cand_prob = list(zip(all_candidates.tolist(), prob_list))
         cand_prob.sort(key=lambda x: x[1], reverse=True)
+        if curr_time > stage_cut:
+            continue
         top_k_items = cand_prob[:ADD_TOP_K_HIST]
         valid_items = [(d, p) for d, p in top_k_items if p > BACK_FILL_THRESHOLD]
         if not MASK_HISTORY:
