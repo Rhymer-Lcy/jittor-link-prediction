@@ -45,15 +45,22 @@ tl.TRANS_GAMMA = 0.0
 # historical dst embeddings (mean over all, plus mean of the top-3 closest).
 # Non-temporal, so the real-candidate eval is trustworthy for it. Tuned on
 # dataset2 across 3 negative-sampling seeds: baseline 0.6132 -> 0.6463.
+# Item-CF weights are fixed at the level validated online on dataset2
+# (submission 2026-07-19: 0.5441 -> 0.5587). The real-candidate offline eval
+# inflates the item-CF gain ~2.4x (it reads embedding geometry that memorized
+# the held-out tail edge), so the offline-monotone climb to higher weights is
+# not trusted — only this online-backed weight level is used.
 if tl.DATASET == "dataset2":
     COLLAB_W = 0.3
     ITEMCF_MEAN_W = 0.7
     ITEMCF_TOP3_W = 0.5
     tl.RPOP_DELTA = 0.45
 else:
+    # dataset1 keeps full user-CF, history boost and cooc (train_line defaults);
+    # item-CF added at the same online-backed weight (offline +0.021, 3 seeds)
     COLLAB_W = 1.0
-    ITEMCF_MEAN_W = 0.0
-    ITEMCF_TOP3_W = 0.0
+    ITEMCF_MEAN_W = 0.7
+    ITEMCF_TOP3_W = 0.5
 
 NEG_PER_SAMPLE = 99
 
