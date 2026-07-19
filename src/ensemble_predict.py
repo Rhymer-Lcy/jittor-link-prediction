@@ -36,11 +36,6 @@ from tqdm import tqdm
 
 import train_line as tl
 
-# The sequential transition feature was refuted online (isolated submission
-# 2026-07-19: 0.5305 vs the 0.5441 no-trans baseline at comparable epochs);
-# keep it out of every predict-only blend.
-tl.TRANS_GAMMA = 0.0
-
 # Item-CF: cosine similarity between a candidate's embedding and the src's
 # historical dst embeddings (mean over all, plus mean of the top-3 closest).
 # Non-temporal, so the real-candidate eval is trustworthy for it. Tuned on
@@ -267,7 +262,7 @@ def main():
     print(f"Dataset: {tl.DATASET} | runs: {[d.name for d in run_dirs]} | "
           f"blend: collab={COLLAB_W} itemcf_mean={ITEMCF_MEAN_W} "
           f"itemcf_top3={ITEMCF_TOP3_W} cooc={tl.COOC_GAMMA} rpop={tl.RPOP_DELTA} "
-          f"trans={tl.TRANS_GAMMA} mask_history={tl.MASK_HISTORY} hist_boost={tl.HIST_BOOST}")
+          f"mask_history={tl.MASK_HISTORY} hist_boost={tl.HIST_BOOST}")
 
     df_raw = pd.read_csv(tl.train_csv)
     df_raw = df_raw.drop_duplicates(subset=["src", "dst", "time"]).reset_index(drop=True)

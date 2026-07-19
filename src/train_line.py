@@ -126,10 +126,6 @@ HIST_BOOST = 20.0 if DATASET == "dataset1" else 0.0
 COOC_GAMMA = 1.0 if DATASET == "dataset1" else 0.0
 RPOP_DELTA = 0.3 if DATASET == "dataset2" else 0.0
 RPOP_TIME_QUANTILE = 0.8
-# Sequential transition feature (dataset2): global next-dst transition counts
-# from the user's most recent dst, sqrt-popularity normalized. Leak-free
-# real-candidate eval: 0.608 -> 0.716, the largest ds2 gain found so far.
-TRANS_GAMMA = 1.0 if DATASET == "dataset2" else 0.0
 
 # Global caches
 src_dst_cache = dict()
@@ -145,8 +141,6 @@ ui_mat = None
 ui_mat_csc = None
 dst_pop = None
 dst_rpop_log = None
-trans_mat = None
-trans_pop = None
 # Cumulative distribution for degree^0.75 negative sampling (NEG_DIST=pop075)
 neg_cdf = None
 global_real_src_np = np.array([])
@@ -292,25 +286,6 @@ def build_cooc(df, n_node: int):
     for d, c in df[df["time"] >= tcut].groupby("dst").size().items():
         rpop[int(d)] = float(c)
     dst_rpop_log = np.log1p(rpop)
-    # Global sequential transition counts d_i -> d_{i+1} within src timelines
-    global trans_mat, trans_pop
-    df_sorted = df.sort_values(["src", "time"], kind="mergesort")
-    srcs_arr = df_sorted["src"].values
-    dsts_arr = df_sorted["dst"].values
-    same_src = srcs_arr[1:] == srcs_arr[:-1]
-    frm = dsts_arr[:-1][same_src]
-    to = dsts_arr[1:][same_src]
-    trans_mat = sp.coo_matrix(
-        (np.ones(len(frm), dtype=np.float32), (frm, to)), shape=(n_node, n_node)
-    ).tocsr()
-    trans_pop = np.asarray(trans_mat.sum(axis=0)).ravel() + 1.0
-
-def trans_scores(last_dst: int, cands: np.ndarray) -> np.ndarray:
-    # Transition counts from the user's most recent dst, sqrt-pop normalized
-    if trans_mat is None or last_dst < 0 or last_dst >= trans_mat.shape[0]:
-        return np.zeros(len(cands), dtype=np.float64)
-    row = np.asarray(trans_mat[last_dst, cands].todense()).ravel().astype(np.float64)
-    return row / np.sqrt(trans_pop[cands])
 
 def cooc_scores(src: int, cands: np.ndarray) -> np.ndarray:
     # Popularity-normalized co-occurrence CF: users overlapping src's history,
@@ -494,9 +469,6 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
             extra += COOC_GAMMA * rownorm(cooc_rows[i])
         if RPOP_DELTA > 0:
             extra += RPOP_DELTA * rownorm(dst_rpop_log[np.clip(all_candidates, 0, len(dst_rpop_log) - 1)])
-        if TRANS_GAMMA > 0 and len(history_real_d) > 0:
-            cc = np.clip(all_candidates, 0, trans_mat.shape[0] - 1)
-            extra += TRANS_GAMMA * rownorm(trans_scores(int(history_real_d[-1]), cc))
 
         if MASK_HISTORY:
             # dataset2: real interactions before the query time never repeat
@@ -596,9 +568,6 @@ def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000):
             extra += COOC_GAMMA * rownorm(cooc_scores(src_id, cand_arr))
         if RPOP_DELTA > 0:
             extra += RPOP_DELTA * rownorm(dst_rpop_log[np.clip(cand_arr, 0, len(dst_rpop_log) - 1)])
-        if TRANS_GAMMA > 0 and len(history_d) > 0:
-            cc = np.clip(cand_arr, 0, trans_mat.shape[0] - 1)
-            extra += TRANS_GAMMA * rownorm(trans_scores(int(history_d[-1]), cc))
         if MASK_HISTORY:
             blend = rownorm(collab) + extra
             blend[cnt > 0] = 0.0
