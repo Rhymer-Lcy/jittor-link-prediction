@@ -239,7 +239,11 @@ def run_predict(df_raw, test_df, run_dirs, args):
     out_dir = tl.PROJECT_ROOT / "outputs" / f"{tl.DATASET}-ensemble"
     os.makedirs(out_dir, exist_ok=True)
     save_path = out_dir / "result_ensemble.csv"
-    pd.DataFrame(out_rows).to_csv(save_path, index=False, header=False)
+    # 6 decimals: MRR is rank-based, so this preserves ordering exactly while
+    # keeping the file small. Full float64 repr bloated item-CF outputs (every
+    # candidate nonzero) to ~2.5x, pushing the packaged zip past the ~100 MB
+    # submission upload limit.
+    pd.DataFrame(out_rows).to_csv(save_path, index=False, header=False, float_format="%.6f")
     print(f"\n[OK] Ensemble submission saved: {save_path}")
 
 
