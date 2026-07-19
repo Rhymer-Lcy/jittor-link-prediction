@@ -126,9 +126,6 @@ HIST_BOOST = 20.0 if DATASET == "dataset1" else 0.0
 COOC_GAMMA = 1.0 if DATASET == "dataset1" else 0.0
 RPOP_DELTA = 0.3 if DATASET == "dataset2" else 0.0
 RPOP_TIME_QUANTILE = 0.8
-# Retained for experiments only; the production blend uses plain counts
-HIST_TD_HALFLIFE_FRAC = 0.01
-HIST_FLOOR = 5.0
 # Sequential transition feature (dataset2): global next-dst transition counts
 # from the user's most recent dst, sqrt-popularity normalized. Leak-free
 # real-candidate eval: 0.608 -> 0.716, the largest ds2 gain found so far.
@@ -266,13 +263,6 @@ def get_hist_before_time(src_id: int, cutoff_time: float):
         return np.array([], dtype=np.int64), np.array([], dtype=float)
     k = np.searchsorted(times, cutoff_time, side="left")
     return src_hist_dsts[src_id][:k], times[:k]
-
-def decayed_count_in_history(candidates: np.ndarray, hist_d: np.ndarray, hist_t: np.ndarray, now: float) -> np.ndarray:
-    # Sum of exponentially time-decayed occurrence weights per candidate
-    if hist_d.size == 0:
-        return np.zeros(candidates.shape[0], dtype=np.float64)
-    w = 0.5 ** ((now - hist_t) / (HIST_TD_HALFLIFE_FRAC * train_time_span))
-    return np.array([w[hist_d == c].sum() for c in candidates], dtype=np.float64)
 
 def count_in_history(candidates: np.ndarray, hist: np.ndarray) -> np.ndarray:
     # Occurrence count of each candidate in the (possibly repeating) history
