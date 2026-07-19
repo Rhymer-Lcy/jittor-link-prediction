@@ -105,6 +105,11 @@ HIST_BOOST = 20.0 if DATASET == "dataset1" else 0.0
 COOC_GAMMA = 5.0 if DATASET == "dataset1" else 0.0
 RPOP_DELTA = 0.3 if DATASET == "dataset2" else 0.0
 RPOP_TIME_QUANTILE = 0.98
+# dataset1 history term: time-decayed visit counts (half-life = 1% of the
+# train time span) plus a constant floor keeping any visited candidate above
+# non-history signals (real-candidate eval: 0.8157 -> 0.8340)
+HIST_TD_HALFLIFE_FRAC = 0.01
+HIST_FLOOR = 5.0
 
 # Global caches
 src_dst_cache = dict()
@@ -124,6 +129,7 @@ global_real_src_np = np.array([])
 # Per-src history index: src -> (time array sorted ascending, matching dst array)
 src_hist_times = dict()
 src_hist_dsts = dict()
+train_time_span = 1.0
 # Test candidate columns
 c_cols = [f"c{i}" for i in range(1, 101)]
 # Completed predict cycles
@@ -201,12 +207,14 @@ def add_src_dst_record(cache_dict, src_id: int, dst_id: int):
 
 def build_history_index(full_df):
     # One-off per-src index sorted by time, replacing full-table scans
+    global train_time_span
     src_hist_times.clear()
     src_hist_dsts.clear()
     df = full_df.sort_values("time", kind="mergesort")
     for src, g in df.groupby("src", sort=False):
         src_hist_times[int(src)] = g["time"].values.astype(float)
         src_hist_dsts[int(src)] = g["dst"].values.astype(np.int64)
+    train_time_span = float(full_df["time"].max() - full_df["time"].min()) or 1.0
 
 def get_dst_before_time(src_id: int, cutoff_time: float) -> np.ndarray:
     times = src_hist_times.get(src_id)
@@ -214,6 +222,21 @@ def get_dst_before_time(src_id: int, cutoff_time: float) -> np.ndarray:
         return np.array([], dtype=np.int64)
     k = np.searchsorted(times, cutoff_time, side="left")
     return src_hist_dsts[src_id][:k]
+
+def get_hist_before_time(src_id: int, cutoff_time: float):
+    # Like get_dst_before_time but also returns the matching timestamps
+    times = src_hist_times.get(src_id)
+    if times is None:
+        return np.array([], dtype=np.int64), np.array([], dtype=float)
+    k = np.searchsorted(times, cutoff_time, side="left")
+    return src_hist_dsts[src_id][:k], times[:k]
+
+def decayed_count_in_history(candidates: np.ndarray, hist_d: np.ndarray, hist_t: np.ndarray, now: float) -> np.ndarray:
+    # Sum of exponentially time-decayed occurrence weights per candidate
+    if hist_d.size == 0:
+        return np.zeros(candidates.shape[0], dtype=np.float64)
+    w = 0.5 ** ((now - hist_t) / (HIST_TD_HALFLIFE_FRAC * train_time_span))
+    return np.array([w[hist_d == c].sum() for c in candidates], dtype=np.float64)
 
 def count_in_history(candidates: np.ndarray, hist: np.ndarray) -> np.ndarray:
     # Occurrence count of each candidate in the (possibly repeating) history
@@ -411,7 +434,7 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
         all_candidates = cand_mat[i]
 
         collab = batch_sim_score(src, all_candidates, cache_mat)
-        history_real_d = get_dst_before_time(src, curr_time)
+        history_real_d, history_real_t = get_hist_before_time(src, curr_time)
 
         extra = np.zeros(len(all_candidates), dtype=np.float64)
         if COOC_GAMMA > 0:
@@ -427,10 +450,12 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
             blend = rownorm(collab.astype(np.float64)) + extra
             blend[hist_mask] = 0.0
         else:
-            # dataset1: repeats dominate, boost candidates by own history count
+            # dataset1: repeats dominate; rank history by time-decayed counts
+            # with a floor that keeps visited candidates above non-history
             own_cnt = count_in_history(all_candidates, history_real_d)
             raw_scores = collab + HIST_BOOST * own_cnt
-            blend = HIST_BOOST * own_cnt.astype(np.float64) + rownorm(collab.astype(np.float64)) + extra
+            td = decayed_count_in_history(all_candidates, history_real_d, history_real_t, curr_time)
+            blend = HIST_BOOST * td + HIST_FLOOR * (own_cnt > 0) + rownorm(collab.astype(np.float64)) + extra
 
         # Legacy confidence-gated probabilities drive virtual-edge generation only
         row_max = raw_scores.max()
@@ -507,7 +532,7 @@ def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000):
             if cand != src_id and cand != true_dst and cand not in negs:
                 negs.append(cand)
         cand_arr = np.array(negs + [true_dst], dtype=np.int64)
-        history_d = get_dst_before_time(src_id, pred_t)
+        history_d, history_t = get_hist_before_time(src_id, pred_t)
         collab = np.array([get_sim_agg_score(src_id, int(d), src_dst_cache) for d in cand_arr], dtype=np.float64)
         cnt = count_in_history(cand_arr, history_d).astype(np.float64)
         extra = np.zeros(len(cand_arr), dtype=np.float64)
@@ -519,7 +544,8 @@ def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000):
             blend = rownorm(collab) + extra
             blend[cnt > 0] = 0.0
         else:
-            blend = HIST_BOOST * cnt + rownorm(collab) + extra
+            td = decayed_count_in_history(cand_arr, history_d, history_t, pred_t)
+            blend = HIST_BOOST * td + HIST_FLOOR * (cnt > 0) + rownorm(collab) + extra
 
         # Pessimistic tie handling: true dst ranks after all equal scores
         rank = 1 + int((blend > blend[-1]).sum()) + int((blend[:-1] == blend[-1]).sum())
