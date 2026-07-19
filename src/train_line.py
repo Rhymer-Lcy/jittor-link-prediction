@@ -39,7 +39,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 emb_total_dim = 400
 sub_dim = emb_total_dim // 2
 neg_ratio = 5
-epochs = 400
+# Total epochs; override via env to extend a finished run (e.g. EPOCHS=500)
+epochs = int(os.environ.get("EPOCHS", "400"))
 batch_size = 1024
 save_interval = 5
 EMB_PRECISION = 6
@@ -102,12 +103,15 @@ HIST_BOOST = 20.0 if DATASET == "dataset1" else 0.0
 #   unpopular so cooc yields false positives); use pure embedding-CF plus a
 #   small recent-popularity prior (last 20% of train time, +0.005 offline).
 # Virtual-edge generation keeps using the raw embedding-CF signal.
-COOC_GAMMA = 5.0 if DATASET == "dataset1" else 0.0
+# Online-validated recipe (ds1 0.803 / ds2 ~0.548). CAUTION: the offline
+# real-candidate eval systematically overrates recency-flavored features —
+# time-decayed history (harness +0.018) scored 0.7905 online (-0.013), so
+# gamma=5 and the q98 recency window were rolled back together with it.
+# One variable per isolated submission from here on.
+COOC_GAMMA = 1.0 if DATASET == "dataset1" else 0.0
 RPOP_DELTA = 0.3 if DATASET == "dataset2" else 0.0
-RPOP_TIME_QUANTILE = 0.98
-# dataset1 history term: time-decayed visit counts (half-life = 1% of the
-# train time span) plus a constant floor keeping any visited candidate above
-# non-history signals (real-candidate eval: 0.8157 -> 0.8340)
+RPOP_TIME_QUANTILE = 0.8
+# Retained for experiments only; the production blend uses plain counts
 HIST_TD_HALFLIFE_FRAC = 0.01
 HIST_FLOOR = 5.0
 
@@ -450,12 +454,10 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
             blend = rownorm(collab.astype(np.float64)) + extra
             blend[hist_mask] = 0.0
         else:
-            # dataset1: repeats dominate; rank history by time-decayed counts
-            # with a floor that keeps visited candidates above non-history
+            # dataset1: repeats dominate, boost candidates by own history count
             own_cnt = count_in_history(all_candidates, history_real_d)
             raw_scores = collab + HIST_BOOST * own_cnt
-            td = decayed_count_in_history(all_candidates, history_real_d, history_real_t, curr_time)
-            blend = HIST_BOOST * td + HIST_FLOOR * (own_cnt > 0) + rownorm(collab.astype(np.float64)) + extra
+            blend = HIST_BOOST * own_cnt.astype(np.float64) + rownorm(collab.astype(np.float64)) + extra
 
         # Legacy confidence-gated probabilities drive virtual-edge generation only
         row_max = raw_scores.max()
@@ -544,8 +546,7 @@ def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000):
             blend = rownorm(collab) + extra
             blend[cnt > 0] = 0.0
         else:
-            td = decayed_count_in_history(cand_arr, history_d, history_t, pred_t)
-            blend = HIST_BOOST * td + HIST_FLOOR * (cnt > 0) + rownorm(collab) + extra
+            blend = HIST_BOOST * cnt + rownorm(collab) + extra
 
         # Pessimistic tie handling: true dst ranks after all equal scores
         rank = 1 + int((blend > blend[-1]).sum()) + int((blend[:-1] == blend[-1]).sum())
