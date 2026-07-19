@@ -35,10 +35,12 @@ torch.backends.cudnn.benchmark = False
 
 # ===================== Hyperparameters =====================
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# LINE model
-emb_total_dim = 400
+# LINE model. Embedding dim and negatives-per-positive are env-tunable for
+# capacity experiments (e.g. EMB_DIM=512 NEG_RATIO=10); a non-default embedding
+# dim writes to a separate -d<dim> output dir so it never clobbers a prior run.
+emb_total_dim = int(os.environ.get("EMB_DIM", "400"))
 sub_dim = emb_total_dim // 2
-neg_ratio = 5
+neg_ratio = int(os.environ.get("NEG_RATIO", "5"))
 # Total epochs; override via env to extend a finished run (e.g. EPOCHS=500)
 epochs = int(os.environ.get("EPOCHS", "400"))
 batch_size = 1024
@@ -77,7 +79,8 @@ assert NEG_DIST in ("uniform", "pop075"), f"unknown NEG_DIST: {NEG_DIST}"
 
 _suffix = (("" if SEED == 42 else f"-s{SEED}")
            + ("-staged" if STAGED else "")
-           + ("-negpop" if NEG_DIST == "pop075" else ""))
+           + ("-negpop" if NEG_DIST == "pop075" else "")
+           + (f"-d{emb_total_dim}" if emb_total_dim != 400 else ""))
 OUTPUT_DIR = PROJECT_ROOT / "outputs" / (DATASET + _suffix)
 ckpt_dir = OUTPUT_DIR / "checkpoints"
 os.makedirs(ckpt_dir, exist_ok=True)
