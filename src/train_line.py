@@ -42,7 +42,8 @@ neg_ratio = 5
 # Total epochs; override via env to extend a finished run (e.g. EPOCHS=500)
 epochs = int(os.environ.get("EPOCHS", "400"))
 batch_size = 1024
-save_interval = 5
+# Snapshot sparingly: dataset2 snapshots are ~1 GB each and filled the disk
+save_interval = 50
 EMB_PRECISION = 6
 LOSS_ALPHA = 0.5
 USE_FP16 = False
