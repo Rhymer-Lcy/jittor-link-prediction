@@ -69,8 +69,15 @@ DATA_DIR = PROJECT_ROOT / "data" / "data_A" / DATASET
 # advances one stage per predict cycle. Scoring/output always covers all rows.
 STAGED = os.environ.get("STAGED", "0") == "1"
 N_STAGES = int(os.environ.get("N_STAGES", "5"))
+# Negative-sampling distribution: "uniform" (default) or "pop075" (degree^0.75).
+# pop075 trains a fresh embedding in a separate -negpop output dir so it never
+# clobbers the online-validated uniform run.
+NEG_DIST = os.environ.get("NEG_DIST", "uniform")
+assert NEG_DIST in ("uniform", "pop075"), f"unknown NEG_DIST: {NEG_DIST}"
 
-_suffix = ("" if SEED == 42 else f"-s{SEED}") + ("-staged" if STAGED else "")
+_suffix = (("" if SEED == 42 else f"-s{SEED}")
+           + ("-staged" if STAGED else "")
+           + ("-negpop" if NEG_DIST == "pop075" else ""))
 OUTPUT_DIR = PROJECT_ROOT / "outputs" / (DATASET + _suffix)
 ckpt_dir = OUTPUT_DIR / "checkpoints"
 os.makedirs(ckpt_dir, exist_ok=True)
@@ -143,6 +150,8 @@ dst_pop = None
 dst_rpop_log = None
 trans_mat = None
 trans_pop = None
+# Cumulative distribution for degree^0.75 negative sampling (NEG_DIST=pop075)
+neg_cdf = None
 global_real_src_np = np.array([])
 # Per-src history index: src -> (time array sorted ascending, matching dst array)
 src_hist_times = dict()
@@ -201,16 +210,25 @@ def build_pos_csr(pos_set, n_node: int):
         shape=(n_node, n_node),
     ).tocsr()
 
+def _draw_neg(size: int, n_node: int) -> np.ndarray:
+    # Negative destination draws. Default uniform; with NEG_DIST=pop075, sample
+    # proportional to degree^0.75 (word2vec/LINE convention) from a precomputed
+    # CDF, which down-weights ultra-rare nodes and sharpens the embedding.
+    if neg_cdf is not None:
+        idx = np.searchsorted(neg_cdf, np.random.random(size))
+        return np.clip(idx, 0, n_node - 1).astype(np.int64)
+    return np.random.randint(0, n_node, size=size)
+
 def gen_neg_batch(s_pos_np, pos_csr, n_node: int):
-    # Vectorized rejection sampling: uniform draws, redraw the few that hit a
+    # Vectorized rejection sampling: draw negatives, redraw the few that hit a
     # positive pair (same distribution as the original per-sample loop)
     s_rep = np.repeat(s_pos_np, neg_ratio)
-    d = np.random.randint(0, n_node, size=len(s_rep))
+    d = _draw_neg(len(s_rep), n_node)
     for _ in range(30):
         hits = np.asarray(pos_csr[s_rep, d]).ravel() > 0
         if not hits.any():
             break
-        d[hits] = np.random.randint(0, n_node, size=int(hits.sum()))
+        d[hits] = _draw_neg(int(hits.sum()), n_node)
     return torch.LongTensor(s_rep).to(device), torch.LongTensor(d).to(device)
 
 # ===================== Cache utilities =====================
@@ -638,6 +656,12 @@ if __name__ == "__main__":
         )
     build_history_index(df_raw)
     build_cooc(df_raw, num_entity)
+    if NEG_DIST == "pop075":
+        _pw = dst_pop ** 0.75
+        neg_cdf = np.cumsum(_pw / _pw.sum())
+        print(f"Negative sampling: degree^0.75 (pop075), {len(neg_cdf)} nodes")
+    else:
+        print("Negative sampling: uniform")
     print("Base caches ready")
 
     all_train_edges = df_raw[["src", "dst"]].values
