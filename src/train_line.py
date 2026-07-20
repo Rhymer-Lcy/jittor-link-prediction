@@ -441,6 +441,21 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
     else:
         cooc_rows = None
 
+    # Group rows by src so the expensive similar-user cache slice is taken once
+    # per src (dataset2: 153k queries but only ~2.2k distinct srcs)
+    collab_rows = np.zeros(cand_mat.shape, dtype=np.float32)
+    order = np.argsort(test_src_arr, kind="stable")
+    i = 0
+    while i < len(order):
+        j = i
+        s = int(test_src_arr[order[i]])
+        while j < len(order) and test_src_arr[order[j]] == s:
+            j += 1
+        rows = order[i:j]
+        flat_scores = batch_sim_score(s, cand_mat[rows].ravel(), cache_mat)
+        collab_rows[rows] = flat_scores.reshape(len(rows), cand_mat.shape[1])
+        i = j
+
     test_prob_rows = []
 
     for i in tqdm(range(len(test_df)), desc="Scoring test queries (vectorized)"):
@@ -448,7 +463,7 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
         curr_time = float(test_time_arr[i])
         all_candidates = cand_mat[i]
 
-        collab = batch_sim_score(src, all_candidates, cache_mat)
+        collab = collab_rows[i]
         history_real_d, history_real_t = get_hist_before_time(src, curr_time)
 
         extra = np.zeros(len(all_candidates), dtype=np.float64)

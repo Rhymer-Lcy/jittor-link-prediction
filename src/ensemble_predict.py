@@ -105,16 +105,40 @@ def build_base_cache(df: pd.DataFrame) -> dict:
     return cache
 
 
+def grouped_collab(cache_mat, q_srcs, q_cands):
+    """User-CF scores for all queries, grouped by src so the expensive
+    similar-user cache slice is taken once per src instead of once per row."""
+    srcs = np.asarray(q_srcs, dtype=np.int64)
+    out = [None] * len(srcs)
+    order = np.argsort(srcs, kind="stable")
+    i = 0
+    while i < len(order):
+        j = i
+        s = int(srcs[order[i]])
+        while j < len(order) and srcs[order[j]] == s:
+            j += 1
+        rows = order[i:j]
+        flat_scores = tl.batch_sim_score(s, np.concatenate([q_cands[r] for r in rows]), cache_mat)
+        pos = 0
+        for r in rows:
+            k = len(q_cands[r])
+            out[r] = flat_scores[pos:pos + k]
+            pos += k
+        i = j
+    return out
+
+
 def emb_rows_for_queries(emb, needed_srcs, cache_mat, q_srcs, q_times, q_cands):
     """Per-run embedding score: weighted user-CF plus item-CF terms."""
     tl.build_sim_cache(emb, needed_srcs)
     emb_norm = emb / np.maximum(np.linalg.norm(emb, axis=1, keepdims=True), 1e-8)
     n_node = emb.shape[0]
+    collab_rows = grouped_collab(cache_mat, q_srcs, q_cands)
     rows = []
-    for src, t, cands in tqdm(
+    for idx, (src, t, cands) in enumerate(tqdm(
         list(zip(q_srcs, q_times, q_cands)), desc="Embedding scoring (user-CF + item-CF)"
-    ):
-        collab = tl.batch_sim_score(int(src), cands, cache_mat)
+    )):
+        collab = collab_rows[idx]
         score = COLLAB_W * tl.rownorm(collab.astype(np.float64))
         if ITEMCF_MEAN_W > 0 or ITEMCF_TOP3_W > 0:
             hist_d, _ = tl.get_hist_before_time(int(src), float(t))
