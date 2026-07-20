@@ -201,31 +201,38 @@ def build_pos_keys(pos_set, n_node: int) -> np.ndarray:
     arr.sort()
     return arr
 
-def _draw_neg(size: int, n_node: int) -> np.ndarray:
-    # Negative destination draws. Default uniform; with NEG_DIST=pop075, sample
-    # proportional to degree^0.75 (word2vec/LINE convention) from a precomputed
-    # CDF, which down-weights ultra-rare nodes and sharpens the embedding.
-    if neg_cdf is not None:
-        idx = np.searchsorted(neg_cdf, np.random.random(size))
-        return np.clip(idx, 0, n_node - 1).astype(np.int64)
-    return np.random.randint(0, n_node, size=size)
-
-def gen_neg_epoch(s_pos_np: np.ndarray, pos_keys: np.ndarray, n_node: int) -> np.ndarray:
-    # One vectorized rejection-sampling pass for the whole epoch (same draw
-    # distribution as the previous per-batch version). Returns the negative
-    # dst array aligned with np.repeat(s_pos_np, neg_ratio); batch i consumes
-    # the slice [start * neg_ratio : end * neg_ratio].
-    s_rep = np.repeat(s_pos_np, neg_ratio)
+def gen_neg_epoch(s_pos_np: np.ndarray, pos_keys: np.ndarray, n_node: int) -> torch.Tensor:
+    # One rejection-sampling pass for the whole epoch on `device` (same draw
+    # distribution as the previous per-batch version): draws and sorted-key
+    # membership checks are O(n log n) searchsorted ops, which are orders of
+    # magnitude faster on GPU than numpy for the ~50M draws of a dataset2
+    # epoch. Returns a LongTensor on `device` aligned with
+    # repeat_interleave(s_pos, neg_ratio); batch i consumes the slice
+    # [start * neg_ratio : end * neg_ratio].
+    s_rep = torch.repeat_interleave(torch.from_numpy(s_pos_np).to(device), neg_ratio)
     base = s_rep * n_node
-    d = _draw_neg(len(s_rep), n_node)
+    keys_t = torch.from_numpy(pos_keys).to(device)
+    cdf_t = torch.from_numpy(neg_cdf).to(device) if neg_cdf is not None else None
+
+    def _draw(n: int) -> torch.Tensor:
+        if cdf_t is not None:
+            idx = torch.searchsorted(cdf_t, torch.rand(n, device=device, dtype=torch.float64))
+            return idx.clamp_(0, n_node - 1)
+        return torch.randint(0, n_node, (n,), device=device)
+
+    def _collides(pos: torch.Tensor) -> torch.Tensor:
+        key = base[pos] + d[pos]
+        loc = torch.searchsorted(keys_t, key).clamp_(max=len(keys_t) - 1)
+        return pos[keys_t[loc] == key]
+
+    d = _draw(len(s_rep))
+    # One full membership pass, then recheck only the redrawn positions
+    bad = _collides(torch.arange(len(d), device=device))
     for _ in range(30):
-        key = base + d
-        idx = np.searchsorted(pos_keys, key)
-        idx[idx >= len(pos_keys)] = len(pos_keys) - 1
-        hits = pos_keys[idx] == key
-        if not hits.any():
+        if bad.numel() == 0:
             break
-        d[hits] = _draw_neg(int(hits.sum()), n_node)
+        d[bad] = _draw(bad.numel())
+        bad = _collides(bad)
     return d
 
 # ===================== Cache utilities =====================
@@ -724,7 +731,7 @@ if __name__ == "__main__":
             s_pos = batch_pos[:, 0]
             d_pos = batch_pos[:, 1]
             s_neg = torch.repeat_interleave(s_pos, neg_ratio)
-            d_neg = torch.from_numpy(d_neg_epoch[start_idx * neg_ratio:end_idx * neg_ratio]).to(device)
+            d_neg = d_neg_epoch[start_idx * neg_ratio:end_idx * neg_ratio]
 
             s_all = torch.cat([s_pos, s_neg])
             d_all = torch.cat([d_pos, d_neg])
