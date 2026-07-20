@@ -79,10 +79,10 @@ the one feature that improved both datasets online:
 
 - **dataset1** (66% of next interactions repeat a past partner):
   `16*own_history_count + 0.5*usercf + 0.3*cooc_cf + 2.0*itemcf_mean +
-  1.2*itemcf_top3 + 9.0*bpr_ens5`, scored as a uniform + pop075(d512)
-  two-embedding ensemble — online 0.803 -> 0.813 (item-CF) -> 0.8177
-  (ensemble) -> 0.8285 (holdout-retuned weights) -> 0.8508 (BPR term)
-  -> 0.8526 (5-seed BPR).
+  1.2*itemcf_top3 + 9.0*bpr_ens5(tau=0.25span)`, scored as a uniform +
+  pop075(d512) two-embedding ensemble — online 0.803 -> 0.813 (item-CF) ->
+  0.8177 (ensemble) -> 0.8285 (holdout-retuned weights) -> 0.8508 (BPR term)
+  -> 0.8526 (5-seed BPR) -> 0.8554 (recency-weighted BPR, `BPR_TAU_FRAC`).
 - **dataset2** (0% repeats; history masked to zero):
   `0.5*usercf + 1.0*recent_popularity + 0.85*itemcf_mean + 0.8*itemcf_top3 +
   0.7*bpr_ens5` — online 0.5441 -> 0.5587 (item-CF) -> 0.5607
@@ -99,13 +99,19 @@ the one feature that improved both datasets online:
   deltas insignificant) but averaging denoises: honest +0.0058 (ds2) /
   +0.0020 (ds1), online +0.0054 / +0.0018 (folds 0.93 / 0.90). Three seeds
   were not significant; five were.
-- Best combined online total **1.4292** (1.3513 -> 1.3715 item-CF -> 1.3764
-  ds1 ensemble -> 1.3784 ds2 retune -> 1.3892 ds1 retune -> 1.4220 BPR ->
-  1.4292 5-seed BPR).
+- Best validated per-dataset scores: ds1 **0.8554** + ds2 **0.5766** (best
+  single-submission total 1.4292; the best-of combination is packed as
+  `submission_combined_best.zip`, expected 1.4320).
 - Transfer rule: when the honest (holdout) and leaky evals agree on a change
   it transfers online nearly 1:1 (ds1 retune 0.96, ds1 BPR 0.96, 5-seed
   0.90-0.93; ds2 BPR 0.62); when they disagree, the honest direction still
-  wins but folds to ~0.3 (ds2 retune).
+  wins but folds to ~0.3 (ds2 retune). EXCEPTION (2026-07-20): recency-
+  weighted TRAINING on dataset2 (tau=0.10span BPR) regressed online
+  (0.5766 -> 0.5724) even though both protocols predicted a gain — the
+  offline positives sit at the training boundary while the online test spans
+  a full year, so both protocols overrate training-boundary myopia. The same
+  change at tau=0.25span on dataset1 transferred at 0.93. Keep dataset2
+  training recency-free; treat any ds2 recency knob as online-unverifiable.
 
 Offline evaluation that tracks the online ordering: negatives drawn from the
 src's actual test candidate pools (`ensemble_predict.py --eval`). CAUTION: it
