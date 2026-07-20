@@ -46,15 +46,15 @@ import train_line as tl
 # the held-out tail edge), so the offline-monotone climb to higher weights is
 # not trusted — only this online-backed weight level is used.
 if tl.DATASET == "dataset2":
-    # Defaults are the online-validated recipe (0.5587). Env overrides exist
-    # for isolated online A/B of retuned weights: the leak-free holdout eval
-    # (2026-07-20) prefers 0.5/0.85/0.8/1.0 (+0.0067 honest, P=0.009), while
-    # the leaky protocol dislikes it (-0.0063) — the disagreement is explained
-    # by tail-edge memorization inflating item-CF there. Online decides.
-    COLLAB_W = float(os.environ.get("W_COLLAB", "0.3"))
-    ITEMCF_MEAN_W = float(os.environ.get("W_ICF_MEAN", "0.7"))
-    ITEMCF_TOP3_W = float(os.environ.get("W_ICF_TOP3", "0.5"))
-    tl.RPOP_DELTA = float(os.environ.get("W_RPOP", "0.45"))
+    # Weights retuned on the leak-free holdout eval (2026-07-20) and confirmed
+    # online: 0.5/0.85/0.8/1.0 scored 0.5607 vs the previous recipe's 0.5587
+    # (+0.0020). The honest protocol (+0.0067) predicted the direction; the
+    # leaky protocol disagreed (-0.0063) and was wrong — tail-edge memorization
+    # had inflated item-CF there. Env overrides retained for future A/B.
+    COLLAB_W = float(os.environ.get("W_COLLAB", "0.5"))
+    ITEMCF_MEAN_W = float(os.environ.get("W_ICF_MEAN", "0.85"))
+    ITEMCF_TOP3_W = float(os.environ.get("W_ICF_TOP3", "0.8"))
+    tl.RPOP_DELTA = float(os.environ.get("W_RPOP", "1.0"))
 else:
     # dataset1 keeps full user-CF, history boost and cooc (train_line defaults);
     # item-CF added at the same online-backed weight (offline +0.021, 3 seeds)
