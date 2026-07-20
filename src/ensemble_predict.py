@@ -69,6 +69,13 @@ else:
 
 NEG_PER_SAMPLE = 99
 
+# Optional BPR direct-score blend term (src/train_bpr.py). Off by default;
+# enable with W_BPR (validated weight sweep peaks at 0.7 on the dataset2
+# holdout, honest +0.017). BPR_RUN points at the run dir with bpr_emb.npy.
+W_BPR = float(os.environ.get("W_BPR", "0"))
+BPR_RUN = os.environ.get("BPR_RUN", f"outputs/{tl.DATASET}-bpr")
+bpr_emb = None
+
 
 def load_embedding(run_dir: Path, expected_rows: int = 0) -> np.ndarray:
     emb_df = pd.read_csv(run_dir / "line_latest_emb.csv")
@@ -153,6 +160,9 @@ def extra_scores(src: int, cands: np.ndarray) -> np.ndarray:
     if tl.RPOP_DELTA > 0:
         cc = np.clip(cands, 0, len(tl.dst_rpop_log) - 1)
         extra += tl.RPOP_DELTA * tl.rownorm(tl.dst_rpop_log[cc])
+    if W_BPR > 0:
+        cc = np.clip(cands, 0, bpr_emb.shape[0] - 1)
+        extra += W_BPR * tl.rownorm(np.maximum(bpr_emb[cc] @ bpr_emb[min(src, bpr_emb.shape[0] - 1)], 0.0))
     return extra
 
 
@@ -300,7 +310,13 @@ def main():
     print(f"Dataset: {tl.DATASET} | runs: {[d.name for d in run_dirs]} | "
           f"blend: collab={COLLAB_W} itemcf_mean={ITEMCF_MEAN_W} "
           f"itemcf_top3={ITEMCF_TOP3_W} cooc={tl.COOC_GAMMA} rpop={tl.RPOP_DELTA} "
-          f"mask_history={tl.MASK_HISTORY} hist_boost={tl.HIST_BOOST}")
+          f"bpr={W_BPR} mask_history={tl.MASK_HISTORY} hist_boost={tl.HIST_BOOST}")
+
+    if W_BPR > 0:
+        global bpr_emb
+        bpr_path = tl.PROJECT_ROOT / BPR_RUN / "bpr_emb.npy"
+        bpr_emb = np.load(bpr_path)
+        print(f"BPR embedding loaded: {bpr_path} shape {bpr_emb.shape}")
 
     df_raw = pd.read_csv(tl.train_csv)
     df_raw = df_raw.drop_duplicates(subset=["src", "dst", "time"]).reset_index(drop=True)
