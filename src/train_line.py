@@ -81,11 +81,17 @@ assert NEG_DIST in ("uniform", "pop075"), f"unknown NEG_DIST: {NEG_DIST}"
 # inflate offline gains (~2.4x observed for item-CF). Never submit from a
 # holdout run — it trains on less data than production.
 EVAL_HOLDOUT = os.environ.get("EVAL_HOLDOUT", "0") == "1"
+# Recency-weighted positive sampling (same idea validated for BPR via
+# BPR_TAU_FRAC): when > 0, each epoch draws edges with replacement
+# proportional to exp(-age / (frac * time_span)) instead of a permutation.
+# Virtual edges have no timestamp and get weight 1.0 (max recency).
+LINE_TAU_FRAC = float(os.environ.get("LINE_TAU_FRAC", "0"))
 
 _suffix = (("" if SEED == 42 else f"-s{SEED}")
            + ("-staged" if STAGED else "")
            + ("-negpop" if NEG_DIST == "pop075" else "")
            + (f"-d{emb_total_dim}" if emb_total_dim != 400 else "")
+           + (f"-t{LINE_TAU_FRAC:g}" if LINE_TAU_FRAC > 0 else "")
            + ("-holdout" if EVAL_HOLDOUT else ""))
 OUTPUT_DIR = PROJECT_ROOT / "outputs" / (DATASET + _suffix)
 ckpt_dir = OUTPUT_DIR / "checkpoints"
@@ -645,6 +651,15 @@ if __name__ == "__main__":
         base_pos_set.add((int(v), int(u)))
     base_single_edges = torch.LongTensor(base_single_edges).to(device)
 
+    # Recency weights for the real edges, aligned with the interleaved
+    # [u,v],[v,u] layout above (edge i of df_raw -> rows 2i, 2i+1)
+    base_time_w = None
+    if LINE_TAU_FRAC > 0:
+        t_arr = np.repeat(df_raw["time"].values.astype(np.float64), 2)
+        tau = LINE_TAU_FRAC * (t_arr.max() - t_arr.min())
+        base_time_w = np.exp(-(t_arr.max() - t_arr) / tau)
+        print(f"Recency-weighted positive sampling: tau = {LINE_TAU_FRAC:g} * span")
+
     current_virt_bi_edges = torch.empty((0, 2), dtype=torch.long, device=device)
     prev_virt_single_for_cache = set()
 
@@ -747,7 +762,15 @@ if __name__ == "__main__":
         # Train on real edges + current virtual edges
         full_train_graph = torch.cat([base_single_edges, current_virt_bi_edges], dim=0)
         pos_cnt = full_train_graph.shape[0]
-        perm = torch.randperm(pos_cnt, device=device)
+        if base_time_w is not None:
+            w = np.concatenate([base_time_w,
+                                np.ones(len(current_virt_bi_edges), dtype=np.float64)])
+            pos_cdf = torch.from_numpy(np.cumsum(w / w.sum())).to(device)
+            perm = torch.searchsorted(
+                pos_cdf, torch.rand(pos_cnt, device=device, dtype=torch.float64)
+            ).clamp_(0, pos_cnt - 1)
+        else:
+            perm = torch.randperm(pos_cnt, device=device)
         pos_shuffle = full_train_graph[perm]
         batch_total = (pos_cnt + batch_size - 1) // batch_size
         total_loss = 0.0
