@@ -56,11 +56,16 @@ if tl.DATASET == "dataset2":
     ITEMCF_TOP3_W = float(os.environ.get("W_ICF_TOP3", "0.8"))
     tl.RPOP_DELTA = float(os.environ.get("W_RPOP", "1.0"))
 else:
-    # dataset1 keeps full user-CF, history boost and cooc (train_line defaults);
-    # item-CF added at the same online-backed weight (offline +0.021, 3 seeds)
-    COLLAB_W = 1.0
-    ITEMCF_MEAN_W = 0.7
-    ITEMCF_TOP3_W = 0.5
+    # dataset1: defaults are the online-validated recipe (0.8177). The leak-free
+    # holdout sweep (2026-07-20) prefers much stronger item-CF and weaker cooc
+    # (hist16/collab0.5/cooc0.3/icf_mean2.0/icf_top3 1.2: +0.0112 honest, and
+    # +0.026 on the leaky cross-check — both protocols agree here, unlike ds2).
+    # Env overrides drive an isolated online A/B before this becomes default.
+    COLLAB_W = float(os.environ.get("W_COLLAB", "1.0"))
+    ITEMCF_MEAN_W = float(os.environ.get("W_ICF_MEAN", "0.7"))
+    ITEMCF_TOP3_W = float(os.environ.get("W_ICF_TOP3", "0.5"))
+    tl.HIST_BOOST = float(os.environ.get("W_HIST", str(tl.HIST_BOOST)))
+    tl.COOC_GAMMA = float(os.environ.get("W_COOC", str(tl.COOC_GAMMA)))
 
 NEG_PER_SAMPLE = 99
 
