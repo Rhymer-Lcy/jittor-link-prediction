@@ -22,7 +22,8 @@ jittor-link-prediction/
 │       └── dataset2/      # train 2.26M edges, 140k nodes (extra split col); test 153k queries
 ├── src/
 │   ├── train_line.py      # LINE embedding + collaborative scoring + virtual-edge self-training
-│   └── ensemble_predict.py# predict-only scoring (multi-run ensemble, item-CF blend, real-candidate eval)
+│   ├── train_bpr.py       # BPR-MF embedding trainer (pairwise ranking loss, pop075 negatives)
+│   └── ensemble_predict.py# predict-only scoring (multi-run ensemble, item-CF + BPR blend, real-candidate eval)
 ├── outputs/               # run artifacts (git-ignored): checkpoints / embeddings / submissions
 ├── requirements.txt
 └── README.md
@@ -35,6 +36,9 @@ pip install -r requirements.txt
 
 # Train the LINE embedding (resumes from outputs/<dataset>/checkpoints/line_last.pt)
 DATASET=dataset1 python src/train_line.py                 # or DATASET=dataset2 (default)
+
+# Train the BPR embedding used by the default blend (fast: minutes, not hours)
+DATASET=dataset1 python src/train_bpr.py                  # -> outputs/<dataset>-bpr/bpr_emb.npy
 
 # Score a submission from the trained embedding(s)
 DATASET=dataset1 python src/ensemble_predict.py           # -> outputs/<dataset>-ensemble/result_ensemble.csv
@@ -75,18 +79,25 @@ the one feature that improved both datasets online:
 
 - **dataset1** (66% of next interactions repeat a past partner):
   `16*own_history_count + 0.5*usercf + 0.3*cooc_cf + 2.0*itemcf_mean +
-  1.2*itemcf_top3`, scored as a uniform + pop075(d512) two-embedding ensemble
-  — online 0.803 -> 0.813 (item-CF) -> 0.8177 (ensemble) -> 0.8285
-  (holdout-retuned weights, now the default).
+  1.2*itemcf_top3 + 6.0*bpr_direct`, scored as a uniform + pop075(d512)
+  two-embedding ensemble — online 0.803 -> 0.813 (item-CF) -> 0.8177
+  (ensemble) -> 0.8285 (holdout-retuned weights) -> 0.8508 (BPR term).
 - **dataset2** (0% repeats; history masked to zero):
-  `0.5*usercf + 1.0*recent_popularity + 0.85*itemcf_mean + 0.8*itemcf_top3`
-  — online 0.5441 -> 0.5587 (item-CF) -> 0.5607 (holdout-retuned weights,
-  now the default).
-- Best combined online total **1.3892** (1.3513 -> 1.3715 item-CF -> 1.3764
-  ds1 ensemble -> 1.3784 ds2 retune -> 1.3892 ds1 retune).
-- Transfer rule observed across the two retunes: when the honest (holdout) and
-  leaky evals agree on a change it transfers online nearly 1:1; when they
-  disagree, the honest direction still wins but folds to ~0.3.
+  `0.5*usercf + 1.0*recent_popularity + 0.85*itemcf_mean + 0.8*itemcf_top3 +
+  0.7*bpr_direct` — online 0.5441 -> 0.5587 (item-CF) -> 0.5607
+  (holdout-retuned weights) -> 0.5712 (BPR term).
+- **BPR direct score** (`train_bpr.py`): a separate BPR-MF embedding
+  (single node table, pairwise softplus ranking loss, degree^0.75 negatives,
+  d256/120ep) whose raw `e_src . e_cand` blends in as an extra term. The
+  ranking loss is the point — the same LINE embedding's direct score is
+  honestly negative. Degree^0.75 negatives are essential (uniform gave
+  +0.0009); 240ep overfits; d512 no gain; seed-stable.
+- Best combined online total **1.4220** (1.3513 -> 1.3715 item-CF -> 1.3764
+  ds1 ensemble -> 1.3784 ds2 retune -> 1.3892 ds1 retune -> 1.4220 BPR).
+- Transfer rule: when the honest (holdout) and leaky evals agree on a change
+  it transfers online nearly 1:1 (ds1 retune fold 0.96, ds1 BPR fold 0.96,
+  ds2 BPR fold 0.62); when they disagree, the honest direction still wins
+  but folds to ~0.3 (ds2 retune).
 
 Offline evaluation that tracks the online ordering: negatives drawn from the
 src's actual test candidate pools (`ensemble_predict.py --eval`). CAUTION: it
@@ -143,8 +154,8 @@ resume).
 
 - [ ] **Jittor port**: the current implementation is PyTorch. The final
   open-source release must use Jittor; only the LINE model (3 embedding
-  layers), Adam and BCE are framework-specific — everything else is
-  numpy/scipy. Port and verify on CPU (RTX 5080/5090 are Blackwell sm_120;
+  layers), the BPR trainer, Adam and BCE are framework-specific — everything
+  else is numpy/scipy. Port and verify on CPU (RTX 5080/5090 are Blackwell sm_120;
   no reliable evidence of Jittor GPU support on them — use the competition
   server for Jittor GPU runs).
 - [ ] Data package B (`data_B`): not yet released by the organizers (confirmed
@@ -162,4 +173,4 @@ resume).
 - Original files: `新建文件夹/1.py` + `data_A.zip`; reorganized into this
   project structure on 2026-07-18.
 - Original script header note: "21: redo: 0.424"; teammate's estimate 1.36.
-  This code reached a combined online total of 1.3892 on 2026-07-20.
+  This code reached a combined online total of 1.4220 on 2026-07-20.
