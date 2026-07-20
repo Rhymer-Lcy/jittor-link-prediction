@@ -74,17 +74,19 @@ historical dst embeddings (mean over all, plus mean of the top-3 closest) — is
 the one feature that improved both datasets online:
 
 - **dataset1** (66% of next interactions repeat a past partner):
-  `20*own_history_count + usercf + cooc_cf + 0.7*itemcf_mean + 0.5*itemcf_top3`
-  — online 0.803 -> 0.813; scored as a uniform + pop075(d512) two-embedding
-  ensemble -> 0.8177. A leak-free holdout sweep prefers
-  `16*cnt + 0.5*usercf + 0.3*cooc + 2.0*itemcf_mean + 1.2*itemcf_top3`
-  (+0.0112 honest, +0.026 leaky — both protocols agree); online A/B pending.
+  `16*own_history_count + 0.5*usercf + 0.3*cooc_cf + 2.0*itemcf_mean +
+  1.2*itemcf_top3`, scored as a uniform + pop075(d512) two-embedding ensemble
+  — online 0.803 -> 0.813 (item-CF) -> 0.8177 (ensemble) -> 0.8285
+  (holdout-retuned weights, now the default).
 - **dataset2** (0% repeats; history masked to zero):
   `0.5*usercf + 1.0*recent_popularity + 0.85*itemcf_mean + 0.8*itemcf_top3`
   — online 0.5441 -> 0.5587 (item-CF) -> 0.5607 (holdout-retuned weights,
-  now the default; the previous 0.3/0.45/0.7/0.5 recipe is superseded).
-- Best combined online total **1.3784** (1.3513 -> 1.3715 item-CF -> 1.3764
-  ds1 ensemble -> 1.3784 ds2 weight retune).
+  now the default).
+- Best combined online total **1.3892** (1.3513 -> 1.3715 item-CF -> 1.3764
+  ds1 ensemble -> 1.3784 ds2 retune -> 1.3892 ds1 retune).
+- Transfer rule observed across the two retunes: when the honest (holdout) and
+  leaky evals agree on a change it transfers online nearly 1:1; when they
+  disagree, the honest direction still wins but folds to ~0.3.
 
 Offline evaluation that tracks the online ordering: negatives drawn from the
 src's actual test candidate pools (`ensemble_predict.py --eval`). CAUTION: it
@@ -148,7 +150,7 @@ resume).
 - [ ] Data package B (`data_B`): not yet released by the organizers (confirmed
   by teammate 2026-07-18); `data_A.zip` with its two datasets is everything
   currently available. Rerun the pipeline on `data_B` once it is released.
-- [x] Re-run after fix #1 — far above the historical 0.424 (best total 1.3784).
+- [x] Re-run after fix #1 — far above the historical 0.424 (best total 1.3892).
 - [x] Negative sampling fully vectorized: one per-epoch pregeneration pass with
   GPU `searchsorted` draws and sorted-key membership rejection (the previous
   per-batch scipy indexing dominated epoch time).
@@ -160,4 +162,4 @@ resume).
 - Original files: `新建文件夹/1.py` + `data_A.zip`; reorganized into this
   project structure on 2026-07-18.
 - Original script header note: "21: redo: 0.424"; teammate's estimate 1.36.
-  This code reached a combined online total of 1.3784 on 2026-07-20.
+  This code reached a combined online total of 1.3892 on 2026-07-20.
