@@ -55,6 +55,7 @@ if tl.DATASET == "dataset2":
     ITEMCF_MEAN_W = float(os.environ.get("W_ICF_MEAN", "0.85"))
     ITEMCF_TOP3_W = float(os.environ.get("W_ICF_TOP3", "0.8"))
     tl.RPOP_DELTA = float(os.environ.get("W_RPOP", "1.0"))
+    BPR_W_DEFAULT = "0.7"
 else:
     # dataset1: defaults are the holdout-retuned recipe validated online
     # 2026-07-20 (isolated 0.8177 -> 0.8285): stronger item-CF, weaker cooc.
@@ -66,13 +67,15 @@ else:
     ITEMCF_TOP3_W = float(os.environ.get("W_ICF_TOP3", "1.2"))
     tl.HIST_BOOST = float(os.environ.get("W_HIST", "16"))
     tl.COOC_GAMMA = float(os.environ.get("W_COOC", "0.3"))
+    BPR_W_DEFAULT = "6.0"
 
 NEG_PER_SAMPLE = 99
 
-# Optional BPR direct-score blend term (src/train_bpr.py). Off by default;
-# enable with W_BPR (validated weight sweep peaks at 0.7 on the dataset2
-# holdout, honest +0.017). BPR_RUN points at the run dir with bpr_emb.npy.
-W_BPR = float(os.environ.get("W_BPR", "0"))
+# BPR direct-score blend term (src/train_bpr.py), on by default since it was
+# validated online 2026-07-20: ds2 0.5607 -> 0.5712 at w=0.7 (honest +0.0170,
+# fold 0.62) and ds1 0.8285 -> 0.8508 at w=6.0 (honest +0.0232, fold 0.96).
+# Disable with W_BPR=0. BPR_RUN points at the run dir with bpr_emb.npy.
+W_BPR = float(os.environ.get("W_BPR", BPR_W_DEFAULT))
 BPR_RUN = os.environ.get("BPR_RUN", f"outputs/{tl.DATASET}-bpr")
 bpr_emb = None
 
