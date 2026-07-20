@@ -697,7 +697,11 @@ if __name__ == "__main__":
             emb_np = np.round(current_emb, decimals=EMB_PRECISION)
             emb_df = pd.DataFrame(emb_np)
             emb_df.insert(0, "node_id", list(range(num_entity)))
-            emb_df.to_csv(latest_emb_path, index=False)
+            # Atomic replace: a reader (ensemble_predict) must never see a
+            # half-written file — a truncated embedding CSV once corrupted a run
+            tmp_emb_path = latest_emb_path.with_suffix(".csv.tmp")
+            emb_df.to_csv(tmp_emb_path, index=False)
+            os.replace(tmp_emb_path, latest_emb_path)
 
             # Predict, generating a new virtual edge set (file is overwritten)
             new_virt_set = predict_test(test_df, emb_np, prev_virt_single_for_cache, global_real_src_np, current_epoch_num)

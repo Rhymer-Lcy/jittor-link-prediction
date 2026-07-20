@@ -60,9 +60,13 @@ else:
 NEG_PER_SAMPLE = 99
 
 
-def load_embedding(run_dir: Path) -> np.ndarray:
+def load_embedding(run_dir: Path, expected_rows: int = 0) -> np.ndarray:
     emb_df = pd.read_csv(run_dir / "line_latest_emb.csv")
-    return emb_df.drop(columns=["node_id"]).values.astype(np.float32)
+    emb = emb_df.drop(columns=["node_id"]).values.astype(np.float32)
+    # Guard against truncated exports (has happened); dims may differ per run
+    assert expected_rows == 0 or emb.shape[0] == expected_rows, (
+        f"{run_dir.name}: embedding has {emb.shape[0]} rows, expected {expected_rows}")
+    return emb
 
 
 def load_virtual_edges(run_dir: Path) -> set:
@@ -193,7 +197,7 @@ def run_eval(df_raw, test_df, run_dirs, args):
     per_run_collab = []
     for run_dir in run_dirs:
         print(f"\n--- Scoring with {run_dir.name} ---")
-        emb = load_embedding(run_dir)
+        emb = load_embedding(run_dir, expected_rows=args.num_entity)
         per_run_collab.append(
             emb_rows_for_queries(emb, needed_srcs, cache_mat, q_srcs, q_times, q_cands)
         )
@@ -239,7 +243,7 @@ def run_predict(df_raw, test_df, run_dirs, args):
         virt = load_virtual_edges(run_dir)
         print(f"Virtual edges merged: {len(virt)}")
         cache_mat = tl.cache_dict_to_matrix(base_cache, virt, args.num_entity - 1)
-        emb = load_embedding(run_dir)
+        emb = load_embedding(run_dir, expected_rows=args.num_entity)
         rows = emb_rows_for_queries(emb, needed_srcs, cache_mat, q_srcs, q_times, q_cands)
         if sum_collab is None:
             sum_collab = rows
