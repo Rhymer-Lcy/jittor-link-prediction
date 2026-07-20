@@ -56,6 +56,11 @@ if tl.DATASET == "dataset2":
     ITEMCF_TOP3_W = float(os.environ.get("W_ICF_TOP3", "0.8"))
     tl.RPOP_DELTA = float(os.environ.get("W_RPOP", "1.0"))
     BPR_W_DEFAULT = "0.7"
+    # Plain (non-recency) BPR runs: the tau=0.10span recency variant REGRESSED
+    # online (0.5766 -> 0.5724) despite honest AND leaky both predicting a
+    # gain — dataset2's year-long test window punishes training-boundary
+    # myopia, and even the dual-protocol check overrates it. Keep plain.
+    BPR_TAG = ""
 else:
     # dataset1: defaults are the holdout-retuned recipe validated online
     # 2026-07-20 (isolated 0.8177 -> 0.8285): stronger item-CF, weaker cooc.
@@ -68,6 +73,9 @@ else:
     tl.HIST_BOOST = float(os.environ.get("W_HIST", "16"))
     tl.COOC_GAMMA = float(os.environ.get("W_COOC", "0.3"))
     BPR_W_DEFAULT = "9.0"
+    # Recency-weighted (tau=0.25span) BPR runs, validated online 2026-07-20:
+    # 0.8526 -> 0.8554 (honest +0.0030, fold 0.93).
+    BPR_TAG = "-t0.25"
 
 NEG_PER_SAMPLE = 99
 
@@ -80,7 +88,7 @@ W_BPR = float(os.environ.get("W_BPR", BPR_W_DEFAULT))
 # each run's rownormed direct score is computed independently and averaged —
 # embeddings from different seeds are not alignable, scores are.
 _BPR_DEFAULT_RUNS = ",".join(
-    f"outputs/{tl.DATASET}-bpr" + (f"-s{s}" if s != 42 else "")
+    f"outputs/{tl.DATASET}-bpr{BPR_TAG}" + (f"-s{s}" if s != 42 else "")
     for s in (42, 123, 777, 2024, 31337)
 )
 BPR_RUNS = [r for r in os.environ.get("BPR_RUNS", _BPR_DEFAULT_RUNS).split(",") if r]
