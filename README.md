@@ -79,25 +79,33 @@ the one feature that improved both datasets online:
 
 - **dataset1** (66% of next interactions repeat a past partner):
   `16*own_history_count + 0.5*usercf + 0.3*cooc_cf + 2.0*itemcf_mean +
-  1.2*itemcf_top3 + 6.0*bpr_direct`, scored as a uniform + pop075(d512)
+  1.2*itemcf_top3 + 9.0*bpr_ens5`, scored as a uniform + pop075(d512)
   two-embedding ensemble — online 0.803 -> 0.813 (item-CF) -> 0.8177
-  (ensemble) -> 0.8285 (holdout-retuned weights) -> 0.8508 (BPR term).
+  (ensemble) -> 0.8285 (holdout-retuned weights) -> 0.8508 (BPR term)
+  -> 0.8526 (5-seed BPR).
 - **dataset2** (0% repeats; history masked to zero):
   `0.5*usercf + 1.0*recent_popularity + 0.85*itemcf_mean + 0.8*itemcf_top3 +
-  0.7*bpr_direct` — online 0.5441 -> 0.5587 (item-CF) -> 0.5607
-  (holdout-retuned weights) -> 0.5712 (BPR term).
+  0.7*bpr_ens5` — online 0.5441 -> 0.5587 (item-CF) -> 0.5607
+  (holdout-retuned weights) -> 0.5712 (BPR term) -> 0.5766 (5-seed BPR).
 - **BPR direct score** (`train_bpr.py`): a separate BPR-MF embedding
   (single node table, pairwise softplus ranking loss, degree^0.75 negatives,
   d256/120ep) whose raw `e_src . e_cand` blends in as an extra term. The
   ranking loss is the point — the same LINE embedding's direct score is
   honestly negative. Degree^0.75 negatives are essential (uniform gave
   +0.0009); 240ep overfits; d512 no gain; seed-stable.
-- Best combined online total **1.4220** (1.3513 -> 1.3715 item-CF -> 1.3764
-  ds1 ensemble -> 1.3784 ds2 retune -> 1.3892 ds1 retune -> 1.4220 BPR).
+- **5-seed BPR ensemble** (`bpr_ens5`, the default via `BPR_RUNS`): rownormed
+  direct scores from seeds 42/123/777/2024/31337 averaged. Unlike the refuted
+  LINE multi-seed ensemble this works — individual seeds tie (all pairwise
+  deltas insignificant) but averaging denoises: honest +0.0058 (ds2) /
+  +0.0020 (ds1), online +0.0054 / +0.0018 (folds 0.93 / 0.90). Three seeds
+  were not significant; five were.
+- Best combined online total **1.4292** (1.3513 -> 1.3715 item-CF -> 1.3764
+  ds1 ensemble -> 1.3784 ds2 retune -> 1.3892 ds1 retune -> 1.4220 BPR ->
+  1.4292 5-seed BPR).
 - Transfer rule: when the honest (holdout) and leaky evals agree on a change
-  it transfers online nearly 1:1 (ds1 retune fold 0.96, ds1 BPR fold 0.96,
-  ds2 BPR fold 0.62); when they disagree, the honest direction still wins
-  but folds to ~0.3 (ds2 retune).
+  it transfers online nearly 1:1 (ds1 retune 0.96, ds1 BPR 0.96, 5-seed
+  0.90-0.93; ds2 BPR 0.62); when they disagree, the honest direction still
+  wins but folds to ~0.3 (ds2 retune).
 
 Offline evaluation that tracks the online ordering: negatives drawn from the
 src's actual test candidate pools (`ensemble_predict.py --eval`). CAUTION: it
@@ -173,4 +181,4 @@ resume).
 - Original files: `新建文件夹/1.py` + `data_A.zip`; reorganized into this
   project structure on 2026-07-18.
 - Original script header note: "21: redo: 0.424"; teammate's estimate 1.36.
-  This code reached a combined online total of 1.4220 on 2026-07-20.
+  This code reached a combined online total of 1.4292 on 2026-07-20.
