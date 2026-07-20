@@ -169,11 +169,13 @@ class LINE(nn.Module):
         self.emb_first = nn.Embedding(n_node, d_sub)
         self.emb_node = nn.Embedding(n_node, d_sub)
         self.emb_ctx = nn.Embedding(n_node, d_sub)
+        # One seed for the whole init: reseeding before each table made
+        # emb_first == emb_node == emb_ctx at init (identical shapes), which
+        # started first/second-order components perfectly correlated. Only
+        # affects fresh runs; resumed checkpoints keep their trained weights.
         torch.manual_seed(SEED)
         nn.init.xavier_uniform_(self.emb_first.weight)
-        torch.manual_seed(SEED)
         nn.init.xavier_uniform_(self.emb_node.weight)
-        torch.manual_seed(SEED)
         nn.init.xavier_uniform_(self.emb_ctx.weight)
 
     def score_first(self, s, d):
