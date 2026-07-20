@@ -537,13 +537,14 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
     return curr_round_all_pair
 
 # ===================== MRR evaluation (leave-one-out tail) =====================
-def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000):
+def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000, sim_cache_ready=False):
     # Include current virtual edges in the scoring cache
     curr_cache = {src: dst_map.copy() for src, dst_map in base_src_dst_cache.items()}
     for (u, d) in prev_virt_single_for_cache:
         add_src_dst_record(curr_cache, u, d)
     cache_mat = cache_dict_to_matrix(curr_cache, set(), emb_matrix.shape[0] - 1)
-    build_sim_cache(emb_matrix, real_src_np)
+    if not sim_cache_ready:
+        build_sim_cache(emb_matrix, real_src_np)
 
     tail_records = []
     for src, g in train_df.groupby("src"):
@@ -706,7 +707,9 @@ if __name__ == "__main__":
             # Predict, generating a new virtual edge set (file is overwritten)
             new_virt_set = predict_test(test_df, emb_np, prev_virt_single_for_cache, global_real_src_np, current_epoch_num)
             print(f"Virtual edges generated this round: {len(new_virt_set)}")
-            val_mrr = calc_mrr_eval(df_raw, emb_np, global_real_src_np, sample_num=MCC_SAMPLE_COUNT)
+            # predict_test above has just built the sim cache for this exact
+            # embedding and src set — no need to rebuild it
+            val_mrr = calc_mrr_eval(df_raw, emb_np, global_real_src_np, sample_num=MCC_SAMPLE_COUNT, sim_cache_ready=True)
             print(f"Leave-one-out tail MRR: {val_mrr:.4f}")
 
             predict_run_count += 1
