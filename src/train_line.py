@@ -196,13 +196,12 @@ def split_train_val_by_tail(df):
     return train_df, val_df
 
 # ===================== Tool 2: negative sampling =====================
-def build_pos_csr(pos_set, n_node: int):
-    # Sparse membership matrix over positive pairs, for vectorized rejection
-    arr = np.array(list(pos_set), dtype=np.int64)
-    return sp.coo_matrix(
-        (np.ones(len(arr), dtype=np.int8), (arr[:, 0], arr[:, 1])),
-        shape=(n_node, n_node),
-    ).tocsr()
+def build_pos_keys(pos_set, n_node: int) -> np.ndarray:
+    # Sorted encoded (src * n_node + dst) keys for O(log n) membership checks;
+    # faster than scipy fancy indexing on epoch-sized draw arrays
+    arr = np.fromiter((u * n_node + v for u, v in pos_set), dtype=np.int64, count=len(pos_set))
+    arr.sort()
+    return arr
 
 def _draw_neg(size: int, n_node: int) -> np.ndarray:
     # Negative destination draws. Default uniform; with NEG_DIST=pop075, sample
@@ -213,17 +212,23 @@ def _draw_neg(size: int, n_node: int) -> np.ndarray:
         return np.clip(idx, 0, n_node - 1).astype(np.int64)
     return np.random.randint(0, n_node, size=size)
 
-def gen_neg_batch(s_pos_np, pos_csr, n_node: int):
-    # Vectorized rejection sampling: draw negatives, redraw the few that hit a
-    # positive pair (same distribution as the original per-sample loop)
+def gen_neg_epoch(s_pos_np: np.ndarray, pos_keys: np.ndarray, n_node: int) -> np.ndarray:
+    # One vectorized rejection-sampling pass for the whole epoch (same draw
+    # distribution as the previous per-batch version). Returns the negative
+    # dst array aligned with np.repeat(s_pos_np, neg_ratio); batch i consumes
+    # the slice [start * neg_ratio : end * neg_ratio].
     s_rep = np.repeat(s_pos_np, neg_ratio)
+    base = s_rep * n_node
     d = _draw_neg(len(s_rep), n_node)
     for _ in range(30):
-        hits = np.asarray(pos_csr[s_rep, d]).ravel() > 0
+        key = base + d
+        idx = np.searchsorted(pos_keys, key)
+        idx[idx >= len(pos_keys)] = len(pos_keys) - 1
+        hits = pos_keys[idx] == key
         if not hits.any():
             break
         d[hits] = _draw_neg(int(hits.sum()), n_node)
-    return torch.LongTensor(s_rep).to(device), torch.LongTensor(d).to(device)
+    return d
 
 # ===================== Cache utilities =====================
 def add_src_dst_record(cache_dict, src_id: int, dst_id: int):
@@ -658,7 +663,7 @@ if __name__ == "__main__":
     else:
         print(f"\n[WARN] Virtual edge file {virtual_edge_csv} not found, none used this round")
 
-    pos_csr = build_pos_csr(base_pos_set, num_entity)
+    pos_keys = build_pos_keys(base_pos_set, num_entity)
 
     model = LINE(num_entity, sub_dim).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=INIT_LR)
@@ -726,7 +731,7 @@ if __name__ == "__main__":
                 base_pos_set.add((v, u))
             virt_tensor = torch.LongTensor(virt_bi_list).to(device)
             current_virt_bi_edges = torch.repeat_interleave(virt_tensor, repeats=VIRT_REPEAT_TIMES, dim=0)
-            pos_csr = build_pos_csr(base_pos_set, num_entity)
+            pos_keys = build_pos_keys(base_pos_set, num_entity)
             print("[OK] Switched to this round's virtual edges")
 
         # Train on real edges + current virtual edges
@@ -736,6 +741,9 @@ if __name__ == "__main__":
         pos_shuffle = full_train_graph[perm]
         batch_total = (pos_cnt + batch_size - 1) // batch_size
         total_loss = 0.0
+        # Pregenerate the whole epoch's negatives in one vectorized pass; the
+        # per-batch scipy indexing + CPU->GPU round-trips dominated epoch time
+        d_neg_epoch = gen_neg_epoch(pos_shuffle[:, 0].cpu().numpy(), pos_keys, num_entity)
         pbar = tqdm(range(0, pos_cnt, batch_size), desc=f"LINE epoch {ep+1}/{total_line_epoch}")
 
         for start_idx in pbar:
@@ -743,7 +751,8 @@ if __name__ == "__main__":
             batch_pos = pos_shuffle[start_idx:end_idx]
             s_pos = batch_pos[:, 0]
             d_pos = batch_pos[:, 1]
-            s_neg, d_neg = gen_neg_batch(s_pos.cpu().numpy(), pos_csr, num_entity)
+            s_neg = torch.repeat_interleave(s_pos, neg_ratio)
+            d_neg = torch.from_numpy(d_neg_epoch[start_idx * neg_ratio:end_idx * neg_ratio]).to(device)
 
             s_all = torch.cat([s_pos, s_neg])
             d_all = torch.cat([d_pos, d_neg])
