@@ -86,12 +86,21 @@ EVAL_HOLDOUT = os.environ.get("EVAL_HOLDOUT", "0") == "1"
 # proportional to exp(-age / (frac * time_span)) instead of a permutation.
 # Virtual edges have no timestamp and get weight 1.0 (max recency).
 LINE_TAU_FRAC = float(os.environ.get("LINE_TAU_FRAC", "0"))
+# Virtual-edge mode: "normal" regenerates the set every predict cycle;
+# "freeze" trains with the pre-seeded checkpoints/virtual_edges.csv only
+# (never regenerates or overwrites it — for externally curated sets);
+# "off" trains with no virtual edges at all. Measured 2026-07-21: the legacy
+# gate's precision against held-out tails is ~3.8% on dataset1 and ~0.04% on
+# dataset2, so both arms are worth testing.
+VIRT_MODE = os.environ.get("VIRT_MODE", "normal")
+assert VIRT_MODE in ("normal", "freeze", "off"), f"unknown VIRT_MODE: {VIRT_MODE}"
 
 _suffix = (("" if SEED == 42 else f"-s{SEED}")
            + ("-staged" if STAGED else "")
            + ("-negpop" if NEG_DIST == "pop075" else "")
            + (f"-d{emb_total_dim}" if emb_total_dim != 400 else "")
            + (f"-t{LINE_TAU_FRAC:g}" if LINE_TAU_FRAC > 0 else "")
+           + ({"freeze": "-vfreeze", "off": "-novirt"}.get(VIRT_MODE, ""))
            + ("-holdout" if EVAL_HOLDOUT else ""))
 OUTPUT_DIR = PROJECT_ROOT / "outputs" / (DATASET + _suffix)
 ckpt_dir = OUTPUT_DIR / "checkpoints"
@@ -520,8 +529,11 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
             # Set dedupes automatically
             curr_round_all_pair.add((src, d))
 
-    # Overwrite the virtual edge file with this round's edges
-    if len(curr_round_all_pair) > 0:
+    # Overwrite the virtual edge file with this round's edges (normal mode
+    # only — freeze keeps its curated file, off never persists any)
+    if VIRT_MODE != "normal":
+        pass
+    elif len(curr_round_all_pair) > 0:
         df_virt = pd.DataFrame(sorted(curr_round_all_pair), columns=["src", "dst"])
         df_virt.to_csv(virtual_edge_csv, mode="w", header=True, index=False)
         print(f"[OK] Wrote {len(curr_round_all_pair)} virtual edges to {virtual_edge_csv} (old file replaced)")
@@ -663,8 +675,10 @@ if __name__ == "__main__":
     current_virt_bi_edges = torch.empty((0, 2), dtype=torch.long, device=device)
     prev_virt_single_for_cache = set()
 
-    # Load virtual edges left by a previous run, if any
-    if os.path.exists(virtual_edge_csv):
+    # Load virtual edges left by a previous run (or pre-seeded in freeze mode)
+    if VIRT_MODE == "off":
+        print("\n[VIRT_MODE=off] Training without virtual edges")
+    elif os.path.exists(virtual_edge_csv):
         df_load = pd.read_csv(virtual_edge_csv, dtype={"src": int, "dst": int})
         prev_virt_single_for_cache = set(
             zip(df_load["src"].astype(int), df_load["dst"].astype(int))
@@ -747,17 +761,20 @@ if __name__ == "__main__":
                             state["step"] = 0
 
             # Swap in the new virtual edge set for the next training rounds
-            prev_virt_single_for_cache = new_virt_set
-            virt_bi_list = []
-            for u, v in prev_virt_single_for_cache:
-                virt_bi_list.append([u, v])
-                virt_bi_list.append([v, u])
-                base_pos_set.add((u, v))
-                base_pos_set.add((v, u))
-            virt_tensor = torch.LongTensor(virt_bi_list).to(device)
-            current_virt_bi_edges = torch.repeat_interleave(virt_tensor, repeats=VIRT_REPEAT_TIMES, dim=0)
-            pos_keys = build_pos_keys(base_pos_set, num_entity)
-            print("[OK] Switched to this round's virtual edges")
+            if VIRT_MODE == "normal":
+                prev_virt_single_for_cache = new_virt_set
+                virt_bi_list = []
+                for u, v in prev_virt_single_for_cache:
+                    virt_bi_list.append([u, v])
+                    virt_bi_list.append([v, u])
+                    base_pos_set.add((u, v))
+                    base_pos_set.add((v, u))
+                virt_tensor = torch.LongTensor(virt_bi_list).to(device)
+                current_virt_bi_edges = torch.repeat_interleave(virt_tensor, repeats=VIRT_REPEAT_TIMES, dim=0)
+                pos_keys = build_pos_keys(base_pos_set, num_entity)
+                print("[OK] Switched to this round's virtual edges")
+            else:
+                print(f"[VIRT_MODE={VIRT_MODE}] Keeping the existing virtual edge set")
 
         # Train on real edges + current virtual edges
         full_train_graph = torch.cat([base_single_edges, current_virt_bi_edges], dim=0)
