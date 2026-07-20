@@ -89,19 +89,14 @@ online — and inflates even the item-CF gain ~2.4x, so a new embedding-geometry
 feature needs a large offline margin to be worth a submission. Trust it only
 for non-temporal signals, and always confirm online.
 
-Candidate under online test — test-candidate-frequency prior ("tpop",
-`ensemble_predict.py`, off by default): each test query's candidate list holds
-its true dst plus uniformly drawn pool negatives, so appearance counts in
-excess of the uniform baseline (137.6 on dataset2) estimate test-period true
-popularity directly — an upgrade over the rpop train-window proxy (corr with
-train popularity only 0.32). Enable with `TPOP_DELTA=0.45 RPOP_DELTA=0`. The
-offline eval scores train tails, not test dsts, so ONLY an isolated online
-submission can validate this.
-
 Refuted directions (isolated online submissions, code removed): time-decayed
 history (0.803 -> 0.7905), co-occurrence CF on dataset2 (0.526 -> 0.505),
-sequential transition feature (0.5441 -> 0.5305); also multi-seed ensemble
-(offline tie) and +50 training epochs past ~70 (flat).
+sequential transition feature (0.5441 -> 0.5305), test-candidate-frequency
+prior ("tpop": appearance counts of candidates in excess of the uniform
+baseline as a test-period popularity estimate — 0.5587 -> 0.5199 replacing
+rpop, actively harmful, implying candidate negatives are NOT uniform pool
+draws but likely popularity- or similarity-biased distractors); also
+multi-seed ensemble (offline tie) and +50 training epochs past ~70 (flat).
 
 ## Fixes and optimizations vs. the original script (1.py)
 
