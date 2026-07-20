@@ -75,11 +75,16 @@ the one feature that improved both datasets online:
 
 - **dataset1** (66% of next interactions repeat a past partner):
   `20*own_history_count + usercf + cooc_cf + 0.7*itemcf_mean + 0.5*itemcf_top3`
-  — online 0.803 -> 0.813.
+  — online 0.803 -> 0.813; scored as a uniform + pop075(d512) two-embedding
+  ensemble -> 0.8177. A leak-free holdout sweep prefers
+  `16*cnt + 0.5*usercf + 0.3*cooc + 2.0*itemcf_mean + 1.2*itemcf_top3`
+  (+0.0112 honest, +0.026 leaky — both protocols agree); online A/B pending.
 - **dataset2** (0% repeats; history masked to zero):
-  `0.3*usercf + 0.45*recent_popularity + 0.7*itemcf_mean + 0.5*itemcf_top3`
-  — online 0.544 -> 0.559.
-- Best combined online total **1.3715** (1.3513 before item-CF).
+  `0.5*usercf + 1.0*recent_popularity + 0.85*itemcf_mean + 0.8*itemcf_top3`
+  — online 0.5441 -> 0.5587 (item-CF) -> 0.5607 (holdout-retuned weights,
+  now the default; the previous 0.3/0.45/0.7/0.5 recipe is superseded).
+- Best combined online total **1.3784** (1.3513 -> 1.3715 item-CF -> 1.3764
+  ds1 ensemble -> 1.3784 ds2 weight retune).
 
 Offline evaluation that tracks the online ordering: negatives drawn from the
 src's actual test candidate pools (`ensemble_predict.py --eval`). CAUTION: it
@@ -94,7 +99,9 @@ holdout embedding with `EVAL_HOLDOUT=1` (per-src tail rows removed from
 training) and evaluate against it — the held-out tails are then genuinely
 unseen pairs. Measured on dataset2 (2026-07-20): honest item-CF delta +0.0265
 vs online +0.0146, i.e. a ~0.55 folding factor (vs ~0.42 for the leaky
-protocol's inflated delta). First victims of the honest protocol: the direct
+protocol's inflated delta). The protocol has an online scalp: the dataset2
+weight retune it proposed (and the leaky eval opposed) scored 0.5587 -> 0.5607
+— when the two protocols disagree, trust the holdout. First victims: the direct
 LINE scores (`emb_node[src]·emb_ctx[cand]` and the first-order dot) looked
 like +0.12 under the leaky eval and are NEGATIVE at every weight honestly —
 pure tail-edge memorization (the tail is the one trained pair that history
@@ -141,7 +148,7 @@ resume).
 - [ ] Data package B (`data_B`): not yet released by the organizers (confirmed
   by teammate 2026-07-18); `data_A.zip` with its two datasets is everything
   currently available. Rerun the pipeline on `data_B` once it is released.
-- [x] Re-run after fix #1 — far above the historical 0.424 (best total 1.3715).
+- [x] Re-run after fix #1 — far above the historical 0.424 (best total 1.3784).
 - [x] Negative sampling fully vectorized: one per-epoch pregeneration pass with
   GPU `searchsorted` draws and sorted-key membership rejection (the previous
   per-batch scipy indexing dominated epoch time).
@@ -153,4 +160,4 @@ resume).
 - Original files: `新建文件夹/1.py` + `data_A.zip`; reorganized into this
   project structure on 2026-07-18.
 - Original script header note: "21: redo: 0.424"; teammate's estimate 1.36.
-  This code reached a combined online total of 1.3715 on 2026-07-19.
+  This code reached a combined online total of 1.3784 on 2026-07-20.
