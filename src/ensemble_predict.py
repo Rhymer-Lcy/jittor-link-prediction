@@ -76,8 +76,11 @@ NEG_PER_SAMPLE = 99
 # fold 0.62) and ds1 0.8285 -> 0.8508 at w=6.0 (honest +0.0232, fold 0.96).
 # Disable with W_BPR=0. BPR_RUN points at the run dir with bpr_emb.npy.
 W_BPR = float(os.environ.get("W_BPR", BPR_W_DEFAULT))
-BPR_RUN = os.environ.get("BPR_RUN", f"outputs/{tl.DATASET}-bpr")
-bpr_emb = None
+# BPR_RUNS: comma-separated run dirs. With several runs (multi-seed ensemble)
+# each run's rownormed direct score is computed independently and averaged —
+# embeddings from different seeds are not alignable, scores are.
+BPR_RUNS = [r for r in os.environ.get("BPR_RUNS", f"outputs/{tl.DATASET}-bpr").split(",") if r]
+bpr_embs = []
 
 
 def load_embedding(run_dir: Path, expected_rows: int = 0) -> np.ndarray:
@@ -164,8 +167,11 @@ def extra_scores(src: int, cands: np.ndarray) -> np.ndarray:
         cc = np.clip(cands, 0, len(tl.dst_rpop_log) - 1)
         extra += tl.RPOP_DELTA * tl.rownorm(tl.dst_rpop_log[cc])
     if W_BPR > 0:
-        cc = np.clip(cands, 0, bpr_emb.shape[0] - 1)
-        extra += W_BPR * tl.rownorm(np.maximum(bpr_emb[cc] @ bpr_emb[min(src, bpr_emb.shape[0] - 1)], 0.0))
+        bpr_score = np.zeros(len(cands), dtype=np.float64)
+        for be in bpr_embs:
+            cc = np.clip(cands, 0, be.shape[0] - 1)
+            bpr_score += tl.rownorm(np.maximum(be[cc] @ be[min(src, be.shape[0] - 1)], 0.0))
+        extra += W_BPR * (bpr_score / len(bpr_embs))
     return extra
 
 
@@ -316,10 +322,10 @@ def main():
           f"bpr={W_BPR} mask_history={tl.MASK_HISTORY} hist_boost={tl.HIST_BOOST}")
 
     if W_BPR > 0:
-        global bpr_emb
-        bpr_path = tl.PROJECT_ROOT / BPR_RUN / "bpr_emb.npy"
-        bpr_emb = np.load(bpr_path)
-        print(f"BPR embedding loaded: {bpr_path} shape {bpr_emb.shape}")
+        for r in BPR_RUNS:
+            bpr_path = tl.PROJECT_ROOT / r / "bpr_emb.npy"
+            bpr_embs.append(np.load(bpr_path))
+            print(f"BPR embedding loaded: {bpr_path} shape {bpr_embs[-1].shape}")
 
     df_raw = pd.read_csv(tl.train_csv)
     df_raw = df_raw.drop_duplicates(subset=["src", "dst", "time"]).reset_index(drop=True)
