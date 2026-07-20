@@ -67,19 +67,23 @@ else:
     ITEMCF_TOP3_W = float(os.environ.get("W_ICF_TOP3", "1.2"))
     tl.HIST_BOOST = float(os.environ.get("W_HIST", "16"))
     tl.COOC_GAMMA = float(os.environ.get("W_COOC", "0.3"))
-    BPR_W_DEFAULT = "6.0"
+    BPR_W_DEFAULT = "9.0"
 
 NEG_PER_SAMPLE = 99
 
 # BPR direct-score blend term (src/train_bpr.py), on by default since it was
-# validated online 2026-07-20: ds2 0.5607 -> 0.5712 at w=0.7 (honest +0.0170,
-# fold 0.62) and ds1 0.8285 -> 0.8508 at w=6.0 (honest +0.0232, fold 0.96).
-# Disable with W_BPR=0. BPR_RUN points at the run dir with bpr_emb.npy.
+# validated online 2026-07-20: single seed took ds2 0.5607 -> 0.5712 (w=0.7)
+# and ds1 0.8285 -> 0.8508 (w=6.0); the 5-seed score average took ds2 to
+# 0.5766 and ds1 to 0.8526 (w=9.0), total 1.4292. Disable with W_BPR=0.
 W_BPR = float(os.environ.get("W_BPR", BPR_W_DEFAULT))
 # BPR_RUNS: comma-separated run dirs. With several runs (multi-seed ensemble)
 # each run's rownormed direct score is computed independently and averaged —
 # embeddings from different seeds are not alignable, scores are.
-BPR_RUNS = [r for r in os.environ.get("BPR_RUNS", f"outputs/{tl.DATASET}-bpr").split(",") if r]
+_BPR_DEFAULT_RUNS = ",".join(
+    f"outputs/{tl.DATASET}-bpr" + (f"-s{s}" if s != 42 else "")
+    for s in (42, 123, 777, 2024, 31337)
+)
+BPR_RUNS = [r for r in os.environ.get("BPR_RUNS", _BPR_DEFAULT_RUNS).split(",") if r]
 bpr_embs = []
 
 
