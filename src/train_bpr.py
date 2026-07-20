@@ -29,7 +29,13 @@ LR = 3e-3
 L2 = 1e-6
 BATCH = 8192
 
-OUT_DIR = tl.PROJECT_ROOT / "outputs" / (tl.DATASET + "-bpr" + ("-holdout" if tl.EVAL_HOLDOUT else ""))
+# Non-default seeds write to a suffixed dir (same convention as train_line)
+# so multi-seed ensemble runs never clobber each other.
+OUT_DIR = tl.PROJECT_ROOT / "outputs" / (
+    tl.DATASET + "-bpr"
+    + (f"-s{SEED}" if SEED != 42 else "")
+    + ("-holdout" if tl.EVAL_HOLDOUT else "")
+)
 os.makedirs(OUT_DIR, exist_ok=True)
 
 
