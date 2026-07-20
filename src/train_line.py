@@ -55,8 +55,6 @@ GRAD_CLIP = 1.0
 TRAIN_CYCLE = 10
 # Learning rate
 INIT_LR = 1e-4
-RESET_LR = 1e-4
-LR_RESET_EVERY_N_PREDICT = 1
 # Virtual edges are repeated this many times to raise their sampling frequency
 VIRT_REPEAT_TIMES = 2
 
@@ -156,7 +154,6 @@ global_real_src_np = np.array([])
 # Per-src history index: src -> (time array sorted ascending, matching dst array)
 src_hist_times = dict()
 src_hist_dsts = dict()
-train_time_span = 1.0
 # Test candidate columns
 c_cols = [f"c{i}" for i in range(1, 101)]
 # Completed predict cycles
@@ -257,14 +254,12 @@ def add_src_dst_record(cache_dict, src_id: int, dst_id: int):
 
 def build_history_index(full_df):
     # One-off per-src index sorted by time, replacing full-table scans
-    global train_time_span
     src_hist_times.clear()
     src_hist_dsts.clear()
     df = full_df.sort_values("time", kind="mergesort")
     for src, g in df.groupby("src", sort=False):
         src_hist_times[int(src)] = g["time"].values.astype(float)
         src_hist_dsts[int(src)] = g["dst"].values.astype(np.int64)
-    train_time_span = float(full_df["time"].max() - full_df["time"].min()) or 1.0
 
 def get_dst_before_time(src_id: int, cutoff_time: float) -> np.ndarray:
     times = src_hist_times.get(src_id)
