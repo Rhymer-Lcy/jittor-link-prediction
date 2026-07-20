@@ -76,11 +76,19 @@ N_STAGES = int(os.environ.get("N_STAGES", "5"))
 # clobbers the online-validated uniform run.
 NEG_DIST = os.environ.get("NEG_DIST", "uniform")
 assert NEG_DIST in ("uniform", "pop075"), f"unknown NEG_DIST: {NEG_DIST}"
+# Leak-free evaluation embedding: drop each src's tail row from the TRAINING
+# data, so the offline real-candidate eval (which scores exactly those tails)
+# measures generalization instead of memorization. Embedding-geometry features
+# (item-CF, direct model scores) otherwise read the memorized tail edge and
+# inflate offline gains (~2.4x observed for item-CF). Never submit from a
+# holdout run — it trains on less data than production.
+EVAL_HOLDOUT = os.environ.get("EVAL_HOLDOUT", "0") == "1"
 
 _suffix = (("" if SEED == 42 else f"-s{SEED}")
            + ("-staged" if STAGED else "")
            + ("-negpop" if NEG_DIST == "pop075" else "")
-           + (f"-d{emb_total_dim}" if emb_total_dim != 400 else ""))
+           + (f"-d{emb_total_dim}" if emb_total_dim != 400 else "")
+           + ("-holdout" if EVAL_HOLDOUT else ""))
 OUTPUT_DIR = PROJECT_ROOT / "outputs" / (DATASET + _suffix)
 ckpt_dir = OUTPUT_DIR / "checkpoints"
 os.makedirs(ckpt_dir, exist_ok=True)
@@ -591,6 +599,10 @@ if __name__ == "__main__":
     df_raw["src"] = df_raw["src"].astype(np.int64)
     df_raw["dst"] = df_raw["dst"].astype(np.int64)
     df_raw["time"] = df_raw["time"].astype(float)
+    if EVAL_HOLDOUT:
+        n_before = len(df_raw)
+        df_raw, _ = split_train_val_by_tail(df_raw)
+        print(f"[EVAL_HOLDOUT] Dropped {n_before - len(df_raw)} per-src tail rows from training data")
     train_df_split, val_df_split = split_train_val_by_tail(df_raw)
     print(f"Train slice: {len(train_df_split)}, val slice: {len(val_df_split)}, total rows: {len(df_raw)}")
 
