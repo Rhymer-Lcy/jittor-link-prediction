@@ -89,6 +89,15 @@ online — and inflates even the item-CF gain ~2.4x, so a new embedding-geometry
 feature needs a large offline margin to be worth a submission. Trust it only
 for non-temporal signals, and always confirm online.
 
+Candidate under online test — test-candidate-frequency prior ("tpop",
+`ensemble_predict.py`, off by default): each test query's candidate list holds
+its true dst plus uniformly drawn pool negatives, so appearance counts in
+excess of the uniform baseline (137.6 on dataset2) estimate test-period true
+popularity directly — an upgrade over the rpop train-window proxy (corr with
+train popularity only 0.32). Enable with `TPOP_DELTA=0.45 RPOP_DELTA=0`. The
+offline eval scores train tails, not test dsts, so ONLY an isolated online
+submission can validate this.
+
 Refuted directions (isolated online submissions, code removed): time-decayed
 history (0.803 -> 0.7905), co-occurrence CF on dataset2 (0.526 -> 0.505),
 sequential transition feature (0.5441 -> 0.5305); also multi-seed ensemble
@@ -127,8 +136,11 @@ resume).
   by teammate 2026-07-18); `data_A.zip` with its two datasets is everything
   currently available. Rerun the pipeline on `data_B` once it is released.
 - [x] Re-run after fix #1 — far above the historical 0.424 (best total 1.3715).
-- [x] `gen_neg_batch` vectorized (rejection sampling on a sparse membership
-  matrix); training throughput roughly 2.5x.
+- [x] Negative sampling fully vectorized: one per-epoch pregeneration pass with
+  GPU `searchsorted` draws and sorted-key membership rejection (the previous
+  per-batch scipy indexing dominated epoch time).
+- [x] Similar-user cache build moved to GPU (chunked matmul + `torch.topk`);
+  MRR eval scoring switched to the same sparse-matrix path as prediction.
 
 ## History
 
