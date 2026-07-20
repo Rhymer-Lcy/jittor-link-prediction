@@ -131,8 +131,6 @@ RPOP_DELTA = 0.3 if DATASET == "dataset2" else 0.0
 RPOP_TIME_QUANTILE = 0.8
 
 # Global caches
-src_dst_cache = dict()
-src_top_sim = dict()
 src2row = dict()
 sim_neigh_arr = None
 sim_weight_arr = None
@@ -326,15 +324,6 @@ def precompute_cooc_rows(test_src_arr: np.ndarray, cand_mat: np.ndarray) -> np.n
         i = j
     return out
 
-# Pointwise scoring (used by the MRR evaluation)
-def get_sim_agg_score(target_src: int, dst_id: int, cache_dict):
-    sim_list = src_top_sim.get(target_src, [])
-    total = 0.0
-    for sim_src, sim_w in sim_list:
-        dst_w = cache_dict.get(sim_src, {}).get(dst_id, 0.0)
-        total += sim_w * dst_w
-    return total
-
 # ===================== Vectorized scoring =====================
 def cache_dict_to_matrix(base_cache: dict, add_pair_set: set, max_node: int):
     # Sparse CSR: dataset2 has 139k+ node ids, a dense (N+1)^2 float32 matrix
@@ -367,72 +356,55 @@ def batch_sim_score(target_src: int, dst_batch: np.ndarray, cache_mat):
     return scores.astype(np.float32)
 
 def build_sim_cache(emb_matrix, real_src_np):
-    global src_top_sim, src2row, sim_neigh_arr, sim_weight_arr
-    src_top_sim.clear()
+    # GPU-batched cosine top-k: chunked matmul + torch.topk replaces the
+    # previous full numpy similarity matrix and per-target argpartition loop
+    global src2row, sim_neigh_arr, sim_weight_arr
     src2row.clear()
-    all_node_emb = emb_matrix.astype(np.float32)
-    max_emb_id = all_node_emb.shape[0] - 1
+    max_emb_id = emb_matrix.shape[0] - 1
 
     valid_targets = [int(s) for s in real_src_np if 0 <= s <= max_emb_id]
-    all_candidate_ids = np.arange(max_emb_id + 1, dtype=np.int64)
 
     if len(valid_targets) == 0:
         sim_neigh_arr = np.zeros((0, TOP_N_SECOND), dtype=np.int64)
         sim_weight_arr = np.zeros((0, TOP_N_SECOND), dtype=np.float32)
         return
 
-    target_vecs = all_node_emb[valid_targets]
+    emb_t = torch.from_numpy(np.ascontiguousarray(emb_matrix, dtype=np.float32)).to(device)
+    norm = emb_t.norm(dim=1, keepdim=True).clamp_min(1e-8)
+    emb_norm = emb_t / norm
+    target_ids = torch.tensor(valid_targets, dtype=torch.long, device=device)
 
-    target_norm = np.linalg.norm(target_vecs, axis=1, keepdims=True)
-    target_norm[target_norm < 1e-8] = 1.0
-    target_vecs_norm = target_vecs / target_norm
+    k = min(TOP_N_SECOND, emb_norm.shape[0])
+    chunk = 1024
+    neigh_chunks = []
+    weight_chunks = []
+    for beg in tqdm(range(0, len(valid_targets), chunk), desc="Building two-band decayed similar-user cache"):
+        ids = target_ids[beg:beg + chunk]
+        sim = emb_norm[ids] @ emb_norm.T
+        # Exclude self-similarity, matching the original per-row zeroing
+        sim[torch.arange(len(ids), device=device), ids] = 0.0
+        vals, idx = torch.topk(sim, k, dim=1)  # sorted descending
+        neigh_chunks.append(idx.cpu().numpy().astype(np.int64))
+        weight_chunks.append(vals.cpu().numpy())
 
-    candidate_norm = np.linalg.norm(all_node_emb, axis=1, keepdims=True)
-    candidate_norm[candidate_norm < 1e-8] = 1.0
-    candidate_vecs_norm = all_node_emb / candidate_norm
+    sim_neigh_arr = np.concatenate(neigh_chunks, axis=0)
+    weights = np.concatenate(weight_chunks, axis=0)
+    if k < TOP_N_SECOND:
+        pad = TOP_N_SECOND - k
+        sim_neigh_arr = np.pad(sim_neigh_arr, ((0, 0), (0, pad)), constant_values=0)
+        weights = np.pad(weights, ((0, 0), (0, pad)), constant_values=0.0)
 
-    sim_matrix = target_vecs_norm @ candidate_vecs_norm.T
     decay_mask = np.full(TOP_N_SECOND, DECAY_W2, dtype=np.float32)
     decay_mask[:TOP_N_FIRST] = DECAY_W1
+    weights = weights * decay_mask
+    weights[weights < 1e-8] = 0.0
+    sim_weight_arr = weights.astype(np.float32)
 
-    neigh_list = []
-    weight_list = []
-    for row_idx, src_id in enumerate(tqdm(valid_targets, desc="Building two-band decayed similar-user cache")):
-        sim_row = sim_matrix[row_idx]
-        sim_row[src_id] = 0.0
-        row_len = len(sim_row)
-        if row_len > TOP_N_SECOND:
-            top_idx = np.argpartition(sim_row, -TOP_N_SECOND)[-TOP_N_SECOND:]
-            top_idx = top_idx[np.argsort(sim_row[top_idx])[::-1]]
-            valid_mask = np.ones(TOP_N_SECOND, dtype=bool)
-        else:
-            top_idx = np.argsort(sim_row)[::-1]
-            pad_num = TOP_N_SECOND - len(top_idx)
-            valid_mask = np.concatenate(
-                [np.ones(len(top_idx), dtype=bool), np.zeros(pad_num, dtype=bool)]
-            )
-            top_idx = np.pad(top_idx, (0, pad_num), mode="constant", constant_values=0)
-        top_sim_node = all_candidate_ids[top_idx].copy()
-        top_sim_val = sim_row[top_idx].copy()
-        # Zero out padded entries (node id is then irrelevant); fixes the
-        # original -1 index wrap-around contamination
-        top_sim_val[~valid_mask] = 0.0
-        weighted_sim = top_sim_val * decay_mask
-        weighted_sim[weighted_sim < 1e-8] = 0.0
-        sim_list = [
-            (int(nid), float(w)) for nid, w in zip(top_sim_node, weighted_sim) if w > 1e-8
-        ]
-        src_top_sim[int(src_id)] = sim_list
-        src2row[int(src_id)] = row_idx
-        neigh_list.append(top_sim_node)
-        weight_list.append(weighted_sim)
-    sim_neigh_arr = np.array(neigh_list, dtype=np.int64)
-    sim_weight_arr = np.array(weight_list, dtype=np.float32)
+    for row_idx, src_id in enumerate(valid_targets):
+        src2row[src_id] = row_idx
 
 # ===================== Test prediction (masks real history only) =====================
 def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch):
-    global src_dst_cache
-    src_dst_cache.clear()
     build_sim_cache(emb_matrix, real_src_np)
 
     # Copy the base real interactions, then merge current virtual edges
@@ -534,11 +506,11 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
 
 # ===================== MRR evaluation (leave-one-out tail) =====================
 def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000):
-    global src_dst_cache
-    src_dst_cache = {src: dst_map.copy() for src, dst_map in base_src_dst_cache.items()}
     # Include current virtual edges in the scoring cache
+    curr_cache = {src: dst_map.copy() for src, dst_map in base_src_dst_cache.items()}
     for (u, d) in prev_virt_single_for_cache:
-        add_src_dst_record(src_dst_cache, u, d)
+        add_src_dst_record(curr_cache, u, d)
+    cache_mat = cache_dict_to_matrix(curr_cache, set(), emb_matrix.shape[0] - 1)
     build_sim_cache(emb_matrix, real_src_np)
 
     tail_records = []
@@ -569,7 +541,7 @@ def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000):
                 negs.append(cand)
         cand_arr = np.array(negs + [true_dst], dtype=np.int64)
         history_d, history_t = get_hist_before_time(src_id, pred_t)
-        collab = np.array([get_sim_agg_score(src_id, int(d), src_dst_cache) for d in cand_arr], dtype=np.float64)
+        collab = batch_sim_score(src_id, cand_arr, cache_mat).astype(np.float64)
         cnt = count_in_history(cand_arr, history_d).astype(np.float64)
         extra = np.zeros(len(cand_arr), dtype=np.float64)
         if COOC_GAMMA > 0:
