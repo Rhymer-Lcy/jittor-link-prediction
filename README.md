@@ -89,6 +89,17 @@ online — and inflates even the item-CF gain ~2.4x, so a new embedding-geometry
 feature needs a large offline margin to be worth a submission. Trust it only
 for non-temporal signals, and always confirm online.
 
+For embedding-geometry features, prefer the leak-free protocol: train a
+holdout embedding with `EVAL_HOLDOUT=1` (per-src tail rows removed from
+training) and evaluate against it — the held-out tails are then genuinely
+unseen pairs. Measured on dataset2 (2026-07-20): honest item-CF delta +0.0265
+vs online +0.0146, i.e. a ~0.55 folding factor (vs ~0.42 for the leaky
+protocol's inflated delta). First victims of the honest protocol: the direct
+LINE scores (`emb_node[src]·emb_ctx[cand]` and the first-order dot) looked
+like +0.12 under the leaky eval and are NEGATIVE at every weight honestly —
+pure tail-edge memorization (the tail is the one trained pair that history
+masking leaves alive, so the leaky eval turns the model head into an oracle).
+
 Refuted directions (isolated online submissions, code removed): time-decayed
 history (0.803 -> 0.7905), co-occurrence CF on dataset2 (0.526 -> 0.505),
 sequential transition feature (0.5441 -> 0.5305), test-candidate-frequency
