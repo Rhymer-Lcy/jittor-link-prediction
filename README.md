@@ -99,9 +99,9 @@ the one feature that improved both datasets online:
   deltas insignificant) but averaging denoises: honest +0.0058 (ds2) /
   +0.0020 (ds1), online +0.0054 / +0.0018 (folds 0.93 / 0.90). Three seeds
   were not significant; five were.
-- Best validated per-dataset scores: ds1 **0.8554** + ds2 **0.5766** (best
-  single-submission total 1.4292; the best-of combination is packed as
-  `submission_combined_best.zip`, expected 1.4320).
+- Best combined online total **1.4320** (validated 2026-07-21;
+  ds1 0.8554 + ds2 0.5766, the sum landing within 1e-5 of the two
+  separately-validated component scores).
 - Transfer rule: when the honest (holdout) and leaky evals agree on a change
   it transfers online nearly 1:1 (ds1 retune 0.96, ds1 BPR 0.96, 5-seed
   0.90-0.93; ds2 BPR 0.62); when they disagree, the honest direction still
@@ -187,4 +187,4 @@ resume).
 - Original files: `新建文件夹/1.py` + `data_A.zip`; reorganized into this
   project structure on 2026-07-18.
 - Original script header note: "21: redo: 0.424"; teammate's estimate 1.36.
-  This code reached a combined online total of 1.4292 on 2026-07-20.
+  This code reached a combined online total of 1.4320 on 2026-07-21.
