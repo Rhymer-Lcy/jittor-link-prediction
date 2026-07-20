@@ -49,7 +49,7 @@ if tl.DATASET == "dataset2":
     COLLAB_W = 0.3
     ITEMCF_MEAN_W = 0.7
     ITEMCF_TOP3_W = 0.5
-    tl.RPOP_DELTA = 0.45
+    tl.RPOP_DELTA = float(os.environ.get("RPOP_DELTA", "0.45"))
 else:
     # dataset1 keeps full user-CF, history boost and cooc (train_line defaults);
     # item-CF added at the same online-backed weight (offline +0.021, 3 seeds)
@@ -58,6 +58,30 @@ else:
     ITEMCF_TOP3_W = 0.5
 
 NEG_PER_SAMPLE = 99
+
+# Test-candidate-frequency prior ("tpop"): every test query's candidate list
+# contains its true dst plus uniformly drawn pool negatives, so a node's
+# appearance count in excess of the uniform baseline estimates how often it is
+# a true dst in the TEST period — a direct upgrade over the rpop train-window
+# proxy (corr with train popularity only 0.32 on dataset2). Off by default;
+# enable via TPOP_DELTA (e.g. TPOP_DELTA=0.45 RPOP_DELTA=0 swaps it in for
+# rpop). CAUTION: the offline eval scores train tails, not test dsts, so it
+# CANNOT validate this prior — only an isolated online submission can.
+TPOP_DELTA = float(os.environ.get("TPOP_DELTA", "0"))
+dst_tpop_log = None
+
+
+def build_tpop(test_df: pd.DataFrame, n_entity: int) -> np.ndarray:
+    cand = test_df[tl.c_cols].values.astype(np.int64).ravel()
+    counts = np.bincount(cand, minlength=n_entity).astype(np.float64)
+    pool_size = int((counts > 0).sum())
+    # Expected appearances of a pool node from negative draws alone
+    baseline = (cand.size - len(test_df)) / pool_size
+    excess = np.maximum(counts - baseline, 0.0)
+    excess[counts == 0] = 0.0
+    print(f"tpop prior: pool {pool_size} nodes, baseline {baseline:.1f}, "
+          f"nodes with excess>3*sqrt(baseline): {(excess > 3 * np.sqrt(baseline)).sum()}")
+    return np.log1p(excess)
 
 
 def load_embedding(run_dir: Path) -> np.ndarray:
@@ -115,6 +139,9 @@ def extra_scores(src: int, cands: np.ndarray) -> np.ndarray:
     if tl.RPOP_DELTA > 0:
         cc = np.clip(cands, 0, len(tl.dst_rpop_log) - 1)
         extra += tl.RPOP_DELTA * tl.rownorm(tl.dst_rpop_log[cc])
+    if TPOP_DELTA > 0:
+        cc = np.clip(cands, 0, len(dst_tpop_log) - 1)
+        extra += TPOP_DELTA * tl.rownorm(dst_tpop_log[cc])
     return extra
 
 
@@ -262,7 +289,7 @@ def main():
     print(f"Dataset: {tl.DATASET} | runs: {[d.name for d in run_dirs]} | "
           f"blend: collab={COLLAB_W} itemcf_mean={ITEMCF_MEAN_W} "
           f"itemcf_top3={ITEMCF_TOP3_W} cooc={tl.COOC_GAMMA} rpop={tl.RPOP_DELTA} "
-          f"mask_history={tl.MASK_HISTORY} hist_boost={tl.HIST_BOOST}")
+          f"tpop={TPOP_DELTA} mask_history={tl.MASK_HISTORY} hist_boost={tl.HIST_BOOST}")
 
     df_raw = pd.read_csv(tl.train_csv)
     df_raw = df_raw.drop_duplicates(subset=["src", "dst", "time"]).reset_index(drop=True)
@@ -276,6 +303,11 @@ def main():
     test_df["time"] = test_df["time"].astype(float)
 
     args.num_entity = int(max(df_raw.src.max(), df_raw.dst.max())) + 1
+
+    if TPOP_DELTA > 0:
+        global dst_tpop_log
+        n_for_tpop = max(args.num_entity, int(test_df[tl.c_cols].values.max()) + 1)
+        dst_tpop_log = build_tpop(test_df, n_for_tpop)
 
     if args.eval:
         run_eval(df_raw, test_df, run_dirs, args)
