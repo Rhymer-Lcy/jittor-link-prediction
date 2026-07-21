@@ -213,4 +213,4 @@ resume).
 - Original files: `新建文件夹/1.py` + `data_A.zip`; reorganized into this
   project structure on 2026-07-18.
 - Original script header note: "21: redo: 0.424"; teammate's estimate 1.36.
-  This code reached a combined online total of 1.4320 on 2026-07-21.
+  This code reached a combined online total of 1.4341 on 2026-07-21.
