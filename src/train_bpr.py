@@ -32,6 +32,9 @@ SEED = int(os.environ.get("SEED", "42"))
 DIM = int(os.environ.get("BPR_DIM", "256"))
 EPOCHS = int(os.environ.get("BPR_EPOCHS", "120"))
 TAU_FRAC = float(os.environ.get("BPR_TAU_FRAC", "0"))
+# Optional hard time cutoff: train only on edges with time <= BPR_TIME_MAX.
+# Used to build feature-period-only embeddings for time-sliced ranker labels.
+TIME_MAX = float(os.environ.get("BPR_TIME_MAX", "0"))
 LR = 3e-3
 L2 = 1e-6
 BATCH = 8192
@@ -42,6 +45,7 @@ OUT_DIR = tl.PROJECT_ROOT / "outputs" / (
     tl.DATASET + "-bpr"
     + (f"-t{TAU_FRAC:g}" if TAU_FRAC > 0 else "")
     + (f"-d{DIM}" if DIM != 256 else "")
+    + (f"-tmax{TIME_MAX:g}" if TIME_MAX > 0 else "")
     + (f"-s{SEED}" if SEED != 42 else "")
     + ("-holdout" if tl.EVAL_HOLDOUT else "")
 )
@@ -62,6 +66,10 @@ def main():
         df, _ = tl.split_train_val_by_tail(df)
         print(f"[EVAL_HOLDOUT] Dropped {n_before - len(df)} per-src tail rows from training data")
     num_entity = int(max(df.src.max(), df.dst.max())) + 1
+    if TIME_MAX > 0:
+        n_before = len(df)
+        df = df[df["time"] <= TIME_MAX].reset_index(drop=True)
+        print(f"[BPR_TIME_MAX] Kept {len(df)}/{n_before} edges with time <= {TIME_MAX:g}")
 
     torch.manual_seed(SEED)
     emb = torch.nn.Embedding(num_entity, DIM).to(device)

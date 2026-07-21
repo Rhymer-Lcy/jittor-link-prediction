@@ -95,12 +95,18 @@ LINE_TAU_FRAC = float(os.environ.get("LINE_TAU_FRAC", "0"))
 VIRT_MODE = os.environ.get("VIRT_MODE", "normal")
 assert VIRT_MODE in ("normal", "freeze", "off"), f"unknown VIRT_MODE: {VIRT_MODE}"
 
+# Optional hard time cutoff: train only on edges with time <= LINE_TIME_MAX
+# (feature-period-only embeddings for time-sliced ranker labels). The entity
+# table stays full-size so node ids align with full-data artifacts.
+LINE_TIME_MAX = float(os.environ.get("LINE_TIME_MAX", "0"))
+
 _suffix = (("" if SEED == 42 else f"-s{SEED}")
            + ("-staged" if STAGED else "")
            + ("-negpop" if NEG_DIST == "pop075" else "")
            + (f"-d{emb_total_dim}" if emb_total_dim != 400 else "")
            + (f"-t{LINE_TAU_FRAC:g}" if LINE_TAU_FRAC > 0 else "")
            + ({"freeze": "-vfreeze", "off": "-novirt"}.get(VIRT_MODE, ""))
+           + (f"-tmax{LINE_TIME_MAX:g}" if LINE_TIME_MAX > 0 else "")
            + ("-holdout" if EVAL_HOLDOUT else ""))
 OUTPUT_DIR = PROJECT_ROOT / "outputs" / (DATASET + _suffix)
 ckpt_dir = OUTPUT_DIR / "checkpoints"
@@ -619,6 +625,11 @@ if __name__ == "__main__":
         n_before = len(df_raw)
         df_raw, _ = split_train_val_by_tail(df_raw)
         print(f"[EVAL_HOLDOUT] Dropped {n_before - len(df_raw)} per-src tail rows from training data")
+    full_num_entity = int(max(df_raw.src.max(), df_raw.dst.max())) + 1
+    if LINE_TIME_MAX > 0:
+        n_before = len(df_raw)
+        df_raw = df_raw[df_raw["time"] <= LINE_TIME_MAX].reset_index(drop=True)
+        print(f"[LINE_TIME_MAX] Kept {len(df_raw)}/{n_before} edges with time <= {LINE_TIME_MAX:g}")
     train_df_split, val_df_split = split_train_val_by_tail(df_raw)
     print(f"Train slice: {len(train_df_split)}, val slice: {len(val_df_split)}, total rows: {len(df_raw)}")
 
@@ -629,7 +640,7 @@ if __name__ == "__main__":
     test_df["time"] = test_df["time"].astype(float)
     print(f"Test rows: {len(test_df)} (original order preserved)")
 
-    num_entity = int(max(df_raw.src.max(), df_raw.dst.max())) + 1
+    num_entity = full_num_entity
 
     train_src_set = set(df_raw["src"].unique())
     test_src_set = set(test_df["src"].unique())
