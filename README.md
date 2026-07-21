@@ -53,8 +53,11 @@ DATASET=dataset2 python src/ensemble_predict.py --eval    # real-candidate offli
   `TRAIN_CYCLE=10` epochs.
 - Optional training knobs (env vars): `EMB_DIM` (default 400), `NEG_RATIO`
   (default 5), `NEG_DIST` (`uniform` | `pop075` for degree^0.75 sampling),
-  `EPOCHS`, `SEED`, `STAGED`. A non-default `SEED`/`STAGED`/`NEG_DIST`/`EMB_DIM`
-  writes to a suffixed `outputs/<dataset>-<...>/` dir so runs never clobber.
+  `EPOCHS`, `SEED`, `STAGED`, `VIRT_MODE` (`normal` | `freeze` | `off`; `off`
+  skips virtual-edge self-training, a proven no-op — see below), `EVAL_HOLDOUT`
+  (drop per-src tail rows to train the leak-free offline embedding). A
+  non-default `SEED`/`STAGED`/`NEG_DIST`/`EMB_DIM` writes to a suffixed
+  `outputs/<dataset>-<...>/` dir so runs never clobber.
 
 ## Algorithm
 
