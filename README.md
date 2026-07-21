@@ -143,6 +143,17 @@ rpop, actively harmful, implying candidate negatives are NOT uniform pool
 draws but likely popularity- or similarity-biased distractors); also
 multi-seed ensemble (offline tie) and +50 training epochs past ~70 (flat).
 
+Virtual-edge self-training is a no-op under the production blend (holdout
+verdict, 2026-07-21): retraining the holdout LINE with `VIRT_MODE=off` moves
+the full-blend MRR by +0.0001 (ds1, P=0.39) / +0.0004 (ds2, P=0.44); a curated
+ds1 edge set with 3x the measured gate precision (11.0% vs the degenerate
+gate's 3.8% against held-out tails; dataset2's edges are ~0.04%, pure noise)
+still changes nothing (-0.0002, P=0.70); and merging dataset2's ~100k virtual
+edges into the predict-time user-CF cache is likewise null (+0.0007, P=0.30).
+The blend's ranking power lives in the item-CF / BPR terms, not the LINE
+self-training loop — train with `VIRT_MODE=off` for faster retrains and a
+simpler port; the mechanism is kept only for reproducing historical runs.
+
 ## Fixes and optimizations vs. the original script (1.py)
 
 The refactor commit diff is fully reviewable; key points:
