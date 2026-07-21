@@ -11,7 +11,8 @@ honest +0.017 at blend weight 0.7, 2026-07-20).
 Usage:
   DATASET=dataset2 python src/train_bpr.py                # -> outputs/dataset2-bpr/bpr_emb.npy
   DATASET=dataset2 EVAL_HOLDOUT=1 python src/train_bpr.py # leak-free variant for offline eval
-Knobs: BPR_DIM (256), BPR_EPOCHS (120), SEED (42), BPR_TAU_FRAC (0).
+Knobs: BPR_DIM (256), BPR_EPOCHS (120), SEED (42), BPR_TAU_FRAC (0),
+BPR_TIME_MAX (0), BPR_SAVE_EVERY (0, intermediate epoch snapshots).
 
 BPR_TAU_FRAC > 0 enables recency-weighted positive sampling: pairs are drawn
 with replacement proportional to exp(-(t_max - t) / (frac * time_span))
@@ -35,6 +36,10 @@ TAU_FRAC = float(os.environ.get("BPR_TAU_FRAC", "0"))
 # Optional hard time cutoff: train only on edges with time <= BPR_TIME_MAX.
 # Used to build feature-period-only embeddings for time-sliced ranker labels.
 TIME_MAX = float(os.environ.get("BPR_TIME_MAX", "0"))
+# Optional intermediate snapshots: if > 0, also save bpr_emb_ep{N}.npy every N
+# epochs. Lets a single run sweep the whole epoch axis for the under-training /
+# early-stopping transfer study without retraining once per epoch count.
+SAVE_EVERY = int(os.environ.get("BPR_SAVE_EVERY", "0"))
 LR = 3e-3
 L2 = 1e-6
 BATCH = 8192
@@ -120,6 +125,10 @@ def main():
             batches += 1
         if (ep_i + 1) % 20 == 0:
             print(f"[BPR epoch {ep_i + 1}/{EPOCHS}] avg loss {total / batches:.4f} ({time.time() - t0:.0f}s)")
+        if SAVE_EVERY > 0 and (ep_i + 1) % SAVE_EVERY == 0 and (ep_i + 1) != EPOCHS:
+            snap = OUT_DIR / f"bpr_emb_ep{ep_i + 1}.npy"
+            np.save(str(snap), emb.weight.detach().cpu().numpy().astype(np.float32))
+            print(f"[snapshot] {snap}")
 
     # Atomic replace; np.save appends .npy itself, so give the tmp file that suffix
     out_path = OUT_DIR / "bpr_emb.npy"
