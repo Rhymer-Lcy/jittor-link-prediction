@@ -102,7 +102,7 @@ HIST_BOOST = 20.0 if DATASET == "dataset1" else 0.0
 # Virtual-edge generation keeps using the raw embedding-CF signal.
 COOC_GAMMA = 5.0 if DATASET == "dataset1" else 0.0
 RPOP_DELTA = 0.3 if DATASET == "dataset2" else 0.0
-RPOP_TIME_QUANTILE = 0.8
+RPOP_TIME_QUANTILE = 0.98
 
 # Global caches
 src_dst_cache = dict()
