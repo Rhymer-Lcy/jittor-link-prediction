@@ -84,9 +84,11 @@ the one feature that improved both datasets online:
   0.8177 (ensemble) -> 0.8285 (holdout-retuned weights) -> 0.8508 (BPR term)
   -> 0.8526 (5-seed BPR) -> 0.8554 (recency-weighted BPR, `BPR_TAU_FRAC`).
 - **dataset2** (0% repeats; history masked to zero):
-  `0.5*usercf + 1.0*recent_popularity + 0.85*itemcf_mean + 0.8*itemcf_top3 +
+  `0.25*usercf + 1.25*recent_popularity + 0.5*itemcf_mean + 1.0*itemcf_top3 +
   0.7*bpr_ens5` — online 0.5441 -> 0.5587 (item-CF) -> 0.5607
-  (holdout-retuned weights) -> 0.5712 (BPR term) -> 0.5766 (5-seed BPR).
+  (holdout-retuned weights) -> 0.5712 (BPR term) -> 0.5766 (5-seed BPR) ->
+  0.5787 (weights jointly re-tuned with the BPR term present; the substance
+  is halving user-CF, which yields to BPR).
 - **BPR direct score** (`train_bpr.py`): a separate BPR-MF embedding
   (single node table, pairwise softplus ranking loss, degree^0.75 negatives,
   d256/120ep) whose raw `e_src . e_cand` blends in as an extra term. The
@@ -99,9 +101,8 @@ the one feature that improved both datasets online:
   deltas insignificant) but averaging denoises: honest +0.0058 (ds2) /
   +0.0020 (ds1), online +0.0054 / +0.0018 (folds 0.93 / 0.90). Three seeds
   were not significant; five were.
-- Best combined online total **1.4320** (validated 2026-07-21;
-  ds1 0.8554 + ds2 0.5766, the sum landing within 1e-5 of the two
-  separately-validated component scores).
+- Best combined online total **1.4341** (validated 2026-07-21;
+  ds1 0.8554 + ds2 0.5787).
 - Transfer rule: when the honest (holdout) and leaky evals agree on a change
   it transfers online nearly 1:1 (ds1 retune 0.96, ds1 BPR 0.96, 5-seed
   0.90-0.93; ds2 BPR 0.62); when they disagree, the honest direction still

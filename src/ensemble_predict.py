@@ -46,15 +46,15 @@ import train_line as tl
 # the held-out tail edge), so the offline-monotone climb to higher weights is
 # not trusted — only this online-backed weight level is used.
 if tl.DATASET == "dataset2":
-    # Weights retuned on the leak-free holdout eval (2026-07-20) and confirmed
-    # online: 0.5/0.85/0.8/1.0 scored 0.5607 vs the previous recipe's 0.5587
-    # (+0.0020). The honest protocol (+0.0067) predicted the direction; the
-    # leaky protocol disagreed (-0.0063) and was wrong — tail-edge memorization
-    # had inflated item-CF there. Env overrides retained for future A/B.
-    COLLAB_W = float(os.environ.get("W_COLLAB", "0.5"))
-    ITEMCF_MEAN_W = float(os.environ.get("W_ICF_MEAN", "0.85"))
-    ITEMCF_TOP3_W = float(os.environ.get("W_ICF_TOP3", "0.8"))
-    tl.RPOP_DELTA = float(os.environ.get("W_RPOP", "1.0"))
+    # Weights jointly re-tuned WITH the BPR term present (the previous point
+    # 0.5/0.85/0.8/1.0 was tuned before BPR joined the blend) and confirmed
+    # online 2026-07-21: 0.5766 -> 0.5787 (+0.0021). The substance is halving
+    # collab (0.5 -> 0.25, user-CF yields to BPR); honest +0.0047 and leaky
+    # +0.0044 agreed, transfer fold 0.45. Env overrides retained for A/B.
+    COLLAB_W = float(os.environ.get("W_COLLAB", "0.25"))
+    ITEMCF_MEAN_W = float(os.environ.get("W_ICF_MEAN", "0.5"))
+    ITEMCF_TOP3_W = float(os.environ.get("W_ICF_TOP3", "1.0"))
+    tl.RPOP_DELTA = float(os.environ.get("W_RPOP", "1.25"))
     BPR_W_DEFAULT = "0.7"
     # Plain (non-recency) BPR runs: the tau=0.10span recency variant REGRESSED
     # online (0.5766 -> 0.5724) despite honest AND leaky both predicting a
