@@ -21,9 +21,9 @@ jittor-link-prediction/
 │       ├── dataset1/      # train 691k edges, 43k nodes; test 61k queries
 │       └── dataset2/      # train 2.26M edges, 140k nodes (extra split col); test 153k queries
 ├── src/
-│   ├── train_line.py      # LINE embedding + collaborative scoring + virtual-edge self-training
-│   ├── train_bpr.py       # BPR-MF embedding trainer (pairwise ranking loss, pop075 negatives)
-│   └── ensemble_predict.py# predict-only scoring (multi-run ensemble, item-CF + BPR blend, real-candidate eval)
+│   ├── train_line.py       # LINE embedding + collaborative scoring + virtual-edge self-training
+│   ├── train_bpr.py        # BPR-MF embedding trainer (pairwise ranking loss, pop075 negatives)
+│   └── ensemble_predict.py # predict-only scoring (multi-run ensemble, item-CF + BPR blend, real-candidate eval)
 ├── outputs/               # run artifacts (git-ignored): checkpoints / embeddings / submissions
 ├── requirements.txt
 └── README.md
