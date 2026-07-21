@@ -55,7 +55,8 @@ VIRT_REPEAT_TIMES = 2
 
 # ===================== 路径配置（相对项目根目录） =====================
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DATASET = "dataset2"  # 可切换 dataset1 / dataset2
+DATASET = os.environ.get("DATASET", "dataset2")  # 可切换 dataset1 / dataset2
+assert DATASET in ("dataset1", "dataset2"), f"unknown dataset: {DATASET}"
 DATA_DIR = PROJECT_ROOT / "data" / "data_A" / DATASET
 OUTPUT_DIR = PROJECT_ROOT / "outputs" / DATASET
 ckpt_dir = OUTPUT_DIR / "checkpoints"
