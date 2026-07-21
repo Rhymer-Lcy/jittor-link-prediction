@@ -100,7 +100,7 @@ HIST_BOOST = 20.0 if DATASET == "dataset1" else 0.0
 #   unpopular so cooc yields false positives); use pure embedding-CF plus a
 #   small recent-popularity prior (last 20% of train time, +0.005 offline).
 # Virtual-edge generation keeps using the raw embedding-CF signal.
-COOC_GAMMA = 1.0 if DATASET == "dataset1" else 0.0
+COOC_GAMMA = 5.0 if DATASET == "dataset1" else 0.0
 RPOP_DELTA = 0.3 if DATASET == "dataset2" else 0.0
 RPOP_TIME_QUANTILE = 0.8
 
