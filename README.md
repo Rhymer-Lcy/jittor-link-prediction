@@ -154,6 +154,20 @@ The blend's ranking power lives in the item-CF / BPR terms, not the LINE
 self-training loop — train with `VIRT_MODE=off` for faster retrains and a
 simpler port; the mechanism is kept only for reproducing historical runs.
 
+Architecture sweep, 2026-07-21 (all holdout-verdicted, no production code):
+SASRec-lite next-item direct score on dataset1 is negative at every blend
+weight — its standalone strength (0.71 honest MRR) is repeat prediction,
+already covered by the history-count term (0.89 vs 0.94 on the repeat subset),
+while on the blend's weak non-repeat subset it scores 0.33 vs baseline 0.59.
+iALS direct scores are null on both datasets despite strong standalone MRR
+(0.81 / 0.56) — any further MF view of the same interaction matrix is
+redundant with the existing user-CF / item-CF / BPR terms. A LambdaRank
+meta-blend (per-row adaptive term weighting) showed a cross-fitted honest
++0.0037 on dataset1 and REGRESSED online (0.8554 -> 0.8524): models trained
+with holdout tails as labels learn training-boundary ranking patterns that a
+year-long test window invalidates — the honest protocol's final scope is
+evaluating fixed features/formulas only; never train on the tails.
+
 ## Fixes and optimizations vs. the original script (1.py)
 
 The refactor commit diff is fully reviewable; key points:
