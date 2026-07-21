@@ -391,7 +391,7 @@ def batch_sim_score(target_src: int, dst_batch: np.ndarray, cache_mat):
 def build_sim_cache(emb_matrix, real_src_np):
     # GPU-batched cosine top-k: chunked matmul + torch.topk replaces the
     # previous full numpy similarity matrix and per-target argpartition loop
-    global src2row, sim_neigh_arr, sim_weight_arr
+    global sim_neigh_arr, sim_weight_arr  # src2row is only mutated, not rebound
     src2row.clear()
     max_emb_id = emb_matrix.shape[0] - 1
 
