@@ -41,6 +41,7 @@ BATCH = 8192
 OUT_DIR = tl.PROJECT_ROOT / "outputs" / (
     tl.DATASET + "-bpr"
     + (f"-t{TAU_FRAC:g}" if TAU_FRAC > 0 else "")
+    + (f"-d{DIM}" if DIM != 256 else "")
     + (f"-s{SEED}" if SEED != 42 else "")
     + ("-holdout" if tl.EVAL_HOLDOUT else "")
 )
