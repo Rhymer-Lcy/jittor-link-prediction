@@ -1,6 +1,7 @@
 # Data and run artifacts
 data/
 outputs/
+*.log
 
 # Python
 __pycache__/
