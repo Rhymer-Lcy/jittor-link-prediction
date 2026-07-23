@@ -37,6 +37,7 @@ ranker output); --ds1-from supplies dataset1.csv bytes verbatim.
 """
 import argparse
 import io
+import os
 import time
 import zipfile
 
@@ -150,12 +151,12 @@ def main():
     ap.add_argument("--out", required=True, help="output submission zip")
     ap.add_argument("--tau", type=float, default=0.25)
     ap.add_argument("--B", type=float, default=100.0)
-    ap.add_argument("--data", default=r"F:\jittor-link-prediction\data\data_A\dataset2")
+    ap.add_argument("--data", default=os.path.join("data", "data_A", "dataset2"))
     ap.add_argument("--compare", default=None, help="optional previous zip for top-1 diff report")
     args = ap.parse_args()
 
-    tr = pd.read_csv(f"{args.data}\\train.csv")
-    te = pd.read_csv(f"{args.data}\\test.csv")
+    tr = pd.read_csv(os.path.join(args.data, "train.csv"))
+    te = pd.read_csv(os.path.join(args.data, "test.csv"))
     tsrc = te["src"].values
     tt = te["time"].values
     C = te.iloc[:, 2:].values.astype(np.int64)
