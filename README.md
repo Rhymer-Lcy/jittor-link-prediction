@@ -23,7 +23,10 @@ jittor-link-prediction/
 ├── src/
 │   ├── train_line.py       # LINE embedding + collaborative scoring + virtual-edge self-training
 │   ├── train_bpr.py        # BPR-MF embedding trainer (pairwise ranking loss, pop075 negatives)
-│   └── ensemble_predict.py # predict-only scoring (multi-run ensemble, item-CF + BPR blend, real-candidate eval)
+│   ├── ensemble_predict.py # predict-only scoring (multi-run ensemble, item-CF + BPR blend, real-candidate eval)
+│   ├── ranker_basket_ds2.py # dataset2 18-feature LambdaRank + 3-pass basket feedback (train + serve)
+│   ├── crf_promote.py      # dataset2 row-order postprocessor: equality-CRF + triple/pair hard rules
+│   └── triple_promote.py   # standalone triple hard rule (superseded by crf_promote for the full chain)
 ├── outputs/               # run artifacts (git-ignored): checkpoints / embeddings / submissions
 ├── requirements.txt
 └── README.md
@@ -98,6 +101,15 @@ the one feature that improved both datasets online:
   ranking loss is the point — the same LINE embedding's direct score is
   honestly negative. Degree^0.75 negatives are essential (uniform gave
   +0.0009); 240ep overfits; d512 no gain; seed-stable.
+- **Innovation-only BPR** (`train_bpr.py` with `BPR_INNOV=1`, blended via
+  `W_IBPR`): a BPR embedding trained only on the FIRST occurrence of each
+  (src, dst) pair (dataset1: 189k of 690k rows), so its geometry specializes
+  in new-partner selection instead of being dominated by recurring pairs; its
+  direct score is zeroed on history candidates before rownorm, so repeats
+  stay owned by the history-count term. Validated on both calibers
+  2026-07-23 (honest +0.0033 at w=12, entirely on non-repeat queries; leaky
+  agrees, larger); w=12 sits one step inside the cliff (w=15 starts bleeding
+  repeats, w=18 collapses). Default `W_IBPR=0` until confirmed online.
 - **5-seed BPR ensemble** (`bpr_ens5`, the default via `BPR_RUNS`): rownormed
   direct scores from seeds 42/123/777/2024/31337 averaged. Unlike the refuted
   LINE multi-seed ensemble this works — individual seeds tie (all pairwise
@@ -132,6 +144,22 @@ the best dataset2 submission it scored 1.45725 -> 1.47499 online (+0.01775),
 matching the risk-adjusted projection ~1:1 — no transfer discount applies
 because the evidence is observed on the test file itself, not on an offline
 proxy. The raw test row order is load-bearing: never sort before applying.
+
+The full row-order chain is `crf_promote.py` (online 2026-07-23,
+1.49254 -> 1.50890): an equality CRF — exact sum-product over the test file's
+same-time adjacency chains with pairwise potential `1 + B*delta(answer_a =
+answer_b)` on warm candidates, unaries `softmax(rownorm/tau)` — followed by
+the triple rule and a pair rule (adjacent same-time diff-src rows sharing a
+warm candidate that is top-1 in one row promote it in the other; replay
+precision 94.6%). (tau=0.25, B=100) is the interior optimum of a
+row-order-preserving replay harness (244k split-1 rows in raw order,
+generator-mechanism slates, odd-day tuned / even-day validated); one CRF pass
+is exact on chains — iterating double-counts and loses. The realized online
+gain folded by 0.72 = the test/replay shared-pair density ratio. Two follow-ups
+measured DEAD in replay: adjacency slate-membership features inside the ranker
+(the ranker then re-extracts 98% of the same signal worse than the CRF, and
+stacking double-counts, -0.0065), and cohort label-shift query reweighting
+(the ranker's activity features already price staleness per-row, +0.0002).
 
 Offline evaluation that tracks the online ordering: negatives drawn from the
 src's actual test candidate pools (`ensemble_predict.py --eval`). CAUTION: it
@@ -233,6 +261,8 @@ resume).
   project structure on 2026-07-18.
 - Original script header note: "21: redo: 0.424"; teammate's estimate 1.36.
   This code reached a combined online total of 1.4341 on 2026-07-21.
-- 2026-07-23: online best 1.47499 — an 18-feature LightGBM LambdaRank + basket
-  feedback dataset2 pipeline (productionization into this repo pending) plus
-  the row-order triple promotion (`triple_promote.py`, +0.01775 isolated).
+- 2026-07-23: online best 1.50890 — the dataset2 18-feature LightGBM
+  LambdaRank + 3-pass basket feedback pipeline (`ranker_basket_ds2.py`)
+  with the row-order postprocessor (`crf_promote.py`) on top: triple
+  +0.01775, pair +0.00955, basket pass-3 +0.00800, equality-CRF +0.01636,
+  all as isolated online submissions.
