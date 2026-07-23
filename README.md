@@ -112,12 +112,15 @@ the one feature that improved both datasets online:
   repeats, w=18 collapses). Confirmed online 2026-07-23: 1.50890 -> 1.51309
   (+0.00419 including a +0.00027 ds1 lineage fix), so `W_IBPR` defaults to 12
   on dataset1 (off on dataset2, which has no innovation-BPR runs).
-- **5-seed BPR ensemble** (`bpr_ens5`, the default via `BPR_RUNS`): rownormed
-  direct scores from seeds 42/123/777/2024/31337 averaged. Unlike the refuted
+- **Multi-seed BPR ensemble** (the default via `BPR_RUNS` / `IBPR_RUNS`):
+  rownormed direct scores from independent seeds averaged. Unlike the refuted
   LINE multi-seed ensemble this works — individual seeds tie (all pairwise
   deltas insignificant) but averaging denoises: honest +0.0058 (ds2) /
   +0.0020 (ds1), online +0.0054 / +0.0018 (folds 0.93 / 0.90). Three seeds
-  were not significant; five were.
+  were not significant; five were. Expanding dataset1 to **ten** seeds on both
+  the BPR and innovation-BPR sides read only +0.00027 offline — inside the
+  0.0004 noise floor — yet scored ds1 0.8595 → 0.86000 as an isolated online
+  submission, so ten is the dataset1 default; dataset2 stays at five.
 - Best combined online total **1.4341** (validated 2026-07-21;
   ds1 0.8554 + ds2 0.5787).
 - Transfer rule: when the honest (holdout) and leaky evals agree on a change
@@ -196,6 +199,17 @@ Cards that were tested and refuted are listed here so they are not retried:
 - **No answer leak between the files.** Test timestamps start exactly one day
   after the last training timestamp on dataset2 (and after it on dataset1);
   zero test queries share an exact `(src, time)` with a training row.
+- **Dropping the co-occurrence term is not worth it.** `W_COOC = 0` was the
+  one change of twenty-one single-coordinate ablations to pass both calibers
+  (honest +0.00039 at P = 0.01, leaky +0.00027 at P = 0.07 on the identical
+  vector), and it scored **−0.0001** online. The lesson is about the
+  statistic, not the term: a bootstrap P measures sampling noise of the mean
+  over the 12,017 holdout queries, not transfer risk, and the offline
+  refit-to-refit noise floor here is 0.0004 — so a +0.0004 reading is one
+  standard deviation regardless of how small its P is. At this magnitude
+  offline analysis has no resolving power; submit such cards as free options
+  (the leaderboard keeps the best score) rather than ranking them by
+  confidence.
 - **dataset1's blend weights are at a flat optimum.** A coordinate-descent
   retune reads +0.00096 in sample but only +0.00053 (P = 0.13) when tuned on
   one src-half and scored on the other, and the per-fold vectors disagree
