@@ -163,6 +163,48 @@ measured DEAD in replay: adjacency slate-membership features inside the ranker
 stacking double-counts, -0.0065), and cohort label-shift query reweighting
 (the ranker's activity features already price staleness per-row, +0.0002).
 
+### Closed axes (measured, not assumed)
+
+Cards that were tested and refuted are listed here so they are not retried:
+
+- **Candidate column position carries no signal.** Using the triple rule's
+  5364 rows as pseudo-labels (FDR 0.36%, mechanism orthogonal to position),
+  the truth's column histogram is chi-square 99.9 on 99 df, z = +0.07.
+  Generator facts from the same pass: dataset2's 100 candidates are i.i.d.
+  uniform draws WITH replacement from the 110,368-id universe (4.33% of rows
+  contain a duplicate, matching the 4.49% birthday rate), dataset1 draws 100
+  distinct ids, and every dataset1 candidate is warm.
+- **The equality CRF's same-time restriction is exact.** On the raw split=1
+  rows, adjacent DIFFERENT-timestamp pairs agree on the answer 0.0000% of the
+  time at every offset from 1 to 50; same-time agreement decays 12.22% /
+  2.66% / 0.83% / 0.30% / 0.13% over offsets 1-5 toward a within-block chance
+  floor of ~0.007%. 77.3% of repeated-answer groups are fully contiguous and
+  the remainder is exactly birthday noise (15.7 expected chance collisions per
+  670-row block vs 15.8 observed), so generator runs are contiguous and a
+  chain model is exact — a clique potential has no headroom.
+- **Score ties cost nothing.** The submitted dataset2 file has ~21 tied
+  candidates per row (LightGBM leaf collisions among cold candidates, not
+  `%.6f` rounding, whose birthday expectation is 0.005/row), but the truth
+  never lands in a tie (0.000% of 244,056 replay queries), so every
+  tie-break signal is worth +0.00000.
+- **Training volume is saturated.** Learning curve on the replay asset:
+  15,751 → 0.60286, 31,503 → 0.60516, 63,007 → 0.60728, 126,014 → 0.60761.
+  The knee is near 63k and production trains on 244,056 queries, so adding a
+  second, earlier training slice is worth ~+0.00001. The full-horizon retrain
+  that scored +0.00223 online was therefore a label-COVERAGE gain, not a
+  volume gain — price the two separately.
+- **No answer leak between the files.** Test timestamps start exactly one day
+  after the last training timestamp on dataset2 (and after it on dataset1);
+  zero test queries share an exact `(src, time)` with a training row.
+- **dataset1's blend weights are at a flat optimum.** A coordinate-descent
+  retune reads +0.00096 in sample but only +0.00053 (P = 0.13) when tuned on
+  one src-half and scored on the other, and the per-fold vectors disagree
+  wildly (BPR weight 4.5 / 5.06 / 18). Expanding the BPR and innovation-BPR
+  seed ensembles from 5 to 10 is +0.00027 (P = 0.21). Any tuned card must
+  report a cross-fitted number; the both-calibers rule applies to a fixed
+  change measured twice, never to a change whose definition is itself tuned
+  per protocol (the leaky protocol picks a different vector entirely).
+
 Offline evaluation that tracks the online ordering: negatives drawn from the
 src's actual test candidate pools (`ensemble_predict.py --eval`). CAUTION: it
 systematically overrates recency-flavored features — time-decayed history and
