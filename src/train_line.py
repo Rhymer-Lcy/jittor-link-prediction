@@ -63,7 +63,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # Switch dataset via env var, e.g.  DATASET=dataset1 python src/train_line.py
 DATASET = os.environ.get("DATASET", "dataset2")
 assert DATASET in ("dataset1", "dataset2"), f"unknown dataset: {DATASET}"
-DATA_DIR = PROJECT_ROOT / "data" / "data_A" / DATASET
+# Data package selector for the B-board release, e.g. DATA_PACK=data_B
+DATA_PACK = os.environ.get("DATA_PACK", "data_A")
+DATA_DIR = PROJECT_ROOT / "data" / DATA_PACK / DATASET
 # Staged self-training (teammate's idea): virtual edges are only harvested
 # from test rows whose time falls inside the current stage window, which
 # advances one stage per predict cycle. Scoring/output always covers all rows.
