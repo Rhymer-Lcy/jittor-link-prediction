@@ -109,7 +109,9 @@ the one feature that improved both datasets online:
   stay owned by the history-count term. Validated on both calibers
   2026-07-23 (honest +0.0033 at w=12, entirely on non-repeat queries; leaky
   agrees, larger); w=12 sits one step inside the cliff (w=15 starts bleeding
-  repeats, w=18 collapses). Default `W_IBPR=0` until confirmed online.
+  repeats, w=18 collapses). Confirmed online 2026-07-23: 1.50890 -> 1.51309
+  (+0.00419 including a +0.00027 ds1 lineage fix), so `W_IBPR` defaults to 12
+  on dataset1 (off on dataset2, which has no innovation-BPR runs).
 - **5-seed BPR ensemble** (`bpr_ens5`, the default via `BPR_RUNS`): rownormed
   direct scores from seeds 42/123/777/2024/31337 averaged. Unlike the refuted
   LINE multi-seed ensemble this works — individual seeds tie (all pairwise
@@ -266,3 +268,6 @@ resume).
   with the row-order postprocessor (`crf_promote.py`) on top: triple
   +0.01775, pair +0.00955, basket pass-3 +0.00800, equality-CRF +0.01636,
   all as isolated online submissions.
+- 2026-07-23 (later): online best 1.51309 — dataset1 innovation-only BPR at
+  `W_IBPR=12` plus the ds1 lineage fix (+0.00419 combined; the ds2 half is
+  byte-identical to the 1.50890 pack).
