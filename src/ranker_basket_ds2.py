@@ -73,6 +73,21 @@ PASS3_MODEL = str(OUT_DIR / "ranker_pass3.txt")
 PARAMS = dict(objective="lambdarank", metric="ndcg", ndcg_eval_at=[10], n_estimators=400,
               learning_rate=0.05, num_leaves=31, min_child_samples=100, random_state=42,
               n_jobs=6, verbosity=-1, label_gain=[0, 1])
+# Reproduction status vs the shipped A-board ranker (verified 2026-07-23). This
+# unified script trains all three passes with the same features and PARAMS;
+# passes 2 and 3 come out byte-identical to the shipped boosters (md5
+# 32fbc4f6e7db, 53f538cd61a4). Pass 1 differs (md5 11b6799e29 vs shipped
+# eab591d02d13) because the shipped pass-1 booster was produced by a SEPARATE
+# full-horizon script (exp_ranker_fullhz_prod_ds2.py) with a different feature
+# build -- NOT a thread-count difference: n_jobs 6 and -1 both yield 11b6799e29
+# on this script's train matrix (a direct probe confirmed LightGBM histogram
+# summation IS thread-sensitive in general, but not on this matrix). The port
+# is faithful, not byte-exact: pass-1 scores agree with the shipped file on
+# 99.17% of serve top-1 decisions (mean |delta| 3e-4), inside the ranker's own
+# run-to-run noise. Byte-exact pass-1 reproduction would require importing the
+# full-horizon feature build; not worth restructuring the unified pipeline, and
+# irrelevant for data_B (which needs a correct pipeline, not the A-board bytes).
+# n_jobs is fixed at 6 (not -1) so the result is portable across core counts.
 
 df_raw = pd.read_csv(tl.train_csv).drop_duplicates(subset=["src", "dst", "time"]).reset_index(drop=True)
 df_raw["src"] = df_raw["src"].astype(np.int64); df_raw["dst"] = df_raw["dst"].astype(np.int64)
@@ -211,7 +226,8 @@ yf = np.zeros(off[-1], np.float32)
 yf[off[1:] - 1] = 1.0
 print(f"train matrix {Xf.shape}", flush=True)
 
-# pass-1 full-data booster (the serve pass-1 scorer)
+# pass-1 full-data booster (the serve pass-1 scorer) -- see the reproduction
+# note next to PARAMS for why this differs from the shipped pass-1 booster
 m1 = lgb.LGBMRanker(**PARAMS)
 m1.fit(Xf, yf, group=lens.tolist())
 m1.booster_.save_model(PASS1_MODEL)
