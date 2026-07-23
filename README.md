@@ -204,6 +204,11 @@ Cards that were tested and refuted are listed here so they are not retried:
   report a cross-fitted number; the both-calibers rule applies to a fixed
   change measured twice, never to a change whose definition is itself tuned
   per protocol (the leaky protocol picks a different vector entirely).
+  Stacking the sub-threshold marginals does not rescue them either: tuning
+  all eleven weights together (the nine production terms plus item-CF in the
+  innovation-BPR space) reads +0.00101 in sample and only +0.00027 (P = 0.26)
+  cross-fitted — worse than the retune alone, since the extra columns add
+  parameters to overfit rather than signal.
 
 Offline evaluation that tracks the online ordering: negatives drawn from the
 src's actual test candidate pools (`ensemble_predict.py --eval`). CAUTION: it
