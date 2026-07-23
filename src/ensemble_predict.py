@@ -94,6 +94,22 @@ _BPR_DEFAULT_RUNS = ",".join(
 BPR_RUNS = [r for r in os.environ.get("BPR_RUNS", _BPR_DEFAULT_RUNS).split(",") if r]
 bpr_embs = []
 
+# Innovation-only BPR term (train_bpr.py with BPR_INNOV=1): an embedding
+# trained only on first-time (src, dst) links, scored ONLY on candidates
+# outside the src's history (its per-seed row is zeroed on history candidates
+# BEFORE rownorm) — repeats are owned by hist_boost, this term reranks the
+# non-repeat block. Both calibers agreed 2026-07-23 (honest +0.0033 at w12
+# entirely on non-repeat queries, leaky +0.0056 same direction); w12 is one
+# step inside the cliff (w15 starts bleeding repeats, w18 collapses).
+# Default 0 until validated online; dataset1-only.
+W_IBPR = float(os.environ.get("W_IBPR", "0"))
+_IBPR_DEFAULT_RUNS = ",".join(
+    f"outputs/{tl.DATASET}-bpr-innov{BPR_TAG}" + (f"-s{s}" if s != 42 else "")
+    for s in (42, 123, 777, 2024, 31337)
+)
+IBPR_RUNS = [r for r in os.environ.get("IBPR_RUNS", _IBPR_DEFAULT_RUNS).split(",") if r]
+ibpr_embs = []
+
 
 def load_embedding(run_dir: Path, expected_rows: int = 0) -> np.ndarray:
     emb_df = pd.read_csv(run_dir / "line_latest_emb.csv")
@@ -191,6 +207,15 @@ def blend_scores(src, curr_time, cands, emb_score):
     """Production ranking blend on top of an (already averaged) embedding score."""
     hist_d, _ = tl.get_hist_before_time(int(src), float(curr_time))
     blend = emb_score + extra_scores(int(src), cands)
+    if W_IBPR > 0:
+        in_hist = np.isin(cands, hist_d)
+        iscore = np.zeros(len(cands), dtype=np.float64)
+        for be in ibpr_embs:
+            cc = np.clip(cands, 0, be.shape[0] - 1)
+            r = np.maximum(be[cc] @ be[min(int(src), be.shape[0] - 1)], 0.0)
+            r[in_hist] = 0.0
+            iscore += tl.rownorm(r)
+        blend = blend + W_IBPR * (iscore / len(ibpr_embs))
     if tl.MASK_HISTORY:
         blend[np.isin(cands, hist_d)] = 0.0
     else:
@@ -331,13 +356,18 @@ def main():
     print(f"Dataset: {tl.DATASET} | runs: {[d.name for d in run_dirs]} | "
           f"blend: collab={COLLAB_W} itemcf_mean={ITEMCF_MEAN_W} "
           f"itemcf_top3={ITEMCF_TOP3_W} cooc={tl.COOC_GAMMA} rpop={tl.RPOP_DELTA} "
-          f"bpr={W_BPR} mask_history={tl.MASK_HISTORY} hist_boost={tl.HIST_BOOST}")
+          f"bpr={W_BPR} ibpr={W_IBPR} mask_history={tl.MASK_HISTORY} hist_boost={tl.HIST_BOOST}")
 
     if W_BPR > 0:
         for r in BPR_RUNS:
             bpr_path = tl.PROJECT_ROOT / r / "bpr_emb.npy"
             bpr_embs.append(np.load(bpr_path))
             print(f"BPR embedding loaded: {bpr_path} shape {bpr_embs[-1].shape}")
+    if W_IBPR > 0:
+        for r in IBPR_RUNS:
+            ibpr_path = tl.PROJECT_ROOT / r / "bpr_emb.npy"
+            ibpr_embs.append(np.load(ibpr_path))
+            print(f"innovation-BPR embedding loaded: {ibpr_path} shape {ibpr_embs[-1].shape}")
 
     df_raw = pd.read_csv(tl.train_csv)
     df_raw = df_raw.drop_duplicates(subset=["src", "dst", "time"]).reset_index(drop=True)
