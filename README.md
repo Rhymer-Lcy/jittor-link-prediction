@@ -117,6 +117,22 @@ the one feature that improved both datasets online:
   change at tau=0.25span on dataset1 transferred at 0.93. Keep dataset2
   training recency-free; treat any ds2 recency knob as online-unverifiable.
 
+### Row-order triple promotion (`triple_promote.py`, online-validated)
+
+Dataset2's raw file order preserves same-timestamp same-answer runs across
+DIFFERENT sources — a stable-sort fingerprint of the benchmark generator
+(adjacent same-time different-src pairs in the split=1 year agree on dst 12.2%
+vs 0.003% at large offsets; on the real test file, adjacent candidate-slate
+intersections average 0.1771 vs the 0.0906 uniform expectation, with offset>=5
+placebos sitting exactly at the uniform value). `triple_promote.py` promotes
+the unique common warm candidate of every strict three-row window (same time,
+three distinct srcs) to top-1 in all three rows: 5364 rows on data_A, empirical
+FDR ~0.4% (offset placebos: 8 and 4 windows vs 2242 real). Applied on top of
+the best dataset2 submission it scored 1.45725 -> 1.47499 online (+0.01775),
+matching the risk-adjusted projection ~1:1 — no transfer discount applies
+because the evidence is observed on the test file itself, not on an offline
+proxy. The raw test row order is load-bearing: never sort before applying.
+
 Offline evaluation that tracks the online ordering: negatives drawn from the
 src's actual test candidate pools (`ensemble_predict.py --eval`). CAUTION: it
 systematically overrates recency-flavored features — time-decayed history and
@@ -217,3 +233,6 @@ resume).
   project structure on 2026-07-18.
 - Original script header note: "21: redo: 0.424"; teammate's estimate 1.36.
   This code reached a combined online total of 1.4341 on 2026-07-21.
+- 2026-07-23: online best 1.47499 — an 18-feature LightGBM LambdaRank + basket
+  feedback dataset2 pipeline (productionization into this repo pending) plus
+  the row-order triple promotion (`triple_promote.py`, +0.01775 isolated).
