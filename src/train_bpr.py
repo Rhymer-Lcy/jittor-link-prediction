@@ -12,13 +12,21 @@ Usage:
   DATASET=dataset2 python src/train_bpr.py                # -> outputs/dataset2-bpr/bpr_emb.npy
   DATASET=dataset2 EVAL_HOLDOUT=1 python src/train_bpr.py # leak-free variant for offline eval
 Knobs: BPR_DIM (256), BPR_EPOCHS (120), SEED (42), BPR_TAU_FRAC (0),
-BPR_TIME_MAX (0), BPR_SAVE_EVERY (0, intermediate epoch snapshots).
+BPR_TIME_MAX (0), BPR_INNOV (0), BPR_SAVE_EVERY (0, intermediate epoch
+snapshots).
 
 BPR_TAU_FRAC > 0 enables recency-weighted positive sampling: pairs are drawn
 with replacement proportional to exp(-(t_max - t) / (frac * time_span))
 instead of a uniform permutation. Validated on the honest holdout AND the
 leaky protocol together (both agreed, 2026-07-20): dataset2 frac=0.10,
 dataset1 frac=0.25.
+
+BPR_INNOV=1 trains the innovation-only variant: only the FIRST occurrence of
+each (src, dst) pair is kept, so the embedding specializes in new-partner
+selection instead of being dominated by recurring pairs (66% of dataset1
+mass). Blended via ensemble_predict's W_IBPR term, masked to non-history
+candidates. Validated 2026-07-23 on both calibers (honest +0.0033 at w12,
+leaky same direction), targeting dataset1's non-repeat loss block.
 """
 import os
 import time
@@ -36,6 +44,8 @@ TAU_FRAC = float(os.environ.get("BPR_TAU_FRAC", "0"))
 # Optional hard time cutoff: train only on edges with time <= BPR_TIME_MAX.
 # Used to build feature-period-only embeddings for time-sliced ranker labels.
 TIME_MAX = float(os.environ.get("BPR_TIME_MAX", "0"))
+# Innovation-only mode: keep only the first occurrence of each (src, dst) pair.
+INNOV = os.environ.get("BPR_INNOV", "0") == "1"
 # Optional intermediate snapshots: if > 0, also save bpr_emb_ep{N}.npy every N
 # epochs. Lets a single run sweep the whole epoch axis for the under-training /
 # early-stopping transfer study without retraining once per epoch count.
@@ -48,6 +58,7 @@ BATCH = 8192
 # so multi-seed / time-weighted ensemble runs never clobber each other.
 OUT_DIR = tl.PROJECT_ROOT / "outputs" / (
     tl.DATASET + "-bpr"
+    + ("-innov" if INNOV else "")
     + (f"-t{TAU_FRAC:g}" if TAU_FRAC > 0 else "")
     + (f"-d{DIM}" if DIM != 256 else "")
     + (f"-tmax{TIME_MAX:g}" if TIME_MAX > 0 else "")
@@ -75,6 +86,10 @@ def main():
         n_before = len(df)
         df = df[df["time"] <= TIME_MAX].reset_index(drop=True)
         print(f"[BPR_TIME_MAX] Kept {len(df)}/{n_before} edges with time <= {TIME_MAX:g}")
+    if INNOV:
+        n_before = len(df)
+        df = df.sort_values("time").drop_duplicates(["src", "dst"], keep="first").reset_index(drop=True)
+        print(f"[BPR_INNOV] Kept {len(df)}/{n_before} first-time (src, dst) links")
 
     torch.manual_seed(SEED)
     emb = torch.nn.Embedding(num_entity, DIM).to(device)
