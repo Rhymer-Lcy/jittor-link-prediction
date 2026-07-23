@@ -3,3 +3,5 @@ pandas
 scipy
 torch
 tqdm
+# dataset2 ranker pipeline (ranker_basket_ds2.py)
+lightgbm
