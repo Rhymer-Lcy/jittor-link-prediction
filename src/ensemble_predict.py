@@ -101,8 +101,12 @@ bpr_embs = []
 # non-repeat block. Both calibers agreed 2026-07-23 (honest +0.0033 at w12
 # entirely on non-repeat queries, leaky +0.0056 same direction); w12 is one
 # step inside the cliff (w15 starts bleeding repeats, w18 collapses).
-# Default 0 until validated online; dataset1-only.
-W_IBPR = float(os.environ.get("W_IBPR", "0"))
+# Confirmed online 2026-07-23: 1.50890 -> 1.51309 (+0.00419 = iBPR ~+0.0039
+# + ds1 lineage swap +0.00027, transfer ~1.18x of the honest offline delta).
+# Default 12 for dataset1 (the validated production config); dataset2 has no
+# innovation-BPR runs, so the term stays off there.
+_W_IBPR_DEFAULT = "12" if tl.DATASET == "dataset1" else "0"
+W_IBPR = float(os.environ.get("W_IBPR", _W_IBPR_DEFAULT))
 _IBPR_DEFAULT_RUNS = ",".join(
     f"outputs/{tl.DATASET}-bpr-innov{BPR_TAG}" + (f"-s{s}" if s != 42 else "")
     for s in (42, 123, 777, 2024, 31337)
