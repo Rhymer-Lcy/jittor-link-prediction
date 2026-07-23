@@ -3,6 +3,9 @@ data/
 outputs/
 *.log
 
+# Local working notes (consultation briefs, scratch analyses) -- not part of the deliverable
+docs_local/
+
 # Python
 __pycache__/
 *.pyc
