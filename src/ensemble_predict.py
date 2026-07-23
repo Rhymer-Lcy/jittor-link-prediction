@@ -87,9 +87,14 @@ W_BPR = float(os.environ.get("W_BPR", BPR_W_DEFAULT))
 # BPR_RUNS: comma-separated run dirs. With several runs (multi-seed ensemble)
 # each run's rownormed direct score is computed independently and averaged —
 # embeddings from different seeds are not alignable, scores are.
+# Ten seeds on dataset1 since 2026-07-23: the 5 -> 10 expansion read only
+# +0.00027 offline (inside the 0.0004 noise floor) but scored ds1 0.8595 ->
+# 0.86000 online as an isolated submission. dataset2 has five seeds trained.
+_SEEDS = ((42, 123, 777, 2024, 31337, 7, 99, 555, 1234, 9999)
+          if tl.DATASET == "dataset1" else (42, 123, 777, 2024, 31337))
 _BPR_DEFAULT_RUNS = ",".join(
     f"outputs/{tl.DATASET}-bpr{BPR_TAG}" + (f"-s{s}" if s != 42 else "")
-    for s in (42, 123, 777, 2024, 31337)
+    for s in _SEEDS
 )
 BPR_RUNS = [r for r in os.environ.get("BPR_RUNS", _BPR_DEFAULT_RUNS).split(",") if r]
 bpr_embs = []
@@ -109,7 +114,7 @@ _W_IBPR_DEFAULT = "12" if tl.DATASET == "dataset1" else "0"
 W_IBPR = float(os.environ.get("W_IBPR", _W_IBPR_DEFAULT))
 _IBPR_DEFAULT_RUNS = ",".join(
     f"outputs/{tl.DATASET}-bpr-innov{BPR_TAG}" + (f"-s{s}" if s != 42 else "")
-    for s in (42, 123, 777, 2024, 31337)
+    for s in _SEEDS
 )
 IBPR_RUNS = [r for r in os.environ.get("IBPR_RUNS", _IBPR_DEFAULT_RUNS).split(",") if r]
 ibpr_embs = []
