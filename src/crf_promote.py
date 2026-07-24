@@ -119,11 +119,22 @@ baseline): exclusion + dups = +0.003897 MRR (odd +0.004028 / even +0.003765,
 6896 rows changed, 117 hurt). Real-file coverage 7724 exclusion events vs
 20624 on replay -> expected online ds2 delta ~ +0.0023.
 
+Stage 5 (optional, --st-exclude): SAME-time structural run exclusion, the
+sixth structural invariant. Stage 4 excludes an answer across a src's OTHER
+timestamps; this excludes it across the SAME timestamp. By invariant IV a
+shared answer occupies one contiguous run in raw test order, so a warm
+candidate that appears in a shorter, disjoint same-time occurrence component
+is a negative there and is demoted (see same_time_structural_demotions). The
+run labels itself, so unlike Stage 4 no answer label is needed. Replay-gate
+(structural run>=2 on the zrx baseline): +0.001323 MRR, zero true answers
+demoted; rank-conditioned transfer to production +0.000536 (bootstrap 5th pct
++0.000502). Composes with Stages 1-4 and never demotes a promoted answer.
+
 Usage:
   python src/crf_promote.py --base <ranker_scores.csv> --ds1-from <ref.zip> \
       --out <submission.zip> [--tau 0.25] [--B 100] [--W 1] [--p 1.0] \
-      [--eta 0.0] [--zr-exclude] [--demote-dups] [--data <dataset2 dir>] \
-      [--compare <previous.zip>]
+      [--eta 0.0] [--zr-exclude] [--demote-dups] [--st-exclude] \
+      [--data <dataset2 dir>] [--compare <previous.zip>]
 
 --base is a headerless R x 100 CSV of per-row [0,1] scores (the basket
 ranker output); --ds1-from supplies dataset1.csv bytes verbatim.
@@ -383,6 +394,64 @@ def zero_repeat_demotions(C, csets, tsrc, tt, trip, pair_lab, demote_dups):
     return dem
 
 
+def same_time_structural_demotions(C, csets, tt, warm, protected, min_run=2):
+    """Same-time occurrence-run exclusion (the sixth structural invariant).
+
+    Within a timestamp a shared answer occupies ONE contiguous run in raw test
+    order (invariant IV: same-time same-answer rows are adjacent across srcs).
+    So for each warm candidate x that appears in >= 2 same-time rows, split its
+    occurrences into maximal raw-consecutive components (adjacent test rows);
+    the longest component is the presumed answer run, and x in every SHORTER
+    component is a same-time negative -> demote it (level 1). The run labels
+    ITSELF, so coverage is not bounded by the triple/pair label set the
+    cross-time rule needs -- the whole gain is realized without any answer
+    label. A row's own promoted answer (triple, or pair when enabled) is never
+    demoted; genuine multi-run birthday collisions keep every max-length run.
+
+    Measured on the horizon-matched replay (structural run>=2 on the zrx
+    baseline): +0.001323 MRR, zero true answers demoted. Rank-conditioned
+    transfer to the production ranker: +0.000536 (clustered-bootstrap 5th pct
+    +0.000502), the stronger production ranker leaving less rank-1 headroom.
+    """
+    rows_by_time = {}
+    for i in range(len(tt)):
+        rows_by_time.setdefault(int(tt[i]), []).append(i)
+    dem = {}
+    n_events = 0
+    for rows in rows_by_time.values():
+        rows.sort()
+        occ = {}
+        for k in rows:
+            for c in csets[k]:
+                if warm[c]:
+                    occ.setdefault(int(c), []).append(k)
+        for x, ks in occ.items():
+            if len(ks) < 2:
+                continue
+            comps, cur = [], [ks[0]]
+            for k in ks[1:]:
+                if k == cur[-1] + 1:
+                    cur.append(k)
+                else:
+                    comps.append(cur)
+                    cur = [k]
+            comps.append(cur)
+            maxlen = max(len(c) for c in comps)
+            if maxlen < min_run:
+                continue
+            for comp in comps:
+                if len(comp) == maxlen:
+                    continue
+                for k in comp:
+                    if protected.get(k) == x:
+                        continue
+                    for col in np.flatnonzero(C[k] == x):
+                        dem.setdefault(k, {}).setdefault(int(col), 1)
+                        n_events += 1
+    log(f"same-time structural: rows demoted {len(dem)}, events {n_events}")
+    return dem
+
+
 def apply_demotions(S, dem):
     """Squeeze each affected row into [0.01, 1] and pin demoted cols below.
 
@@ -416,6 +485,8 @@ def main():
                     help="cross-time zero-repeat exclusion of labeled answers")
     ap.add_argument("--demote-dups", action="store_true",
                     help="demote duplicated slate ids (with-replacement negatives)")
+    ap.add_argument("--st-exclude", action="store_true",
+                    help="same-time structural run exclusion (sixth invariant)")
     ap.add_argument("--data", default=os.path.join("data", "data_A", "dataset2"))
     ap.add_argument("--compare", default=None, help="optional previous zip for top-1 diff report")
     args = ap.parse_args()
@@ -462,11 +533,18 @@ def main():
     log(f"hard rules: triple {len(trip)} rows, pair {len(tgt_map)} (conflicts {n_conf})")
 
     dem = {}
-    if args.zr_exclude or args.demote_dups:
+    if args.zr_exclude or args.demote_dups or args.st_exclude:
         pair_lab = find_pair_labels(csets, tsrc, tt, warm, trip) if args.zr_exclude else {}
         dem = zero_repeat_demotions(C, csets, tsrc, tt,
                                     trip if args.zr_exclude else {},
                                     pair_lab, args.demote_dups)
+        if args.st_exclude:
+            protected = dict(tgt_map)
+            protected.update(trip)  # promoted answers are never demoted
+            st_dem = same_time_structural_demotions(C, csets, tt, warm, protected)
+            for r, cols in st_dem.items():
+                for col, level in cols.items():
+                    dem.setdefault(r, {}).setdefault(col, level)
         pre_top1 = np.argmax(S, axis=1)
         S = apply_demotions(S, dem)
         zr_flips = int((np.argmax(S, axis=1) != pre_top1).sum())
