@@ -56,7 +56,7 @@ TRAIN_CYCLE = 10
 # Learning rate
 INIT_LR = 1e-4
 # Virtual edges are repeated this many times to raise their sampling frequency
-VIRT_REPEAT_TIMES = 2
+VIRT_REPEAT_TIMES = int(os.environ.get("VIRT_REPEAT_TIMES", "2"))
 
 # ===================== Paths (relative to project root) =====================
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -83,6 +83,18 @@ assert NEG_DIST in ("uniform", "pop075"), f"unknown NEG_DIST: {NEG_DIST}"
 # inflate offline gains (~2.4x observed for item-CF). Never submit from a
 # holdout run — it trains on less data than production.
 EVAL_HOLDOUT = os.environ.get("EVAL_HOLDOUT", "0") == "1"
+# The in-training MRR monitor prints TWO numbers side by side every predict
+# cycle so neither is ever read in isolation:
+#   random-neg : 99 uniform-random negatives (fast, but OPTIMISTIC — random ids
+#                are far easier than the curated slate; historically the only
+#                number printed, which read ~0.90 and misled).
+#   real-cand  : negatives drawn from each src's REAL test-file candidate pool
+#                (competition-faithful); srcs absent from the test file skipped.
+# Positives are each src's last edge re-derived from the training frame
+# ("in-training"); with EVAL_HOLDOUT=1 the real-cand arm instead scores the
+# per-src tail rows that were dropped from training ("leak-free"). HIST_BOOST
+# still applies to both; set HIST_BOOST=0 to score the LINE collaborative term
+# alone. The real-cand number is the one comparable to the leaderboard.
 # Recency-weighted positive sampling (same idea validated for BPR via
 # BPR_TAU_FRAC): when > 0, each epoch draws edges with replacement
 # proportional to exp(-age / (frac * time_span)) instead of a permutation.
@@ -141,7 +153,7 @@ MCC_SAMPLE_COUNT = 10000
 # historical dsts to zero, while dataset1 boosts them instead (offline MRR on
 # dataset1: mask 0.284 / no-mask 0.802 / boost x20 0.915).
 MASK_HISTORY = DATASET == "dataset2"
-HIST_BOOST = 20.0 if DATASET == "dataset1" else 0.0
+HIST_BOOST = float(os.environ.get("HIST_BOOST", "20.0" if DATASET == "dataset1" else "0.0"))
 # Submission ranking policy per dataset, tuned on a real-candidate offline eval
 # (negatives drawn from actual test candidate pools, which reproduced the
 # online ordering; random-negative MRR was misleading for dataset2):
@@ -558,17 +570,38 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
     return curr_round_all_pair
 
 # ===================== MRR evaluation (leave-one-out tail) =====================
-def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000, sim_cache_ready=False):
-    # Include current virtual edges in the scoring cache
+def build_eval_cache_mat(emb_matrix):
+    """Collaborative-scoring matrix incl. current virtual edges (shared across
+    the two MRR arms so it is built once per predict cycle)."""
     curr_cache = {src: dst_map.copy() for src, dst_map in base_src_dst_cache.items()}
     for (u, d) in prev_virt_single_for_cache:
         add_src_dst_record(curr_cache, u, d)
-    cache_mat = cache_dict_to_matrix(curr_cache, set(), emb_matrix.shape[0] - 1)
+    return cache_dict_to_matrix(curr_cache, set(), emb_matrix.shape[0] - 1)
+
+
+def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000, sim_cache_ready=False,
+                  real_cand_pools=None, eval_positives=None, cache_mat=None):
+    """Leave-one-out tail MRR monitor.
+
+    real_cand_pools: {src: set(candidate ids)} from the test file. When given,
+      negatives are drawn from each src's REAL candidate pool (competition-
+      faithful) and srcs absent from it are skipped; otherwise 99 uniform-random
+      negatives are used (the default, optimistic monitor).
+    eval_positives: a DataFrame of held-out (src, dst, time) rows to score as
+      positives (the tails dropped from training under EVAL_HOLDOUT, giving a
+      leak-free measurement); when None the positives are each src's last edge
+      re-derived from train_df (in-training).
+    cache_mat: precomputed collaborative matrix (build_eval_cache_mat); built
+      here when None.
+    """
+    if cache_mat is None:
+        cache_mat = build_eval_cache_mat(emb_matrix)
     if not sim_cache_ready:
         build_sim_cache(emb_matrix, real_src_np)
 
+    pos_df = eval_positives if eval_positives is not None else train_df
     tail_records = []
-    for src, g in train_df.groupby("src"):
+    for src, g in pos_df.groupby("src"):
         last_row = g.loc[g["time"].idxmax()]
         tail_records.append({
             "src": int(last_row["src"]),
@@ -582,17 +615,29 @@ def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000, sim_cache
 
     dst_all = train_df["dst"].values
     dst_min, dst_max = int(dst_all.min()), int(dst_all.max())
-    total_cnt = len(eval_samples)
+    total_cnt = 0
     total_mrr = 0.0
     for item in tqdm(eval_samples, desc="MRR evaluation"):
         src_id = item["src"]
         true_dst = item["true_dst"]
         pred_t = item["time"]
-        negs = []
-        while len(negs) < NEG_SAMPLE_NUM:
-            cand = random.randint(dst_min, dst_max)
-            if cand != src_id and cand != true_dst and cand not in negs:
-                negs.append(cand)
+        if real_cand_pools is not None:
+            # Real test-file candidate negatives (competition-faithful); skip a
+            # src that never appears in the test file, matching the offline harness.
+            pool = real_cand_pools.get(src_id)
+            if not pool:
+                continue
+            negs = sorted(pool - {src_id, true_dst})
+            if not negs:
+                continue
+            if len(negs) > NEG_SAMPLE_NUM:
+                negs = random.sample(negs, NEG_SAMPLE_NUM)
+        else:
+            negs = []
+            while len(negs) < NEG_SAMPLE_NUM:
+                cand = random.randint(dst_min, dst_max)
+                if cand != src_id and cand != true_dst and cand not in negs:
+                    negs.append(cand)
         cand_arr = np.array(negs + [true_dst], dtype=np.int64)
         history_d, history_t = get_hist_before_time(src_id, pred_t)
         collab = batch_sim_score(src_id, cand_arr, cache_mat).astype(np.float64)
@@ -611,6 +656,7 @@ def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000, sim_cache
         # Pessimistic tie handling: true dst ranks after all equal scores
         rank = 1 + int((blend > blend[-1]).sum()) + int((blend[:-1] == blend[-1]).sum())
         total_mrr += 1.0 / rank
+        total_cnt += 1
 
     avg_mrr = total_mrr / total_cnt if total_cnt > 0 else 0.0
     return avg_mrr
@@ -623,9 +669,10 @@ if __name__ == "__main__":
     df_raw["src"] = df_raw["src"].astype(np.int64)
     df_raw["dst"] = df_raw["dst"].astype(np.int64)
     df_raw["time"] = df_raw["time"].astype(float)
+    holdout_val_df = None
     if EVAL_HOLDOUT:
         n_before = len(df_raw)
-        df_raw, _ = split_train_val_by_tail(df_raw)
+        df_raw, holdout_val_df = split_train_val_by_tail(df_raw)
         print(f"[EVAL_HOLDOUT] Dropped {n_before - len(df_raw)} per-src tail rows from training data")
     full_num_entity = int(max(df_raw.src.max(), df_raw.dst.max())) + 1
     if LINE_TIME_MAX > 0:
@@ -641,6 +688,14 @@ if __name__ == "__main__":
     test_df["src"] = test_df["src"].astype(np.int64)
     test_df["time"] = test_df["time"].astype(float)
     print(f"Test rows: {len(test_df)} (original order preserved)")
+
+    # Real test-file candidate pools per src, for the competition-faithful arm
+    # of the dual MRR monitor (always built; cheap).
+    eval_cand_pools = {}
+    _cand_mat = test_df[c_cols].values.astype(np.int64)
+    for _i, _s in enumerate(test_df["src"].values.astype(np.int64)):
+        eval_cand_pools.setdefault(int(_s), set()).update(_cand_mat[_i].tolist())
+    print(f"Real candidate pools built for {len(eval_cand_pools)} srcs (real-cand MRR arm)")
 
     num_entity = full_num_entity
 
@@ -750,8 +805,18 @@ if __name__ == "__main__":
             print(f"Virtual edges generated this round: {len(new_virt_set)}")
             # predict_test above has just built the sim cache for this exact
             # embedding and src set — no need to rebuild it
-            val_mrr = calc_mrr_eval(df_raw, emb_np, global_real_src_np, sample_num=MCC_SAMPLE_COUNT, sim_cache_ready=True)
-            print(f"Leave-one-out tail MRR: {val_mrr:.4f}")
+            # Dual monitor: build the collaborative matrix once, score both the
+            # optimistic random-negative arm and the competition-faithful
+            # real-candidate arm, and print them side by side.
+            _cache_mat = build_eval_cache_mat(emb_np)
+            mrr_rand = calc_mrr_eval(df_raw, emb_np, global_real_src_np, sample_num=MCC_SAMPLE_COUNT,
+                                     sim_cache_ready=True, cache_mat=_cache_mat)
+            mrr_real = calc_mrr_eval(df_raw, emb_np, global_real_src_np, sample_num=MCC_SAMPLE_COUNT,
+                                     sim_cache_ready=True, cache_mat=_cache_mat,
+                                     real_cand_pools=eval_cand_pools, eval_positives=holdout_val_df)
+            _rpos = "leak-free" if holdout_val_df is not None else "in-training"
+            print(f"Leave-one-out tail MRR | random-neg/in-training: {mrr_rand:.4f}  "
+                  f"| real-cand/{_rpos}: {mrr_real:.4f}  <- leaderboard-comparable")
 
             predict_run_count += 1
             print(f"Predict cycles completed: {predict_run_count}")
