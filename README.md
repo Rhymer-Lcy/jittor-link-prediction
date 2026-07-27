@@ -21,12 +21,19 @@ jittor-link-prediction/
 │       ├── dataset1/      # train 691k edges, 43k nodes; test 61k queries
 │       └── dataset2/      # train 2.26M edges, 140k nodes (extra split col); test 153k queries
 ├── src/
-│   ├── train_line.py       # LINE embedding + collaborative scoring + virtual-edge self-training
-│   ├── train_bpr.py        # BPR-MF embedding trainer (pairwise ranking loss, pop075 negatives)
-│   ├── ensemble_predict.py # predict-only scoring (multi-run ensemble, item-CF + BPR blend, real-candidate eval)
+│   ├── train_line.py        # LINE embedding + collaborative scoring + virtual-edge self-training
+│   ├── train_bpr.py         # BPR-MF embedding trainer (pairwise ranking loss, pop075 negatives)
+│   ├── train_line_jt.py     # Jittor port of the LINE trainer
+│   ├── train_bpr_jt.py      # Jittor port of the BPR trainer
+│   ├── ensemble_predict.py  # dataset1 predict-only blend (item-CF + BPR ensemble, real-candidate eval)
+│   ├── ranker_ds1.py        # dataset1 LambdaRank ranker (train-cut/infer-full) — replaces the linear blend
 │   ├── ranker_basket_ds2.py # dataset2 18-feature LambdaRank + 3-pass basket feedback (train + serve)
-│   ├── crf_promote.py      # dataset2 row-order postprocessor: equality-CRF + triple/pair hard rules
-│   └── triple_promote.py   # standalone triple hard rule (superseded by crf_promote for the full chain)
+│   ├── ranker_basket_ab_ds2.py # dataset2 label-augmented A/B basket ranker builder
+│   ├── footprint_feature.py # dataset2 85-column candidate x query-time exposure feature generator
+│   ├── footprint_ab_probe.py   # dataset2 footprint paired-residual channel: gate -> residual -> CRF -> pack
+│   ├── validate_footprint_packs.py # read-only A/B footprint pack validator
+│   ├── crf_promote.py       # dataset2 row-order postprocessor: equality-CRF + triple/pair + zero-repeat/same-time exclusions
+│   └── triple_promote.py    # standalone triple hard rule (superseded by crf_promote for the full chain)
 ├── outputs/               # run artifacts (git-ignored): checkpoints / embeddings / submissions
 ├── requirements.txt
 └── README.md
@@ -278,6 +285,15 @@ meta-blend (per-row adaptive term weighting) showed a cross-fitted honest
 with holdout tails as labels learn training-boundary ranking patterns that a
 year-long test window invalidates — the honest protocol's final scope is
 evaluating fixed features/formulas only; never train on the tails.
+**UPDATE 2026-07-27 — this failure mode was later SOLVED, not intrinsic.** The
+regression came from the tail-holdout LABELS, not from learned ranking per se.
+Re-run under a production-matched **cut-split replay** (features frozen at a
+0.75 time-quantile CUT predict the post-CUT edges as labels; infer on the real
+test with full-train-frozen features and forward-extrapolating time features
+clipped) a global LambdaRank beats the real production blend by +0.0187 offline
+and shipped **+0.00205 online** — see `ranker_ds1.py` and the History entry
+below. The rule stands (never train on the tails); the fix is to train on an
+interior time cut instead.
 
 ## Fixes and optimizations vs. the original script (1.py)
 
@@ -332,3 +348,56 @@ resume).
 - 2026-07-23 (later): online best 1.51309 — dataset1 innovation-only BPR at
   `W_IBPR=12` plus the ds1 lineage fix (+0.00419 combined; the ds2 half is
   byte-identical to the 1.50890 pack).
+- 2026-07-24: **1.5145953** — dataset1 ten-seed BPR/iBPR ensemble (0.8595 ->
+  0.86000, an isolated online read inside the offline noise floor but positive
+  on the board) and the dataset2 CRF sharpen (tau=0.20, B=70).
+- 2026-07-25: **1.5149319** — remove the pair-promotion rule from the ds2
+  postprocessor (`--no-pair`); the pair rule double-counted the chain the
+  equality-CRF already models (+0.0004173, double-counting confirmation).
+- 2026-07-25: **1.5166958** — ds2 zero-repeat cross-time exclusion + duplicate
+  demotion (`--zr-exclude`, fifth invariant: 0 of 2.2M (src,dst) recur at
+  distinct times, so labeled cross-time answers are negatives; +0.001764,
+  predicted +0.0018 by the rank-conditioned transfer harness).
+- 2026-07-25: **1.5173100** — ds2 same-time structural run exclusion
+  (`--st-exclude`, sixth invariant: within a timestamp a shared answer is one
+  contiguous raw-order run, so a warm candidate in a shorter disjoint same-time
+  component is a negative; +0.0006142, predicted +0.000536).
+- 2026-07-26: **1.5264** — dataset2 temporal-**footprint** paired-residual
+  channel replaces the CRF-only ds2 file. An 85-column candidate x query-time
+  exposure block (`footprint_feature.py`) is distilled to a per-candidate
+  residual added before the shared CRF (`footprint_ab_probe.py`); ds2 isolated
+  MRR **0.6664472907** (ds1 still the 0.86000 blend). Offline hzeval gate
+  +0.008116. Reproduction chain: `outputs/dataset2-footprint/README.md`.
+- 2026-07-27: **1.5284127** (current best) — dataset1 learned **LambdaRank
+  ranker** (`ranker_ds1.py`) replaces the hand-tuned linear blend: cut-split
+  replay beats the production blend +0.0187 offline, ships +0.00205 online
+  (ds1 0.86000 -> 0.862047), paired with the footprint ds2. The offline->online
+  fold was ~9x because 99.4% of the gain is on non-repeat queries while the
+  leaderboard ds1 number is repeat-dominated.
+
+**Logging convention.** Every submission milestone is recorded above; every
+tested-and-refuted card is recorded under **Closed axes** / **Refuted
+directions** so it is never retried. Recent closures (2026-07-24..27), measured
+not assumed:
+- ds2 row-order / chain-CRF axis EXHAUSTED: `(tau,B)` plane is one w-curve, `--W`
+  is monotone-negative (double-counts the chain), `--p` dead, the `--eta`
+  candidate-reliability coupling was killed by the honest replay gate (monotone
+  negative even with perfect per-bin truth), semi-Markov de-greenlit, CRF
+  round-2 / ensemble dead, ds1 row-order dead, W90 reweight dead both sides,
+  adjacency slate features dead (the CRF re-extracts the same signal better).
+- ds2 **basket soft factor graph** (largest remaining oracle, +0.072): the
+  full posterior beats the shipped top-3 decoder by only +0.0006 (noise); the
+  bottleneck is base sibling top-1 accuracy (40.8%), not the message decoder —
+  needs a better BASE ranker, not a better decoder.
+- ds2 **truth-free / variance-reduction selector** vein closed: the semantic-
+  evidence oracle is real (+0.0935) but undeployable; the deployable gate is
+  +0.00038 at 32% precision and loses to a shuffle-null.
+- **Rank/interaction derivatives of transferring features do not transfer**
+  (e.g. `cfreq_rank`: offline +0.0036 at P=1.0 -> online -0.0028); absolute
+  per-candidate features transfer, their ordinal derivatives overfit the
+  eval-slice even at P=1.0.
+- ds2's four sub-axes (features / post-processing / hyperparameters / ensemble
+  structure) are closed; the 18-feature ablation leaves only two load-bearing
+  features and both are STRUCTURAL INVARIANTS (zero-repeat `in_hist`, footprint
+  `cfreq`). Remaining known headroom: dataset1's non-repeat cold ranking, or a
+  B-board-viable unified NN (survival-hazard / path-propagation).
