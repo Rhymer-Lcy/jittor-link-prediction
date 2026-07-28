@@ -351,6 +351,25 @@ Cards that were tested and refuted are listed here so they are not retried:
   the 100 candidates. Worth two ranker columns bundled into an existing refit, not a
   path-propagation model; note `A^3` also has to be recomputed at serve time, which is
   a B-board scalability wart.
+- **Directed three-hop `A^3` explicit weighting: CLOSED as non-incremental against the full
+  production ranker (round-19B objection audit, 2026-07-28).** The round-18A card above closed
+  the direction by *equivalence*; the objection audit closed it by *measurement*, because the two
+  three-edge objects had never been separated in writing. Definitions, fixed before results:
+  `threehop_count = (A_bin^3)[u,c]` over the split0 cut-frozen graph, `threehop_exists =
+  1[count>0]`, `weighted_threehop = log1p((A_cnt^3)[u,c])` summing `w(u,x)*w(x,y)*w(y,c)` along
+  every directed path. Full 21-column production stack, 142,483-query 2-fold source-disjoint OOF,
+  seeds 42/123. Marginals vs baseline (seed 42 / seed 123): exists **-0.000238 / +0.000310**,
+  exists+count **-0.000060 / +0.000074**, weighted **-0.000498 / -0.000262**; non-repeat -0.000717 /
+  -0.000162 / -0.000157 against a +0.008 gate; folds and seeds disagree in sign. The decisive
+  number is that the **source-activity x candidate-popularity shuffled null scores +0.000305,
+  beating every real arm**; count-decile shuffle -0.000518, undirected `(A|A^T)^3` -0.000013,
+  capacity control -0.000067. Terminology, to be used exactly: the **alternating** walk
+  `u -> i <- v -> c` is `A A^T A` and IS production column 5 `f_cooc` (`cooc_scores` computes
+  `x = A A[u,:]^T`, zeroes `x[u]`, then `x^T A[:,cands] / sqrt(pop)`); the **directed** walk
+  `u -> x -> y -> c` is `A^3` and is a different object, now closed. dataset1 is **not** bipartite
+  (18,019 of its nodes occupy both roles, 63.31% reciprocity), so the forward two-hop `u -> x -> c`
+  genuinely exists (1,653,750 pairs, mean reach 118.12/src, truth coverage 59.25%); the
+  "no two-hop because the graph is directed" intuition holds for **dataset2 only**.
 - **Tail-1 validation inflates recency-family marginals 2.4-9.3x (round-18A audit,
   protocol note not a closure).** Scoring identical fixed variants on identical
   production-matched slates under per-src tail-1 versus a strict global timestamp cut:
@@ -381,8 +400,16 @@ Cards that were tested and refuted are listed here so they are not retried:
   noise for a fixed cosine readout is usable conditioning for a learned ranker, since the
   spurious term tracks warmth/popularity alongside `seen` / `dst_pop_log` / `cfreq`. Serve
   the concatenation as-is; the alpha axis is dead for the same reason.
-- **dataset1 explicit reverse-edge (candidate -> source) features are ~97.6% absorbed
-  (round-18C / G2).** dataset1 is directed with 63.3% reciprocity and the 21-column ranker
+- **dataset1 explicit reverse-edge (candidate -> source) is COVERAGE-LIMITED, not redundant
+  (round-18C / G2; wording corrected 2026-07-28 after a verifying refit).** The mechanism is
+  strong and highly precise where it applies but reaches only 3.43% of queries, and is offset by
+  diffuse damage elsewhere, so it fails the full-population production gate. On the exact same
+  142,483 queries, same folds, same 21 columns: non-repeat rows whose truth carries a reverse edge
+  (n=4,882) gain **+0.052650** with top-1 0.6921 -> 0.7835 and 631 repaired vs 31 damaged;
+  non-repeat rows without it (n=66,169) lose **-0.001160**; difference-in-differences **+0.053810**;
+  overall **+0.000372**. (The earlier "~97.6% absorbed" figure is true of the overall marginal only
+  and must not be used as the primary description - it wrongly implies redundancy everywhere.)
+  dataset1 is directed with 63.3% reciprocity and the 21-column ranker
   encodes only the source's OUT-history, so `rev_ind` + `log1p(rev_cnt)` looked like a
   guaranteed gap: truth carries a reverse edge 46.7% of the time against a 0.25% candidate
   base rate (184x; 29.7x on non-repeat, 201x out-history-exclusive). On the 142,483-query
@@ -505,6 +532,27 @@ All fixes verified end-to-end on a synthetic mini dataset (training ->
 prediction output -> virtual edges -> MRR eval -> Adam reset -> checkpoint
 resume).
 
+- **Five-channel disentangled basket serve formulation: OFFLINE PASS / ONLINE FAIL / CLOSED
+  (round-19A, R19-1).** The shipped ds2 pack serves 2 entangled basket channels (`fb_dense_ent`
+  -> max, mean) while the round-16/17 MF gate had measured 5 disentangled ones (exact-hit weighted
+  sum + count, self-excluded off-diagonal max + mean + missing flag). The two had never been
+  compared head to head. A single-harness 244,056-query replay, in which the 2-channel control
+  reproduced the shipped chain **exactly (abs diff 0.0 at pass-1/2/3 and post-CRF)**, measured the
+  representation swap at **post-CRF +0.009775 (seed 42) / +0.009348 (seed 123)** — and cleared a
+  nine-condition pre-registered gate with **zero failures**: both folds positive, has-sibling
+  +0.012727, singleton -0.000436 (4.5%, inert as the mechanism requires), in-pool +0.000815, plus
+  three nulls (capacity 12.1%; off-diagonal shuffle -218.6%; a purpose-built joint five-channel
+  alignment shuffle preserving capacity, joint distribution, sparsity and co-occurrence while
+  destroying only candidate alignment, **-228.4%**). The isolated ds2-only auxiliary online A/B
+  then **inverted it**: control **0.7313145109421939**, treatment **0.719693486657827**, delta
+  **-0.0116210242843669**. The pair is trustworthy — the control lands within **+0.0000776** of
+  the prior online MF ds2-only result (0.7312368936166302), so this is not pack drift, thread
+  count or an abnormal control. Do not rescue via channel tuning, selectors, K10, pass-4 or an
+  event-message NN on this base. Note also that the originating audit's +0.0118 / -0.0075 in-pool
+  figures were cross-harness artifacts (it compared absolute MRRs from the gate harness, which
+  builds pass-3 from an external frozen pass-2, against the shipped chain); only within-harness
+  marginals are meaningful.
+
 ## TODO
 
 - [ ] **Jittor port**: the current implementation is PyTorch. The final
@@ -609,3 +657,16 @@ not assumed:
   features and both are STRUCTURAL INVARIANTS (zero-repeat `in_hist`, footprint
   `cfreq`). Remaining known headroom: dataset1's non-repeat cold ranking, or a
   B-board-viable unified NN (survival-hazard / path-propagation).
+- 2026-07-28 (round 19, closed with no submission): the R19-1 five-channel basket
+  representation passed a nine-condition offline gate on both seeds and then FAILED the
+  isolated auxiliary online A/B by -0.01162 (see the closure card above) - the first case
+  in this project where a full-stack, two-seed, fold-stable, null-controlled OOF marginal
+  INVERTED online. Round 18's three collaborator objections were also adjudicated at source
+  level: the G2 control design was already the same-sample comparison (refit reproduces to
+  0.00e+00) and its wording is corrected from "97.6% absorbed" to coverage-limited; the
+  validation-split / negative-sampling / temporal-decay questions stay three separate closed
+  families; and the directed `A^3` weighting - the one formulation never explicitly tested -
+  was run against the full production ranker and closed as non-incremental. No Round-18
+  verdict was overturned. Main-account artifact unchanged at 1.540916537029636 (#3).
+  Standing rule for round 20: an offline OOF marginal is a SCREEN, not a shipping gate;
+  any proposal must address the offline-to-online distribution mismatch explicitly.
