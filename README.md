@@ -230,6 +230,68 @@ Cards that were tested and refuted are listed here so they are not retried:
   innovation-BPR space) reads +0.00101 in sample and only +0.00027 (P = 0.26)
   cross-fitted — worse than the retune alone, since the extra columns add
   parameters to overfit rather than signal.
+- **Event-co-occurrence basket geometry is no better than the incumbent
+  profile (round-15 audit).** The live basket feedback
+  (`ranker_basket_ab_ds2.fb_features`) scores candidate↔sibling similarity in
+  `item_profiles` = row-normalized dst×src incidence, never supervised by "dsts
+  in the same event should be close." A parallel co-event PPMI-SVD(d128)
+  feedback channel, replayed on the 244,056-query 2-fold src-disjoint OOF (base
+  pass-1 0.551961), read a naive pass-3 marginal of +0.008457 — but capacity-MF
+  and random-vector nulls scored 166% and 184% of it. The confound: with unit
+  vectors, candidate == a sibling's stand-in node ⇒ self-similarity = 1 in ANY
+  space, so every geometry (random included) re-encodes the exact-ID hit the
+  feedback already uses. Identity-deconfounded gate (a shared exact-hit channel
+  plus an off-diagonal geometry channel with every self-similarity pair removed;
+  all five geometries d128 unit-norm): over an exact-hit-only baseline
+  (p3 0.562929), off-diagonal marginals were P-profile +0.02784, co-event
+  +0.02027, plain-MF null +0.03585, popularity-shuffle null −0.00003 (the
+  shuffle collapse proves the off-diagonal signal is real collaborative
+  structure, not popularity/capacity). Co-event LOSES to the incumbent
+  P-profile (−0.00758) and to the plain-MF null (−0.01558). Event-co-occurrence
+  supervision does not yield a geometry that beats the existing collaborative
+  profile — no InfoNCE escalation. (The plain-MF off-diagonal beating the
+  incumbent P by +0.008 pre-CRF was NOT closed — it was promoted to its own
+  experiment; see "MF-smoothed basket geometry" below.)
+- **MF-smoothed basket geometry — OPEN CANDIDATE (round-15, passed the gate,
+  online A/B pending).** NOT a closure: a low-rank SVD (d128) of the split0
+  src×dst interaction, used as the pass-2/3 sibling-MESSAGE geometry (a NEW
+  insertion point — MF as a direct pass-1 score was absorbed long ago), replacing
+  the hand-built `item_profiles`. Adjudicated through the FULL live chain
+  (exact-hit + off-diagonal with self-similarity removed; pass-1→2→3 → label
+  stand-in → `crf_promote` τ0.20/B70 + triple + zr + dups + st, no-pair; MF frozen
+  to split0 for train / full-train for serve, no truth/labels, rank fixed d128).
+  Post-CRF MF vs incumbent P, both seeds: full-chain +0.006482 / +0.006656;
+  faithful label-driven-only (no equality-CRF band) +0.007318 / +0.007586;
+  has-sibling +0.0083 / +0.0084; gain on hard/broken rows (+0.0093) > easy clean
+  (+0.0065). Nulls all clean (popularity-shuffle-MF ≈ random ≈ exact-hit-only, i.e.
+  collapse; duplicate-P capacity = exactly 0). MF↔P off-diagonal correlate 0.876
+  (a refinement of the same collaborative geometry, not orthogonal). Borderline
+  and replay-only — online transfer unknown (ds1-ranker precedent shrank ~9×). A
+  ds2-only aux A/B (control = P geometry, treatment = MF, single variable, ds1
+  zeroed) is built + validated at `outputs/submissions/ds2_mf_ab/` for an online
+  read. This axis (basket-message geometry) stays OPEN.
+- **The pass-3 sibling-consistency pair decider is beaten by its own shuffle
+  null (round-15 audit).** Reframing the estimand from "is base top-1 wrong?"
+  (row-level, ~51% precision, long dead) to "for concrete candidates A,B which
+  ranks higher?" raised base-wrong truth coverage to 46.2% (over the prior 35.4%
+  pair ceiling) and a decider reached 60.2% precision / +0.0075 OOF (30,790
+  swaps); Control A (pass-1 features only) reproduced the death. But a
+  stratified shuffle of the pass-3 diff features beat it (+0.014, 62–70k swaps):
+  the swap signal is the retained base-score-margin / base-rank structure the
+  ranker already encodes, not the pass-3 sibling-consistency evidence.
+- **The hzeval appended/in-pool distribution blind spot is real but does not
+  convert to score (round-15 audit).** `in_pool = truth ∈ the src's own real
+  test candidate pool` (truth-free) is 15.78% (the hard, production-matched
+  slice — the real test is 100% this) vs 84.22% appended (an easy
+  random-distractor replay artifact; base18 OOF 0.5411 vs 0.6256), so the
+  overall gate weights the production slice ~1/5. But it does not reopen a card:
+  in-pool query reweighting is monotonically negative (w3 in_pool −0.00177, w6
+  −0.00410); the killed TPNet path features have an in_pool marginal 0.53× their
+  overall (weaker on the hard slice, not diluted-and-hidden); footprint85 (live)
+  is 1.48× — both under the 3× reopen bar. Carry-forward caveat: offline gates
+  should report the in_pool slice separately as the production-matched number.
+  (Survival-feature stratification is untested — needs a GPU-trained checkpoint;
+  deferred.)
 
 Offline evaluation that tracks the online ordering: negatives drawn from the
 src's actual test candidate pools (`ensemble_predict.py --eval`). CAUTION: it
