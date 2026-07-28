@@ -175,6 +175,15 @@ stacking double-counts, -0.0065), and cohort label-shift query reweighting
 
 ### Closed axes (measured, not assumed)
 
+**Governing rule for every new direction (round-18 lesson, applies to all cards below).**
+Standalone signal is only an information-content SCREEN. A direction must be gated by its
+incremental OOF marginal against the FULL shipped production stack at the earliest practical
+stage, and must be shown to repair rows the shipped MF geometry, ranker and CRF do not already
+handle. Round 18 produced two textbook cases: G1 read **+0.21804** standalone and
+**-0.001110** through full production; G2 read **+0.015743** without the embedding proxies and
+**+0.000372** with the complete ranker. Both passed every standalone test and both were worth
+nothing incrementally.
+
 Cards that were tested and refuted are listed here so they are not retried:
 
 - **Candidate column position carries no signal.** Using the triple rule's
@@ -252,24 +261,142 @@ Cards that were tested and refuted are listed here so they are not retried:
   profile — no InfoNCE escalation. (The plain-MF off-diagonal beating the
   incumbent P by +0.008 pre-CRF was NOT closed — it was promoted to its own
   experiment; see "MF-smoothed basket geometry" below.)
-- **MF-smoothed basket geometry — OPEN CANDIDATE (round-15, passed the gate,
-  online A/B pending).** NOT a closure: a low-rank SVD (d128) of the split0
-  src×dst interaction, used as the pass-2/3 sibling-MESSAGE geometry (a NEW
-  insertion point — MF as a direct pass-1 score was absorbed long ago), replacing
-  the hand-built `item_profiles`. Adjudicated through the FULL live chain
-  (exact-hit + off-diagonal with self-similarity removed; pass-1→2→3 → label
-  stand-in → `crf_promote` τ0.20/B70 + triple + zr + dups + st, no-pair; MF frozen
-  to split0 for train / full-train for serve, no truth/labels, rank fixed d128).
-  Post-CRF MF vs incumbent P, both seeds: full-chain +0.006482 / +0.006656;
-  faithful label-driven-only (no equality-CRF band) +0.007318 / +0.007586;
-  has-sibling +0.0083 / +0.0084; gain on hard/broken rows (+0.0093) > easy clean
-  (+0.0065). Nulls all clean (popularity-shuffle-MF ≈ random ≈ exact-hit-only, i.e.
-  collapse; duplicate-P capacity = exactly 0). MF↔P off-diagonal correlate 0.876
-  (a refinement of the same collaborative geometry, not orthogonal). Borderline
-  and replay-only — online transfer unknown (ds1-ranker precedent shrank ~9×). A
-  ds2-only aux A/B (control = P geometry, treatment = MF, single variable, ds1
-  zeroed) is built + validated at `outputs/submissions/ds2_mf_ab/` for an online
-  read. This axis (basket-message geometry) stays OPEN.
+- **MF-smoothed basket geometry — ONLINE VALIDATED / SHIPPED / RANK #3 (round-17).**
+  A low-rank SVD (d128) of the split0 src×dst interaction, used as the pass-2/3
+  sibling-MESSAGE geometry (a NEW insertion point — MF as a direct pass-1 score was
+  absorbed long ago), replacing the hand-built `item_profiles`. Adjudicated through
+  the FULL live chain (exact-hit + off-diagonal with self-similarity removed;
+  pass-1→2→3 → label stand-in → `crf_promote` τ0.20/B70 + triple + zr + dups + st,
+  no-pair; MF frozen to split0 for train / full-train for serve, no truth/labels,
+  rank d128). Offline post-CRF MF vs P, both seeds: full-chain +0.006482 / +0.006656;
+  label-driven +0.007318 / +0.007586. **Aux A/B (single-variable geometry swap, ds1
+  zeroed): control 0.7166850834516475 → treatment 0.7312368936166302 = +0.0145518
+  online** — a ~2.2× UPWARD transfer (replay under-counts the geometry gain).
+  **Shipped in the full main pack `submission_mf_full_main.zip` → OFFICIAL
+  1.540916537029636, RANK #3** (2026-07-28). Artifacts under `outputs/submissions/ds2_mf_ab/`.
+  Caveat: MF is served from the gitignored scratchpad (`build_mf_aux_pack.py`), NOT yet
+  ported to `src/` — a clean-checkout reproduction / B-board liability while it stays in the pack.
+- **MF-base + refitted footprint — CLOSED AS A COMBINATION (round-17).** The footprint
+  residual (historically +0.008 over the weak base18 pipeline) was refit against the new MF
+  base and gated on the 244,056-query OOF under the full production chain (pipeline validated:
+  arm-A MF−P post-CRF reproduced +0.006482 exactly). Pre-CRF footprint marg over MF = +0.00813,
+  but **full-chain post-CRF C−A = +0.002066 < the +0.003 continuation gate** (label-driven
+  +0.005689 — the equality-CRF band absorbs ~72%). Mechanism: footprint is anti-correlated with
+  the MF geometry (corr −0.259) and HURTS (−0.029) on the rows MF already fixed. So footprint's
+  value does NOT transfer onto the stronger MF base. Closing the COMBINATION does not invalidate
+  MF geometry (shipped) nor the historical footprint gain in its own P/base18 regime. Arms
+  B/D/E/seed-123 left uncompleted (kill #1 is a dispositive absolute-threshold fail). Caches at
+  `scratchpad/negspace_audit/` (oof_footprint_244k_85.npy, mf_pass3_scores_seed*.npz,
+  p3_refit_footprint_mf.json) preserved for optional post-competition analysis.
+- **Slate-restricted negative sampling for LINE/BPR is worse than global sampling
+  (round-18A audit).** Drawing embedding-training negatives from the model-ranked
+  bottom 95/97 of each src's own `test.csv` candidate slate — proposed as a way to
+  avoid "nodes not yet meaningfully predicted" — was simulated on 20,000
+  production-matched post-cut queries per dataset (100,000 draws per arm, all arms
+  applying the live pre-cut known-positive rejection). It makes the stated problem
+  worse: the false-negative rate (a sampled negative that is a genuine future
+  partner of that src) is 0.000200 for the incumbent global-uniform sampler versus
+  0.000720 for bottom-95 on dataset1 (**3.6x worse**; dataset2 0.003090 -> 0.004640),
+  and model-top-10 contamination goes 0.00019 -> 0.00727 (**38x worse**). The
+  shuffled-slate null (1.30x) sits *closer* to the incumbent than the treatment, so
+  the harm is the slate restriction itself. What the arm actually does is shift the
+  negative distribution toward popular/warm nodes (dataset2 mean log-degree
+  0.89 -> 3.89, warm rate 35% -> 95%) — the existing `NEG_DIST=pop075` axis. And the
+  one place that axis has a real target (BPR's degree^0.75 negatives are genuine
+  future partners 2.96% of the time on dataset2) cannot be fixed by moving toward
+  purity, because uniform negatives were already measured at -0.0009 versus
+  degree^0.75: in this pipeline negative *hardness* beats negative *purity*.
+- **Virtual-edge feedback for BPR is a missing code path, not a lever (round-18A
+  audit).** Confirmed at source that `train_bpr.py` never reads `virtual_edges.csv`
+  (only `ensemble_predict.run_predict` does, and neither production ranker does —
+  both pass an empty virtual set). Adopting it would make ~17.9% of BPR's positive
+  mass synthetic, drawn from 2,080 srcs (16.4% coverage) whose destinations average
+  train degree 533 against a global warm mean of 43.7 — **12.2x popularity-skewed** —
+  which works directly against the degree^0.75 negative debiasing that is the whole
+  documented value of the BPR term. dataset1 has no `virtual_edges.csv` at all. The
+  requested on/off switch already exists (`VIRT_MODE=normal|freeze|off`) and produced
+  the no-op verdict. Incidental: the `BACK_FILL_THRESHOLD=0.97` gate is degenerate —
+  `prob = raw/row_max` when `row_max > 5`, so the top-1 always scores exactly 1.0 and
+  is always promoted, otherwise nothing is; it is a binary row filter, not a
+  confidence filter.
+- **dataset1 temporal decay is dead in every aggregation operator (round-18A
+  audit).** Production aggregates by raw count everywhere (`build_base_cache` =
+  `groupby.size`, `build_cooc` = binary incidence, `count_in_history` = counts,
+  item-CF = unweighted mean). Four insertion points were probed under a strict global
+  timestamp cut with two nulls: (A) a direct recency score +0.00384, (B) decayed
+  source-history counts +0.00468 at tau = 0.20 of span, (C) recency-weighted item-CF
+  neighbour aggregation +0.00106, (D) a recency-weighted co-occurrence dictionary
+  +0.00394. But B's within-src **time-shuffle null** already reads +0.00352 and its
+  count-matched null +0.00188, so the mechanism-specific increment is only **+0.00116
+  — 75% of the apparent gain is a null artifact** (the decay weights break count ties,
+  they do not encode recency). And every positive lands on the repeat block (already
+  MRR 0.930, worth ~0 online); on the **non-repeat** block — dataset1's entire
+  remaining headroom — B is exactly 0.0000 by construction and C/D are **negative**
+  (-0.0017, -0.0071). Git recovery also corrects the record: commit `3e04382` (reverted
+  in `ab55de6`, online 0.803 -> 0.7905) already *was* decay inside the aggregation
+  (`decayed_count_in_history`, half-life 1% of span), not merely an appended recency
+  column — though that submission was confounded (it bundled `COOC_GAMMA` 1 -> 5 and
+  `RPOP_TIME_QUANTILE` 0.98 -> 0.8), so the online number never adjudicated the decay.
+  The correct protocol now does, and agrees with it.
+- **dataset1 directed three-hop evidence is redundant with the co-occurrence term
+  (round-18A audit).** The premise that dataset1 lacks a two-hop relation in the
+  relevant direction is factually wrong: mean |A^2(src)| = 118.1, non-empty for 86.0%
+  of srcs, truth coverage 59.2% (A^3: 920.5 / 74.8%). (dataset2 is strictly bipartite —
+  src ∩ dst = 0, 0% reciprocal — so A^2 and A^3 are identically empty there.) Moreover
+  `cooc_scores` is *already* a three-step walk, `A A^T A` (F-B-F); the proposal is the
+  F-F-F walk `A^3`, which correlates **0.871** with it and beats it by only +0.015
+  standalone. The genuinely new part — candidates reachable at three hops but not at
+  one or two — has 3.99x truth coverage on non-repeat rows but beats its
+  degree-stratified null by only **+0.0029**, because the indicator fires on ~4.4 of
+  the 100 candidates. Worth two ranker columns bundled into an existing refit, not a
+  path-propagation model; note `A^3` also has to be recomputed at serve time, which is
+  a B-board scalability wart.
+- **Tail-1 validation inflates recency-family marginals 2.4-9.3x (round-18A audit,
+  protocol note not a closure).** Scoring identical fixed variants on identical
+  production-matched slates under per-src tail-1 versus a strict global timestamp cut:
+  a decayed-history variant reads +0.01589 under tail-1 and +0.00171 under the cut
+  (**9.3x**), a direct recency score +0.01986 vs +0.00384 (**5.2x**), worst at the
+  shortest half-life — which is exactly the half-life the reverted commit shipped. This
+  confirms an external critique of the protocol, but the exposure is narrow: every
+  load-bearing gate is already cut-based (the footprint gate asset `hzeval_ds2.npz` was
+  verified to be 60,000 queries, 100% post-cut, truth pinned at column 99). Tail-1
+  remains barred as a shipping gate, and is specifically disqualified for anything
+  recency-flavoured.
+- **Correcting the dataset2 LINE serve-time block geometry is a huge standalone win
+  and a small production LOSS (round-18C / G1).** The exported embedding is
+  `cat([emb_first, emb_node])` and every consumer takes a cosine over it, but LINE only
+  ever trains `emb_node · emb_ctx` and `emb_ctx` is discarded at export — so the served
+  `emb_node · emb_node` term is a quantity the objective never optimised. On a standalone
+  item-CF readout the defect is enormous: raw 0.208141, first-block-only **0.426181**,
+  block-normalised beta=0.25 0.434257. The mechanism was isolated cleanly by two controls:
+  permuting the real node vectors across destinations gives **no** gain (-0.019, because
+  they share a common direction so the spurious inner product survives) while replacing
+  them with isotropic norm-matched noise recovers **+0.212**, and duplicating the raw
+  embedding to 800-d is an exact cosine identity (0.000000). Yet on the full 244,056-query
+  shipped chain (18 features -> 3 passes -> MF basket geometry -> production CRF; splice
+  faithfulness 1.19e-06) removing the block scores **pass-3 -0.001165, post-CRF -0.001110**,
+  negative on in-pool (-0.001011), appended (-0.001128), has-sibling (-0.000805), the
+  highest cold-ratio quartile (-0.000578) and worst on the rows the MF geometry had already
+  repaired (-0.002011). The 18-column LambdaRank had already absorbed the defect: what is
+  noise for a fixed cosine readout is usable conditioning for a learned ranker, since the
+  spurious term tracks warmth/popularity alongside `seen` / `dst_pop_log` / `cfreq`. Serve
+  the concatenation as-is; the alpha axis is dead for the same reason.
+- **dataset1 explicit reverse-edge (candidate -> source) features are ~97.6% absorbed
+  (round-18C / G2).** dataset1 is directed with 63.3% reciprocity and the 21-column ranker
+  encodes only the source's OUT-history, so `rev_ind` + `log1p(rev_cnt)` looked like a
+  guaranteed gap: truth carries a reverse edge 46.7% of the time against a 0.25% candidate
+  base rate (184x; 29.7x on non-repeat, 201x out-history-exclusive). On the 142,483-query
+  2-fold source-disjoint OOF the incremental marginal is **+0.000372** (both seeds, against
+  a +0.004 gate), non-repeat **+0.002538** (gate +0.008), and a source-activity x
+  candidate-popularity matched null reaches **+0.000374 = 100.4% of the treatment gain**;
+  17,786 rows repaired vs 17,959 damaged. Deleting the five direction-blind embedding
+  columns shows exactly where it went: the same two features are then worth **+0.015743**
+  overall and **+0.034353** on non-repeat, so LINE/BPR/cooc/collab already carry the signal
+  (`rev_log` correlates 0.594 with `hcnt`, 0.518 with `f_cooc`, 0.439 with `f_bpr`), and the
+  baseline already ranks truth first on 87.8% of reverse-edge rows vs 56.6% overall. The
+  effect is real and large only on the 4,882-query reverse-only slice (+0.0527), which is
+  3.4% of queries. Reverse-edge recency and directed A-cubed columns are closed with it, and
+  a deterministic promotion rule fails at 51.1% precision against a 95% requirement.
 - **The pass-3 sibling-consistency pair decider is beaten by its own shuffle
   null (round-15 audit).** Reframing the estimand from "is base top-1 wrong?"
   (row-level, ~51% precision, long dead) to "for concrete candidates A,B which
@@ -430,12 +557,31 @@ resume).
   residual added before the shared CRF (`footprint_ab_probe.py`); ds2 isolated
   MRR **0.6664472907** (ds1 still the 0.86000 blend). Offline hzeval gate
   +0.008116. Reproduction chain: `outputs/dataset2-footprint/README.md`.
-- 2026-07-27: **1.5284127** (current best) — dataset1 learned **LambdaRank
+- 2026-07-27: **1.5284127** — dataset1 learned **LambdaRank
   ranker** (`ranker_ds1.py`) replaces the hand-tuned linear blend: cut-split
   replay beats the production blend +0.0187 offline, ships +0.00205 online
   (ds1 0.86000 -> 0.862047), paired with the footprint ds2. The offline->online
   fold was ~9x because 99.4% of the gain is on non-repeat queries while the
   leaderboard ds1 number is repeat-dominated.
+- 2026-07-28: **1.540916537029636** (current best, **RANK #3**) — **MF-smoothed
+  basket geometry** shipped in the full main pack (`submission_mf_full_main.zip`,
+  sha256 60341616…): the ds2 basket pass-2/3 sibling-MESSAGE geometry swaps the
+  hand-built `item_profiles` for a d128 SVD of split0 src×dst. Aux A/B isolated the
+  single-variable ds2 effect at **+0.0145518** online (control 0.71669 → treatment
+  0.73124); the full pack keeps the ds1-ranker dataset1 byte-identical and swaps ds2
+  to the MF treatment (dropping the footprint residual, which no longer helps on the
+  stronger MF base — see Closed axes). Leaderboard when shipped: #1 1.5503 / #2 1.5478.
+  MF geometry is NOT yet ported into `src/` (served from gitignored scratchpad).
+- 2026-07-28 (no submission): **round 18 closed, still 1.540916537029636 / #3.** An
+  external collaborator's eight suggestions were audited at source (round 18A): six closed
+  outright, two reopened as G1 (ds2 LINE serve-time block geometry) and G2 (ds1 reverse-edge
+  evidence). An independent review ordered G1 first, G2 second, in parallel on isolated CPU.
+  **Both were then killed on their own pre-registered full-production gates** — see the two
+  round-18C cards under Closed axes. No pack was built and the shipped artifact is untouched.
+  Leaderboard snapshot at close: **#1 1.5613 / #2 1.5588 / #3 ours 1.540916537029636**, so the
+  gap widened from −0.0094/−0.0069 to **−0.0204/−0.0179**. Nothing in `src/` changed: the G1
+  `EMB_BLOCK_MODE` diagnostic was reverted after the verdict and preserved as
+  `scratchpad/round18c/g1_emb_block_mode.patch`.
 
 **Logging convention.** Every submission milestone is recorded above; every
 tested-and-refuted card is recorded under **Closed axes** / **Refuted
