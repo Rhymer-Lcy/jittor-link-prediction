@@ -14,7 +14,7 @@ Modes
   score  append an observed leaderboard score to a manifest, closing the delta
   verify re-validate any ZIP this tool produced
 
-Graduated 2026-07-29 from ``scratchpad/round22_opus/harness/scripts/package_component.py``
+Graduated 2026-07-29 from ``scratchpad/round-22-opus/harness/scripts/package_component.py``
 (source sha256 7794237611f5587a34d6718be423855672039e4c0a31ad6ec8343fd20c02c49d),
 which was verified there by 35 self-tests and three dry runs. Behaviour is
 preserved; the changes are that the accepted-state constants now come from
