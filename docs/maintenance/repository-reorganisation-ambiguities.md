@@ -16,8 +16,13 @@ So the accepted `dataset2.csv` (sha256 `dc6928c2...`) is currently reproducible 
 artifact, not from a clean checkout.
 
 **Risk:** if the dataset2 member ever has to be rebuilt — a B-board rerun, a data refresh — this
-path is unverified. **Recommended follow-up:** one end-to-end dataset2 rebuild, comparing the
-result against the accepted member hash, before any deadline that depends on it.
+path is unverified.
+
+**DEFERRED to post-competition by decision 2026-07-29.** The full-chain rebuild is a multi-hour
+job and is explicitly NOT a pre-deadline blocker: the accepted dataset2 member is frozen and valid
+on four independent grounds — its accepted online component score, its use in the accepted main
+pack, its member SHA256, and byte-level verification against the accepted archive. The rebuild is
+a post-competition maintenance task; run it then and compare against the member hash.
 
 Note also that `ds2_basket_featurizer.py` is the verbatim body of a **closed** bagging pilot. Only
 its featurizer helpers (`build_or_load_features`, `build_features`, `item_profiles`,
@@ -39,7 +44,9 @@ hard-coded path, re-run `python src/build_ds1_member.py --verify`, and only then
 ## A3 — 38 directories (6.36 GB) await a human deletion pass (MEDIUM)
 
 `outputs/deletion_candidates.json` lists seed and parameter replicas that no tracked source
-references. **Nothing was deleted.**
+references. **Nothing was deleted, and nothing will be before the competition deadline** (decision
+2026-07-29). `outputs/deletion_candidates.json` is the review queue, not an approved batch; no
+output-family deletion happens until after the deadline.
 
 An earlier draft of the classifier flagged *every* `-s<digits>` directory as redundant, which
 would have proposed deleting the shipped multi-seed ensemble members. It was corrected by

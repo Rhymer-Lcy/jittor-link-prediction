@@ -124,6 +124,28 @@ surviving copies** — the canonical `outputs/dataset2-footprint/footprint_ab_pr
 no longer exists — so they are evidence, not duplicates, and are now at
 `scratchpad/footprint-ab/probes/`.
 
+## Record-keeping policy (locked 2026-07-29)
+
+> **Historical records are immutable evidence. Canonical indexes provide present-day resolution.**
+
+A report or manifest written during a round records the execution environment **as it was at that
+time** — including directory names and absolute paths that no longer exist. Those files are never
+rewritten to match a later naming scheme: doing so would make the record disagree with what was
+actually executed, and the record is the only evidence that the run happened as described.
+
+Resolution from an old path to a present one is the job of the indexes, not of edits:
+
+| layer | mutable? | role |
+|---|---|---|
+| historical report / manifest inside a run | **no** | evidence of what was executed |
+| `scratchpad/migration/legacy-name-map.csv`, `docs_local/migration/legacy-name-map.csv` | append-only | old path → new path |
+| `scratchpad/index.json`, `docs_local/agent_runs_index.json` | regenerated | present-day logical view |
+| graduated production copy under `src/` or `tools/` | **yes** | path handling corrected, source SHA256 recorded |
+
+Only the last row is edited during a graduation, and each graduated file records the SHA256 of the
+scratchpad original it came from, so the corrected copy can always be diffed against the immutable
+one.
+
 ## What was deliberately not done
 
 - **`outputs/` was not restructured** — hard-coded paths make a move a reproducibility risk (A2).
