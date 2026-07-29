@@ -11,24 +11,40 @@ Submission workflow (per teammate): run locally, submit the generated answer
 file (2–10 submissions/day depending on the day); the Jittor version of the
 code must be open-sourced at the end of the competition.
 
+### Documentation
+
+Full docs live in [`docs/`](docs/); the accepted state is defined machine-readably in
+[`configs/production.json`](configs/production.json).
+Start with [docs/CURRENT_PRODUCTION.md](docs/CURRENT_PRODUCTION.md) (what is live and how to
+reproduce it), [docs/STRATEGY_REGISTRY.md](docs/STRATEGY_REGISTRY.md) (every strategy and its
+lifecycle status) and [docs/SUBMISSION_PROTOCOL.md](docs/SUBMISSION_PROTOCOL.md).
+
 ### Submission mechanics (measured 2026-07-29, not assumed)
 
-- **The total is strictly additive: `total = ds1_MRR + ds2_MRR`.** Verified to 16 digits:
-  `0.8619654323294592 + 0.6789511047001768 = 1.540916537029636`.
+- **The total is strictly additive: `total = ds1_MRR + ds2_MRR`.** Verified to 16 digits twice:
+  `0.8619654323294592 + 0.6789511047001768 = 1.540916537029636` and
+  `0.8963013747474597 + 0.6789511047001768 = 1.5752524794476365`.
 - **A ZIP may contain a single dataset CSV, and the platform scores it directly.** This is the
   default protocol for isolated experiments — no zero-filled placeholder needed, smaller archive,
-  exact attribution. Frozen component baselines: **dataset1 0.8882916779365962**,
+  exact attribution. Frozen component baselines: **dataset1 0.8963013747474597**,
   **dataset2 0.6789511047001768**; a new component's combined total is the sum.
 - **A dataset missing from the ZIP scores 0 — it is NOT carried over from a previous upload.**
   So a single-CSV upload can never reach the combined total; the main account needs one archive
   containing both members. (An all-zero placeholder instead contributes exactly
   `0.0517217279290374`, the 100-way tie baseline ≈ H(100)/100.)
-- **Archive-size cliff between ~64.0 MB and ~65.36 MB.** `submission_r2_main.zip` (65,363,753 B,
-  deflate level 6) failed repeatedly with an empty `Submission failed:` message; the identical
-  CSV members repacked at deflate level 9 (`submission_r2_main_d9.zip`, 64,004,492 B) were
-  accepted and scored normally. Target **≤ ~63.9 MB**, use **standard deflate method 8, level 9**,
-  and do **not** use BZIP2/LZMA unless the platform is verified to support them. A generic
-  "Submission failed" can be an archive-ingestion failure, not invalid prediction content.
+- Pack with **standard deflate method 8, level 9**, and do **not** use BZIP2/LZMA unless the
+  platform is verified to support them. Treat CSV members as opaque bytes — the two accepted
+  members do not even share a line ending (`dataset1.csv` CRLF, `dataset2.csv` LF).
+- **There is no established archive-size cliff — the earlier claim of one is REFUTED.**
+  `submission_r2_main.zip` (65,363,753 B, deflate 6) failed twice with an empty
+  `Submission failed:` message and the identical members repacked at deflate 9 (64,004,492 B) were
+  accepted, which looked like a size limit. But `submission_mf_full_main.zip` (**65,437,854 B**,
+  hash-verified `60341616…`) had already been **accepted**, as had a 67,510,742 B pack. The
+  accepted archive is 74,101 bytes *larger* than the rejected one, so size cannot be the
+  discriminator and **the 2026-07-29 rejection remains unexplained**. Deflate-9 is kept because
+  smaller is strictly safer, not because a limit was measured. A generic "Submission failed" is
+  still not evidence about prediction content — verify, repack, retry, and vary one variable at a
+  time.
 
 ## Layout
 
@@ -52,10 +68,28 @@ jittor-link-prediction/
 │   ├── footprint_ab_probe.py   # dataset2 footprint paired-residual channel: gate -> residual -> CRF -> pack
 │   ├── validate_footprint_packs.py # read-only A/B footprint pack validator
 │   ├── crf_promote.py       # dataset2 row-order postprocessor: equality-CRF + triple/pair + zero-repeat/same-time exclusions
-│   └── triple_promote.py    # standalone triple hard rule (superseded by crf_promote for the full chain)
+│   ├── triple_promote.py    # standalone triple hard rule (superseded by crf_promote for the full chain)
+│   ├── ds2_mf_basket_pack.py    # dataset2 MF basket geometry (d128 SVD sibling-message space)
+│   ├── ds2_basket_featurizer.py # featurizer the MF pack builder reuses
+│   ├── build_ds1_member.py  # rebuild + hash-verify the accepted dataset1 member
+│   └── strategies/          # frozen, online-adjudicated deployment rules
+│       ├── registry.py      #   lifecycle vocabulary + the ordered active chain
+│       ├── shared/frozen_ops.py
+│       └── ds1/{source_slate_recurrence.py, test_graph_reciprocity.py}
+├── tools/submission/      # component validation + submission packaging CLI
+├── tests/                 # unit + integration (data-dependent tests skip cleanly)
+├── configs/production.json # the accepted state: scores, hashes, chain, commands
+├── docs/                  # documentation (see docs/README.md)
 ├── outputs/               # run artifacts (git-ignored): checkpoints / embeddings / submissions
 ├── requirements.txt
 └── README.md
+```
+
+The dataset1 chain is reproducible and hash-verified from a clean checkout:
+
+```bash
+python src/build_ds1_member.py --verify     # regenerates the accepted dataset1.csv byte for byte
+python -m unittest discover -s tests -t .   # 55 tests
 ```
 
 ## Setup and run
@@ -719,6 +753,29 @@ resume).
   **#1 1.5818 / #2 ours 1.567242782636773 / #3 1.5588**, gap to #1 ≈ **0.01456**.
   **This is the first offline→online agreement in the recent record** — but it was adjudicated
   online before shipping, which is what made the direction safe either way.
+
+- 2026-07-29 (later): **1.5752524794476366** (current best) — **dataset1 rank-2 test-graph
+  reciprocity (RGR)**, a second deterministic ds1 postprocessor stacked on top of R2. The physical
+  test batch defines a directed exposure graph `A(u,c)=1` iff candidate `c` appears in a test slate
+  of source `u`; with `c1`/`c2` the stable score ranks 1 and 2, act iff both are non-historical,
+  `A(c2,source)=1` and `A(c1,source)=0`, then promote `c2` to strict top-1. Acts on
+  **1,365 / 61,051 rows (2.24%)**, one strict pair inversion each. Offline replay +0.0026108 over
+  142,483 queries; isolated auxiliary read **0.8963013747474597** vs the frozen 0.8882916779365962
+  baseline, **delta +0.0080096968108635** against a locked +0.0010 gate — **4.3× the naive
+  per-action transfer projection**, the same direction of surprise as R2 (5×). Components:
+  ds1 **0.8963013747474597** + ds2 **0.6789511047001768** = **1.5752524794476365**. Shipped as
+  `outputs/submissions/round22_main/r22_rgr_main_d9.zip` (sha256 `6b9f0cd9…d9dae7`, 63,984,734 B),
+  the only change from the previous pack being dataset1. Origin: Codex round 22; executed in
+  `scratchpad/round22_opus/rgr/`. Leaderboard at close: **#1 1.5885 / #2 1.5818 / #3 ours** — the
+  board moved up while we did. Codex ranks 2–3 (SPC, SRC) were held; Fable round 22F returned
+  **NO CANDIDATE**.
+- 2026-07-29 (consolidation, no submission): both shipped ds1 postprocessors and the ds2 MF
+  pipeline were **graduated into tracked source**, so a clean checkout now carries the mechanisms
+  that hold the score; `src/build_ds1_member.py --verify` reproduces the accepted `dataset1.csv`
+  **byte for byte**. The strategy lifecycle was reconstructed into `docs/strategy_inventory.json`
+  (53 strategies: 14 shipped-active, 6 superseded, 1 standby, 3 probe, 29 closed). The pass also
+  **refuted the archive-size cliff** recorded above. Details in
+  `docs/maintenance/repository-reorganisation.md`.
 
 **Logging convention.** Every submission milestone is recorded above; every
 tested-and-refuted card is recorded under **Closed axes** / **Refuted
