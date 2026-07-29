@@ -31,10 +31,10 @@ Outputs (all under outputs/dataset2-footprint/ and therefore gitignored):
 
 Examples:
 
-    D:/Anaconda3/envs/jittor/python.exe src/footprint_ab_probe.py \
+    python src/footprint_ab_probe.py \
         --gate-only
 
-    D:/Anaconda3/envs/jittor/python.exe src/footprint_ab_probe.py \
+    python src/footprint_ab_probe.py \
         --full
 """
 
@@ -1381,7 +1381,7 @@ def ensure_pack_a() -> dict:
     if not PACK_A.is_file():
         shutil.copy2(KNOWN_A, PACK_A)
     if file_md5(PACK_A) != KNOWN_A_ZIP_MD5:
-        raise AssertionError("docs_local pack A is not byte-identical")
+        raise AssertionError("reference pack A is not byte-identical")
     return {
         "path": str(PACK_A),
         "rows": int(payload.count(b"\n")),

@@ -22,7 +22,7 @@ Protocol (train-cut / infer-full, identical to the ds2 ranker):
 Output: outputs/dataset1-ensemble/result_ranker.csv  (one row per test query,
 100 rownormed scores, %.6f -- same format as result_ensemble.csv).
 
-Run: DATASET=dataset1 D:/Anaconda3/envs/jittor/python.exe src/ranker_ds1.py
+Run: DATASET=dataset1 python src/ranker_ds1.py
 """
 import os
 import time

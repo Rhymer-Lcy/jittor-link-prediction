@@ -46,7 +46,7 @@ tail (244k). Only the RELATIVE arm deltas are load-bearing, and all arms share
 one protocol, so the comparison is exact.
 
 Run (fast pilot):
-  DATASET=dataset2 D:/Anaconda3/envs/jittor/python.exe \
+  DATASET=dataset2 python \
       src/ds2_basket_featurizer.py --members 4 --pass1-only
 """
 import argparse
