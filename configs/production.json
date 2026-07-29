@@ -1,0 +1,148 @@
+{
+  "production_status": "ACCEPTED",
+  "accepted_total_score": 1.5752524794476366,
+  "accepted_total_score_exact_decimal": "1.5752524794476365",
+  "score_model": "total = dataset1_MRR + dataset2_MRR (strictly additive, verified to 16 digits)",
+  "accepted_archive": {
+    "path": "outputs/submissions/round22_main/r22_rgr_main_d9.zip",
+    "sha256": "6b9f0cd928c49ec2b6f48554c5d3ef2cfae6dbc34650dd17f19c03105dd9dae7",
+    "bytes": 63984734,
+    "compress_method": 8,
+    "compress_method_name": "standard deflate",
+    "compress_level": 9,
+    "member_order": ["dataset1.csv", "dataset2.csv"],
+    "directory_entries": 0,
+    "archive_comment": "",
+    "accepted_utc": "2026-07-29"
+  },
+  "leaderboard_snapshot": {
+    "captured_utc": "2026-07-29",
+    "rank_1": 1.5885,
+    "rank_2": 1.5818,
+    "ours": 1.5752524794476366,
+    "our_visible_rank": 3,
+    "gap_to_rank_1": 0.0132475205523634,
+    "gap_to_rank_2": 0.0065475205523634
+  },
+  "immutable_inputs": {
+    "data/data_A/dataset1/train.csv": "b679e4fe458d16c22c1cb12c52b013a8363c2191e25d913b3c763e8376bfc53e",
+    "data/data_A/dataset1/test.csv": "399b48c09bd380c5552ee8c4286fdf5144484ca7860bc1afeadeacecadce7b5c",
+    "data/data_A/dataset2/train.csv": "da50210bbd0581de89971d907eb7ca590a4fc0364b41ee50730ae2a13d8de4a0",
+    "data/data_A/dataset2/test.csv": "389e330d6a21317cc1a0a013c878850c2324e916b2392901b3c039384e201372"
+  },
+  "dataset1": {
+    "component_score": 0.8963013747474597,
+    "component_score_measured": "isolated single-member auxiliary submission, 2026-07-29",
+    "member_sha256": "baa0dc21e1f4b93e579b4c895a8a44da2064b6f3cbbc3d2d1be18314e1125987",
+    "member_bytes": 55006951,
+    "shape": [61051, 100],
+    "line_ending": "CRLF",
+    "float_format": "%.6f",
+    "chain_input": {
+      "path": "outputs/dataset1-ensemble/result_ranker.csv",
+      "sha256": "cb4964ea21dcefdecb2a34f13ca8500adcc54120684f10052f78a87df88da16b",
+      "produced_by": "src/ranker_ds1.py",
+      "component_score_at_this_stage": 0.8619654323294592
+    },
+    "strategy_chain": [
+      {
+        "order": 0,
+        "strategy_id": "ds1_lambdarank_ranker",
+        "implementation": "src/ranker_ds1.py",
+        "role": "base score matrix (cut-split LambdaRank, train-cut / infer-full)",
+        "upstream": ["src/train_line.py", "src/train_bpr.py", "src/ensemble_predict.py"]
+      },
+      {
+        "order": 1,
+        "strategy_id": "source_slate_recurrence",
+        "implementation": "src/strategies/ds1/source_slate_recurrence.py",
+        "actions": 3653,
+        "top1_changes": 3653,
+        "action_coverage": 0.0598,
+        "online_delta": 0.0263262456071370,
+        "config": {"minimum_other_slates": 2, "uniqueness_required": true}
+      },
+      {
+        "order": 2,
+        "strategy_id": "test_graph_reciprocity",
+        "implementation": "src/strategies/ds1/test_graph_reciprocity.py",
+        "actions": 1365,
+        "top1_changes": 1365,
+        "action_coverage": 0.0224,
+        "online_delta": 0.0080096968108635,
+        "config": {"rank_depth": 2, "reverse_edge": "existence only, not counts"},
+        "anchors": {"directed_graph_edges": 5918104, "reverse_positive_cells": 105290}
+      }
+    ],
+    "chain_is_order_sensitive": true,
+    "build_command": "python src/build_ds1_member.py --verify",
+    "verify_command": "python tools/submission/package_component.py verify --zip outputs/submissions/round22_main/r22_rgr_main_d9.zip"
+  },
+  "dataset2": {
+    "component_score": 0.6789511047001768,
+    "component_score_measured": "isolated single-member auxiliary submission, 2026-07-29",
+    "member_sha256": "dc6928c266190c5bab97ec4426bc647b526f8717dc589d6381cb60b1dee18a99",
+    "member_bytes": 138078000,
+    "shape": [153420, 100],
+    "line_ending": "LF",
+    "float_format": "%.6f",
+    "unchanged_since": "2026-07-28 (shipped in submission_mf_full_main.zip at total 1.540916537029636)",
+    "strategy_chain": [
+      {
+        "order": 0,
+        "strategy_id": "ds2_basket_lambdarank",
+        "implementation": "src/ranker_basket_ds2.py",
+        "role": "18-feature LambdaRank + 3-pass basket feedback",
+        "upstream": ["src/train_line.py", "src/train_bpr.py", "src/ensemble_predict.py"]
+      },
+      {
+        "order": 1,
+        "strategy_id": "mf_basket_geometry",
+        "implementation": "src/ds2_mf_basket_pack.py",
+        "role": "pass-2/3 sibling-message geometry: d128 SVD of the split0 src x dst matrix, replacing the hand-built item_profiles",
+        "config": {"rank": 128, "unit_norm": true, "mf_frozen": "split0 for train, full train for serve"},
+        "online_delta": 0.0145518,
+        "reproduction_status": "ported verbatim from scratchpad; NOT re-executed during the 2026-07-29 consolidation"
+      },
+      {
+        "order": 2,
+        "strategy_id": "structural_row_order_crf",
+        "implementation": "src/crf_promote.py",
+        "role": "equality CRF over same-time adjacency chains plus the structural invariant rules",
+        "config": {
+          "tau": 0.20,
+          "B": 70,
+          "triple_rule": true,
+          "pair_rule": false,
+          "zero_repeat_exclusion": true,
+          "demote_duplicates": true,
+          "same_time_structural_exclusion": true
+        },
+        "flags": "--zr-exclude --demote-dups --st-exclude --no-pair"
+      }
+    ],
+    "build_command": "see docs/CURRENT_PRODUCTION.md -- dataset2 is rebuilt from src/ds2_mf_basket_pack.py then src/crf_promote.py",
+    "reproduction_risk": "HIGH: the dataset2 member has not been rebuilt end-to-end since 2026-07-28; see docs/maintenance/repository_reorganisation_ambiguities.md"
+  },
+  "archive_policy": {
+    "compress_method": 8,
+    "compress_level": 9,
+    "member_names": ["dataset1.csv", "dataset2.csv"],
+    "single_member_auxiliary_allowed": true,
+    "missing_dataset_scores_zero": true,
+    "size_thresholds": {
+      "target_bytes": 63900000,
+      "warn_above_bytes": 63900000,
+      "review_at_or_above_bytes": 65000000
+    },
+    "size_thresholds_are_conservative_practice_not_a_measured_limit": true,
+    "largest_accepted_archive_bytes": 67510742,
+    "note": "See docs/SUBMISSION_PROTOCOL.md. An archive-size cliff was hypothesised on 2026-07-29 and is REFUTED by accepted archives at 65,437,854 and 67,510,742 bytes. Deflate-9 is retained because smaller is strictly safer, not because a limit was measured."
+  },
+  "provenance": {
+    "consolidated_utc": "2026-07-29",
+    "strategy_inventory": "docs/strategy_inventory.json",
+    "registry": "src/strategies/registry.py",
+    "round_history": ["docs/rounds/round-21.md", "docs/rounds/round-22.md"]
+  }
+}
