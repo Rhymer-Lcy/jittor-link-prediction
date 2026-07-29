@@ -30,8 +30,8 @@ no branch or worktree changed, nothing was pushed, and no uncertain artifact was
 
 | new file | source |
 |---|---|
-| `src/strategies/ds1/source_slate_recurrence.py` | frozen R2 rule, `scratchpad/round21_opus/r2/` |
-| `src/strategies/ds1/test_graph_reciprocity.py` | frozen RGR rule, `scratchpad/round22_opus/rgr/` |
+| `src/strategies/ds1/source_slate_recurrence.py` | frozen R2 rule, `scratchpad/round-21a-opus/r2/` |
+| `src/strategies/ds1/test_graph_reciprocity.py` | frozen RGR rule, `scratchpad/round-22-opus/rgr/` |
 | `src/strategies/shared/frozen_ops.py` | shared frozen primitives |
 | `src/strategies/registry.py` | lifecycle vocabulary + the ordered active chain |
 | `src/build_ds1_member.py` | reproduction CLI with `--verify` |
@@ -56,7 +56,7 @@ the accepted bytes now reproduce on any platform rather than only on Windows.
 
 | new file | source | change |
 |---|---|---|
-| `src/ds2_mf_basket_pack.py` | `scratchpad/negspace_audit/build_mf_aux_pack.py` (`d9c6204b...`) | `REPO` from `__file__` instead of a hard-coded `F:\` path; dependency import renamed |
+| `src/ds2_mf_basket_pack.py` | `scratchpad/round-16-opus/build_mf_aux_pack.py` (`d9c6204b...`) | `REPO` from `__file__` instead of a hard-coded `F:\` path; dependency import renamed |
 | `src/ds2_basket_featurizer.py` | `scratchpad/archive/ds2_closed_veins/bagging_ensemble_ds2.py` (`bc6f7fd8...`) | one stale docstring path |
 
 Verified by diff: nothing else differs. **Not re-executed** — see ambiguity A1.
@@ -64,7 +64,7 @@ Verified by diff: nothing else differs. **Not re-executed** — see ambiguity A1
 ### Reusable tooling
 
 `tools/submission/package_component.py`, graduated from
-`scratchpad/round22_opus/harness/scripts/package_component.py` (`77942376...`) where it had 35
+`scratchpad/round-22-opus/harness/scripts/package_component.py` (`77942376...`) where it had 35
 self-tests and three dry runs. All five modes, every check and the manifest schema are preserved.
 Two changes: the accepted-state constants are now read from `configs/production.json` instead of
 being hard-coded, and the archive-size messages were corrected (see below).
@@ -101,14 +101,38 @@ unexplained. Deflate-9 is retained as conservative practice; the thresholds are 
 practice, not as a measured limit, everywhere they appear. A regression test
 (`test_policy_knows_a_larger_archive_was_accepted`) fails if the refuted claim is reintroduced.
 
+## Local trees renamed to one run-identifier scheme
+
+A follow-up pass on the same day unified the two ignored trees on a single identifier,
+`round-<NN>[<sub-round>]-<agent>` (see [naming-standard.md](../naming-standard.md)).
+
+**`scratchpad/`** — 14 run directories renamed (`round21_opus` → `round-21a-opus`,
+`negspace_audit` → `round-16-opus`, `phase2_build` → `round-17-opus`, …). Every run stayed a
+**direct child of `scratchpad/`**, so the path depth is unchanged and every script that resolves
+the repository root with `parents[3]` / `parents[4]` still resolves correctly — verified
+explicitly after the move. Map: `scratchpad/migration/legacy-name-map.csv`.
+
+**`docs_local/`** — `advisory/` was dissolved into `agent_runs/<run id>/` with canonical
+`prompt.md` / `response.md` / `index.json`; 39 files moved. Content was re-read to classify each
+file rather than trusting its name, and each document's own heading (for example `ROUND 22F`) is
+preserved verbatim as `document_label` in the index. Map:
+`docs_local/migration/legacy-name-map.csv`.
+
+Two artifact classes left `docs_local/` for `scratchpad/`, where the taxonomy puts them: the two
+formal reports and the four footprint metrics JSONs. Those JSONs turned out to be the **only
+surviving copies** — the canonical `outputs/dataset2-footprint/footprint_ab_probe_metrics.json`
+no longer exists — so they are evidence, not duplicates, and are now at
+`scratchpad/footprint-ab/probes/`.
+
 ## What was deliberately not done
 
 - **`outputs/` was not restructured** — hard-coded paths make a move a reproducibility risk (A2).
 - **Nothing under `outputs/` was deleted** — no debris was found; 38 replica directories
   (6.36 GB) are listed for a human Stage-2 pass (A3).
-- **`scratchpad/` runs were not physically moved** — scripts resolve the repo root by path depth,
-  which is exactly what broke twice during round migrations (A7).
-- **`docs_local/` was indexed in place, not restructured** (A6).
+- **Run directories were renamed but not re-nested** — nesting as `round-NN/<agent>/` would add a
+  path component and break the depth-based repository-root resolution (A7).
+- **Historical manifests inside runs still record their old absolute paths** — they are records of
+  what was done at the time; the legacy-name maps resolve them (A7).
 - **dataset2 was not rebuilt** to verify the graduated pipeline (A1).
 
 ## Verification performed

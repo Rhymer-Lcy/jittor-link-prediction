@@ -67,28 +67,40 @@ a single-member upload on the *main* account would collapse the standing to one 
 score. Until this is settled, single-member ZIPs go to the auxiliary account only. This has been
 open since Round 21 and is cheap to resolve by asking the organisers.
 
-## A6 — docs_local classification confidence (LOW)
+## A6 — docs_local round labels are historically inconsistent (LOW)
 
-`docs_local/advisory/` holds 39 files whose names follow `roundNN_<agent>_brief.md`. Content
-inspection confirms these are **prompts** (instructions sent to an agent) rather than reports,
-with three exceptions that are responses or reports. They were **indexed in place, not moved**:
-`docs_local/` is intentionally local-only and ignored, the names are already consistent, and
-several round reports elsewhere reference these exact paths. The index at
-`docs_local/agent_runs_index.json` records the logical round, agent, artifact type and
-confidence for each.
+`docs_local/` was restructured into `agent_runs/<run id>/` with canonical `prompt.md` /
+`response.md` / `index.json`. Every file was classified by **reading its content**, not its name:
+all 31 `*_brief.md` files are instructions sent to an agent, i.e. prompts. Two records carry
+`classification_confidence: medium` and say why — `round14_fable5_application_report.md` is named
+"report" but is a prompt (it reports applied results *and* requests the next lever), and its
+ordering against the round-14 brief is inferred from content rather than known.
 
-**Recommended follow-up:** none required. If the folder is ever restructured, use the index as
-the migration map.
+The residual ambiguity is the **letters inside the historical labels**. They are not one scheme:
+`18A` / `18B` / `18C` / `19A` / `20A` / `21A` denote sub-rounds, while `22C` / `22F` / `22O` merely
+abbreviate Codex / Fable / Opus. The run identifier keeps the first kind and drops the second, and
+each document's own heading is preserved verbatim as `document_label`. **The labels inside the
+documents were not rewritten** — editing an instruction after the fact to match a later naming
+scheme would falsify the record of what was actually sent.
 
-## A7 — scratchpad physical layout kept as-is (LOW)
+**Recommended follow-up:** none. Use `docs_local/migration/legacy-name-map.csv` to resolve any old
+path found in an older note.
 
-The canonical future layout is `scratchpad/round-XX/<agent>/`. Existing runs use
-`round21_codex`, `round22_opus`, and older topic names (`negspace_audit`, `phase2_build`). They
-were **not** moved: scripts inside them resolve the repository root by counting path components
-(`parents[3]`, `parents[4]`), several manifests record absolute paths, and two round reports
-reference the current names. `scratchpad/index.json` assigns each run a canonical logical
-identity and records the physical path, so the naming is queryable without a risky move.
+## A7 — run directories are flat, and old manifests keep old paths (LOW)
 
-**This is the exact bug the migration convention exists to prevent:** both the R2 and the RGR
-migrations hit an off-by-one repository-root depth when a script was copied to a deeper path. New
-runs should follow the canonical layout; old ones stay where the evidence was produced.
+Runs are named `round-<NN>[<sub>]-<agent>` and are **flat children** of their tree --
+`scratchpad/round-22-opus/`, not `scratchpad/round-22/opus/`. Nesting would add a path component,
+and scripts inside these runs resolve the repository root by counting components (`parents[3]`,
+`parents[4]`). **This is the exact bug the convention exists to prevent:** both the R2 and the RGR
+migrations hit an off-by-one repository-root depth when a script was copied one level deeper.
+
+The 2026-07-29 rename therefore preserved depth, and root resolution was re-verified for five
+representative scripts afterwards. Two directories could not be given a round at all — the
+footprint channel and the ds1 offline reconciliation were developed outside the numbered advisory
+rounds — so they are named topically rather than assigned a guessed number.
+
+**Residual staleness:** manifests and reports *inside* historical runs still record the old
+directory names and, in some cases, absolute `F:\` paths from the machine that produced them.
+They were left untouched because they are records of what was done at the time; the two
+legacy-name maps resolve them. Only the graduated copies under `src/` had their path handling
+corrected.

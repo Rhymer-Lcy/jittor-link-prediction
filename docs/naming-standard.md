@@ -31,14 +31,34 @@ The one admitted exception is a mechanism that *is* about seeds: `multi_seed_bpr
 describes seed averaging itself, which the standard treats as scientifically essential.
 `tests/integration/test_strategy_inventory.py` enforces this rule and encodes the exception.
 
-## Rounds and agents
+## Run identifiers
 
-- round directories: `round-XX`, zero-padded — `round-03`, `round-21`, `round-22`
-- agent directories: `codex`, `fable`, `opus`, `gpt`
+One identifier names a run in **both** local trees, so they cross-reference directly:
 
-Existing physical scratchpad directories (`round21_codex`, `round22_opus`, …) were **not**
-renamed; they carry a canonical logical identity in `scratchpad/index.json` instead. See
-ambiguity A7 — moving them breaks scripts that resolve the repository root by path depth.
+```
+round-<NN>[<sub-round letter>]-<agent>
+```
+
+- `NN` zero-padded: `round-03-gpt`, `round-21-codex`, `round-22-opus`
+- agents: `codex`, `fable`, `opus`, `gpt` — the thread that **owns** the artifact (the recipient
+  of a prompt in `docs_local/`, the executor of a run in `scratchpad/`). These can differ for the
+  same round and that is meaningful: `docs_local/agent_runs/round-16-fable` holds the brief that
+  `scratchpad/round-16-opus` executed.
+- the sub-round letter is kept **only where it denotes a real sub-round**: `round-18a-opus`,
+  `round-18b-fable`, `round-18c-opus`, `round-19a-opus`, `round-20a-opus`, `round-21a-opus`.
+  Letters that merely abbreviated the agent — 22**C**odex, 22**F**able, 22**O**pus — are dropped,
+  because the agent is already in the identifier.
+
+The historical label written **inside** each document (for example `ROUND 22F`) is recorded
+verbatim as `document_label` in the indexes and is never rewritten: the historical letters are
+inconsistent, and normalising the text would falsify the record.
+
+**Runs are flat children of their tree**, `scratchpad/round-22-opus/`, not
+`scratchpad/round-22/opus/`. Nesting would add a path component, and several run scripts resolve
+the repository root by counting components (`parents[3]`, `parents[4]`) — the exact off-by-one
+that broke the R2 and RGR migrations. The 2026-07-29 rename preserved depth for that reason;
+`scratchpad/migration/legacy-name-map.csv` and `docs_local/migration/legacy-name-map.csv` map
+every old name to its new one.
 
 ## Artifact taxonomy
 
@@ -47,20 +67,24 @@ canonical name is `prompt.md`.
 
 | artifact | file | lives in |
 |---|---|---|
-| the exact instruction sent to an agent | `prompt.md` | `docs_local/agent_runs/round-XX/<agent>/` |
-| the conversational completion returned | `response.md` | `docs_local/agent_runs/round-XX/<agent>/` |
-| the formal evidence-bearing report | `report.md` | `scratchpad/<run>/` |
-| machine-readable provenance | `manifest.json` | `scratchpad/<run>/` |
-| execution artifacts | `scripts/ probes/ artifacts/ logs/ tests/` | `scratchpad/<run>/` |
-| concise project-level history | `round-XX.md` | `docs/rounds/` (tracked) |
+| the exact instruction sent to an agent | `prompt.md` | `docs_local/agent_runs/<run id>/` |
+| the conversational completion returned | `response.md` | `docs_local/agent_runs/<run id>/` |
+| the formal evidence-bearing report | `report.md` | `scratchpad/<run id>/` |
+| machine-readable provenance | `manifest.json` | `scratchpad/<run id>/` |
+| execution artifacts | `scripts/ probes/ artifacts/ logs/ tests/` | `scratchpad/<run id>/` |
+| concise project-level history | `round-NN.md` | `docs/rounds/` (tracked) |
 
 When one run genuinely has several chronological prompts or responses, number them:
 `prompt-01.md`, `response-01.md`. Do not number a single artifact.
 
+A run whose round cannot be identified from the evidence is named **topically** rather than given
+a guessed number — `scratchpad/footprint-ab`, `scratchpad/ds1-offline-reconciliation` — and the
+index records why it has no round.
+
 ## Ownership rule
 
 - prompt and conversational response → `docs_local/agent_runs/` (local-only, ignored)
-- formal report, manifest, scripts, probes, artifacts, logs → `scratchpad/` (ignored)
+- formal report, manifest, scripts, probes, artifacts, logs → `scratchpad/<run id>/` (ignored)
 - concise conclusions, production state, strategy lifecycle → `docs/` and `configs/` (**tracked**)
 
 Avoid duplication. If the same report exists in two places, the scratchpad copy is canonical and
