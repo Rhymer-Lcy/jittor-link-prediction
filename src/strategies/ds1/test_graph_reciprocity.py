@@ -46,7 +46,7 @@ online A/B against the frozen dataset1 baseline 0.8882916779365962: observed
 (2.24%), each contributing exactly one strict pair inversion.
 
 Provenance: proposed by Codex round 22; executed and validated in
-``scratchpad/round22_opus/rgr/``.
+``scratchpad/round-22-opus/rgr/``.
 """
 
 from __future__ import annotations

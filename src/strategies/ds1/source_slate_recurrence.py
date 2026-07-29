@@ -44,7 +44,7 @@ Isolated auxiliary online A/B, adjudicated BEFORE shipping: control
 Acts on 3,653 of 61,051 rows (5.98%).
 
 Provenance: proposed by Codex round 21; executed and validated in
-``scratchpad/round21_opus/r2/``.
+``scratchpad/round-21a-opus/r2/``.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-# GRADUATED 2026-07-29 from scratchpad/negspace_audit/build_mf_aux_pack.py
+# GRADUATED 2026-07-29 from scratchpad/round-16-opus/build_mf_aux_pack.py
 # (source sha256 d9c6204b92239b8871463988bc9bd76a1b4acc4b6f07b1e6bf251c65e6609ac4).
 # Body is VERBATIM apart from two path-only changes: REPO is derived from __file__
 # instead of a hard-coded F:\ path, and the featurizer is imported as
