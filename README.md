@@ -11,6 +11,25 @@ Submission workflow (per teammate): run locally, submit the generated answer
 file (2–10 submissions/day depending on the day); the Jittor version of the
 code must be open-sourced at the end of the competition.
 
+### Submission mechanics (measured 2026-07-29, not assumed)
+
+- **The total is strictly additive: `total = ds1_MRR + ds2_MRR`.** Verified to 16 digits:
+  `0.8619654323294592 + 0.6789511047001768 = 1.540916537029636`.
+- **A ZIP may contain a single dataset CSV, and the platform scores it directly.** This is the
+  default protocol for isolated experiments — no zero-filled placeholder needed, smaller archive,
+  exact attribution. Frozen component baselines: **dataset1 0.8882916779365962**,
+  **dataset2 0.6789511047001768**; a new component's combined total is the sum.
+- **A dataset missing from the ZIP scores 0 — it is NOT carried over from a previous upload.**
+  So a single-CSV upload can never reach the combined total; the main account needs one archive
+  containing both members. (An all-zero placeholder instead contributes exactly
+  `0.0517217279290374`, the 100-way tie baseline ≈ H(100)/100.)
+- **Archive-size cliff between ~64.0 MB and ~65.36 MB.** `submission_r2_main.zip` (65,363,753 B,
+  deflate level 6) failed repeatedly with an empty `Submission failed:` message; the identical
+  CSV members repacked at deflate level 9 (`submission_r2_main_d9.zip`, 64,004,492 B) were
+  accepted and scored normally. Target **≤ ~63.9 MB**, use **standard deflate method 8, level 9**,
+  and do **not** use BZIP2/LZMA unless the platform is verified to support them. A generic
+  "Submission failed" can be an archive-ingestion failure, not invalid prediction content.
+
 ## Layout
 
 ```
@@ -174,6 +193,57 @@ stacking double-counts, -0.0065), and cohort label-shift query reweighting
 (the ranker's activity features already price staleness per-row, +0.0002).
 
 ### Closed axes (measured, not assumed)
+
+**Round 21F (2026-07-28, Fable thread) — ds1 non-repeat innovation strike: CLOSED.**
+The graph-motif axis and the non-repeat-specialist axis are both closed on ds1 against the full
+21-column ranker; only **XLIST** (objective-diversity blend) is retained, as a low-upside standby
+option and not a live direction. Working notes in `scratchpad/round21_fable/`.
+
+**Round 20 (2026-07-28) — the within-event collision family, plus E2 and E3: all CLOSED.**
+Five formulations, five closures, no pack built, nothing submitted; `submission_mf_full_main.zip`
+untouched and hash-verified throughout.
+
+- **E1 within-event top-1 collision exclusion.** Replay **+0.004041** (folds +0.004687 /
+  +0.003352, repaired:damaged 1,639:81, rank-2 recovery 100%, predicted online **+0.003521**);
+  capacity null −0.002279 and event-shuffle null −0.000574 both clean. Killed by the serve side:
+  the pair-q4/q5 pseudo-label delta is **−0.031667**, 298 of 2,847 serve actions are contradicted
+  by that row's own high-precision label, and **437 / 2,996 collision groups (14.59%)** carry
+  evidence that two siblings share the claimed answer.
+- **E1b, adding pair-q4/q5 protection.** Removes **zero** actions on the replay — the replay is
+  built from `(src,dst,time)`-deduplicated data on which the invariant is exact (0 / 189,335), so
+  it cannot express the failure mode at all. The event-disjoint two-fold cross-protection test
+  read **−0.029123 / −0.034092**; precision-weighted risk (5th-pct LCB) is **57.8%** of the
+  predicted gain against a 20% allowance; risk-adjusted online **+0.001340**.
+- **E1c, restricted to cross-run collisions** (reusing the shipped invariant-IV run definition).
+  Replay +0.003705, predicted online +0.003475 — but a **size-matched run-assignment shuffle
+  reproduced 104.7%** of it (per-action ΔRR 8.34e-07 treatment vs 8.25e-07 null), and on the serve
+  file it removes only **53 of 2,847** actions. The run partition carries no information about
+  which claim is wrong.
+- **E2 rolling chronological-prefix stand-in training.** Stage-0 fail: prefix stand-ins are worse
+  than the incumbent source-disjoint OOF on **both** future blocks (top-1 −0.000344 / −0.001274,
+  MRR −0.000797 / −0.001431) and worse calibrated; movement toward the serve distribution is
+  confined to sharper confidence. A volume-matched source-disjoint capacity control is impossible
+  here — only ~3–4k of 244,056 queries are source-disjoint from a time block.
+- **E3 test-native pseudo-label residual ranker.** Stage-J fail: best unlabelled post-CRF marginal
+  **+0.000005** against a required +0.002, fold 0 negative at every α, and the unit-label-weight
+  ablation beats the treatment.
+
+**E1 T1 was then adjudicated ONLINE and PERMANENTLY CLOSED (2026-07-29).** The frozen T1 rule was
+built as a byte-exact auxiliary pair (`outputs/submissions/ds2_r20_t1_online_ab/`, 2,847 demoted
+rows): control **0.7312368936166302**, reproducing the prior online ds2-only score exactly
+(difference 0.0), treatment **0.7165484296355199**, **delta −0.0146884639811103** — a large
+negative inversion from a clean +0.004041 replay.
+
+Two findings outlive the closures. (i) **Trust the serve-side pseudo-label gate over the replay.**
+I had argued the pair-q4/q5 guard was invalid for a treatment acting on the structure those labels
+encode, since the metric falls mechanically when the label candidate is demoted. The online A/B
+says otherwise: the guard called the sign (−0.0317 → online −0.0147) and the clean replay was
+wrong. The P1-family serve gate is now **4/4 on online signs**; the ds2 OOF replay is **0/2** on
+the last two shipping decisions. When they disagree, trust the gate and reject.
+(ii) **The round-19A replay numbers are no longer reproducible**: the verbatim script now yields
+post-CRF 0.6459965253 vs the recorded 0.6458207392 (+1.76e-04), with the MF geometry and all three
+LightGBM histogram paths proven bit-identical — so pair every arm on one regenerated base and never
+compare absolute MRRs across sessions.
 
 **Governing rule for every new direction (round-18 lesson, applies to all cards below).**
 Standalone signal is only an information-content SCREEN. A direction must be gated by its
@@ -630,6 +700,25 @@ resume).
   gap widened from −0.0094/−0.0069 to **−0.0204/−0.0179**. Nothing in `src/` changed: the G1
   `EMB_BLOCK_MODE` diagnostic was reverted after the verdict and preserved as
   `scratchpad/round18c/g1_emb_block_mode.patch`.
+
+- 2026-07-29: **1.567242782636773** (current best, **RANK #2**) — **dataset1 source-slate
+  recurrence R2**, a deterministic postprocessor on the existing ds1 ranker output; no model was
+  retrained, no feature regenerated, no threshold swept. On each physical test row whose control
+  top-1 is non-historical for that source, count every candidate's occurrences across all
+  observable candidate slates of the same source (column position is never used), take the
+  **unique** maximum-recurrence non-history candidate, require it in **≥ 2 other slates**
+  (≥ 3 total), and promote it to strict top-1. Acts on **3,653 / 61,051 rows (5.98%)**.
+  Offline ds1 replay +0.021366 (non-repeat +0.042897, rotation null −0.036393); adjudicated by a
+  paired auxiliary A/B **before** shipping: control 0.9136871602584966 → treatment
+  0.9400134058656336, **delta +0.0263262456071370**. Isolated components measured directly:
+  ds1 R2 **0.8882916779365962** + ds2 **0.6789511047001768** = **1.567242782636773**, matching the
+  accepted main score exactly. Shipped as `outputs/submissions/ds1_r21_r2_main/
+  submission_r2_main_d9.zip` (sha256 `6fd64325…f87ba5`, 64,004,492 B, deflate level 9) — the
+  deflate-6 build of the same members was rejected on size, see **Submission mechanics**.
+  Origin: Codex round 21; executed in `scratchpad/round21_opus/r2/`. Leaderboard at close:
+  **#1 1.5818 / #2 ours 1.567242782636773 / #3 1.5588**, gap to #1 ≈ **0.01456**.
+  **This is the first offline→online agreement in the recent record** — but it was adjudicated
+  online before shipping, which is what made the direction safe either way.
 
 **Logging convention.** Every submission milestone is recorded above; every
 tested-and-refuted card is recorded under **Closed axes** / **Refuted
