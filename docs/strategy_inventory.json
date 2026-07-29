@@ -112,7 +112,7 @@
       "main_account_history": "shipped 2026-07-29 in submission_r2_main_d9.zip, accepted total 1.567242782636773 (rank #2)",
       "implementation_path": "src/strategies/ds1/source_slate_recurrence.py",
       "action_anchor": {"rows": 61051, "actions": 3653},
-      "provenance": "Codex round 21; executed scratchpad/round21_opus/r2/",
+      "provenance": "Codex round 21; executed scratchpad/round-21a-opus/r2/",
       "prohibited_variants": ["threshold tuning", "relaxing uniqueness", "changing the row gate or history definition", "altering the score transform", "using candidate column position"],
       "confidence": "high"
     },
@@ -128,7 +128,7 @@
       "main_account_history": "shipped 2026-07-29 in r22_rgr_main_d9.zip, accepted total 1.5752524794476366 (rank #3)",
       "implementation_path": "src/strategies/ds1/test_graph_reciprocity.py",
       "action_anchor": {"rows": 61051, "actions": 1365, "directed_graph_edges": 5918104, "reverse_positive_cells": 105290},
-      "provenance": "Codex round 22; executed scratchpad/round22_opus/rgr/",
+      "provenance": "Codex round 22; executed scratchpad/round-22-opus/rgr/",
       "prohibited_variants": ["inspecting ranks below 2", "reverse-edge counts or thresholds", "widening eligibility", "adding recurrence / source-peak / source-role conditions"],
       "confidence": "high"
     },
@@ -310,7 +310,7 @@
       "offline_evidence": "measured, disqualified-class, retained as a low-upside free option only",
       "online_evidence": "none",
       "implementation_path": null,
-      "provenance": "Fable round 21F; scratchpad/round21_fable/",
+      "provenance": "Fable round 21F; scratchpad/round-21-fable/",
       "confidence": "medium",
       "notes": "Deliberately inactive. Not a live direction."
     },
@@ -365,7 +365,7 @@
       "offline_evidence": "T1 replay +0.004041, folds +0.004687/+0.003352, repaired:damaged 1639:81, predicted online +0.003521; every null clean",
       "online_evidence": "control 0.7312368936166302 -> treatment 0.7165484296355199, delta -0.0146884639811103",
       "closure_reason": "large online inversion; the pair-q4/q5 pseudo-label gate called the sign (-0.031667) and the clean replay did not",
-      "provenance": "scratchpad/round20/",
+      "provenance": "scratchpad/round-20a-opus/",
       "confidence": "high",
       "notes": "Do not reopen in this formulation. Any future attempt must pre-register invariant IV, not the pair labels, as the serve-side arbiter."
     },

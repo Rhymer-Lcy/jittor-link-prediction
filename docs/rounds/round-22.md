@@ -24,7 +24,7 @@ The naive per-action transfer projected ≈ +0.00186; the online result was **4.
 same direction of surprise as R2 (5× its replay). The replay keeps calling the sign correctly on
 this family while badly understating the magnitude.
 
-Origin: Codex round 22 rank 1. Executed in `scratchpad/round22_opus/rgr/`. Now tracked at
+Origin: Codex round 22 rank 1. Executed in `scratchpad/round-22-opus/rgr/`. Now tracked at
 `src/strategies/ds1/test_graph_reciprocity.py`.
 
 ## Not executed
@@ -38,7 +38,7 @@ Origin: Codex round 22 rank 1. Executed in `scratchpad/round22_opus/rgr/`. Now t
 
 ## Infrastructure
 
-A component validation and packaging harness was built first (`scratchpad/round22_opus/harness/`,
+A component validation and packaging harness was built first (`scratchpad/round-22-opus/harness/`,
 35 self-tests, three dry runs) and has since been graduated to
 [`tools/submission/package_component.py`](../../tools/submission/package_component.py). It takes a
 treatment CSV to a validated ZIP plus a machine-readable manifest in seconds, and closes the
@@ -58,5 +58,5 @@ verbatim out of the scratchpad; the strategy lifecycle was reconstructed into
 That pass also **refuted the Round-21 archive-size cliff** — see
 [SUBMISSION_PROTOCOL.md](../SUBMISSION_PROTOCOL.md).
 
-Full working record: `scratchpad/round22_opus/rgr/{report.md,manifest.json}` and
-`scratchpad/round22_opus/harness/`.
+Full working record: `scratchpad/round-22-opus/rgr/{report.md,manifest.json}` and
+`scratchpad/round-22-opus/harness/`.

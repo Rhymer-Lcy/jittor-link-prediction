@@ -22,7 +22,7 @@ in **≥ 2 other slates**, and promote it to strict top-1. Acts on **3,653 / 61,
 **It was adjudicated online before shipping.** That is what made the direction safe either way,
 and it produced the first offline→online agreement in the recent record.
 
-Origin: Codex round 21. Executed in `scratchpad/round21_opus/r2/`. Now tracked at
+Origin: Codex round 21. Executed in `scratchpad/round-21a-opus/r2/`. Now tracked at
 `src/strategies/ds1/source_slate_recurrence.py`.
 
 ## What closed
@@ -56,4 +56,4 @@ level 9 (64,004,492 B) were accepted. This was recorded at the time as an archiv
 **That conclusion has since been refuted** — see [SUBMISSION_PROTOCOL.md](../SUBMISSION_PROTOCOL.md).
 An accepted archive of 65,437,854 B already existed. The failure remains unexplained.
 
-Full working record: `scratchpad/round21_opus/r2/{report.md,manifest.json}`.
+Full working record: `scratchpad/round-21a-opus/r2/{report.md,manifest.json}`.
