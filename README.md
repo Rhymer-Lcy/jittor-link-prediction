@@ -231,7 +231,7 @@ stacking double-counts, -0.0065), and cohort label-shift query reweighting
 **Round 21F (2026-07-28, Fable thread) — ds1 non-repeat innovation strike: CLOSED.**
 The graph-motif axis and the non-repeat-specialist axis are both closed on ds1 against the full
 21-column ranker; only **XLIST** (objective-diversity blend) is retained, as a low-upside standby
-option and not a live direction. Working notes in `scratchpad/round21_fable/`.
+option and not a live direction. Working notes in `scratchpad/round-21-fable/`.
 
 **Round 20 (2026-07-28) — the within-event collision family, plus E2 and E3: all CLOSED.**
 Five formulations, five closures, no pack built, nothing submitted; `submission_mf_full_main.zip`
@@ -390,7 +390,7 @@ Cards that were tested and refuted are listed here so they are not retried:
   value does NOT transfer onto the stronger MF base. Closing the COMBINATION does not invalidate
   MF geometry (shipped) nor the historical footprint gain in its own P/base18 regime. Arms
   B/D/E/seed-123 left uncompleted (kill #1 is a dispositive absolute-threshold fail). Caches at
-  `scratchpad/negspace_audit/` (oof_footprint_244k_85.npy, mf_pass3_scores_seed*.npz,
+  `scratchpad/round-16-opus/` (oof_footprint_244k_85.npy, mf_pass3_scores_seed*.npz,
   p3_refit_footprint_mf.json) preserved for optional post-competition analysis.
 - **Slate-restricted negative sampling for LINE/BPR is worse than global sampling
   (round-18A audit).** Drawing embedding-training negatives from the model-ranked
@@ -733,7 +733,7 @@ resume).
   Leaderboard snapshot at close: **#1 1.5613 / #2 1.5588 / #3 ours 1.540916537029636**, so the
   gap widened from −0.0094/−0.0069 to **−0.0204/−0.0179**. Nothing in `src/` changed: the G1
   `EMB_BLOCK_MODE` diagnostic was reverted after the verdict and preserved as
-  `scratchpad/round18c/g1_emb_block_mode.patch`.
+  `scratchpad/round-18c-opus/g1_emb_block_mode.patch`.
 
 - 2026-07-29: **1.567242782636773** (current best, **RANK #2**) — **dataset1 source-slate
   recurrence R2**, a deterministic postprocessor on the existing ds1 ranker output; no model was
@@ -749,7 +749,7 @@ resume).
   accepted main score exactly. Shipped as `outputs/submissions/ds1_r21_r2_main/
   submission_r2_main_d9.zip` (sha256 `6fd64325…f87ba5`, 64,004,492 B, deflate level 9) — the
   deflate-6 build of the same members was rejected on size, see **Submission mechanics**.
-  Origin: Codex round 21; executed in `scratchpad/round21_opus/r2/`. Leaderboard at close:
+  Origin: Codex round 21; executed in `scratchpad/round-21a-opus/r2/`. Leaderboard at close:
   **#1 1.5818 / #2 ours 1.567242782636773 / #3 1.5588**, gap to #1 ≈ **0.01456**.
   **This is the first offline→online agreement in the recent record** — but it was adjudicated
   online before shipping, which is what made the direction safe either way.
@@ -766,7 +766,7 @@ resume).
   ds1 **0.8963013747474597** + ds2 **0.6789511047001768** = **1.5752524794476365**. Shipped as
   `outputs/submissions/round22_main/r22_rgr_main_d9.zip` (sha256 `6b9f0cd9…d9dae7`, 63,984,734 B),
   the only change from the previous pack being dataset1. Origin: Codex round 22; executed in
-  `scratchpad/round22_opus/rgr/`. Leaderboard at close: **#1 1.5885 / #2 1.5818 / #3 ours** — the
+  `scratchpad/round-22-opus/rgr/`. Leaderboard at close: **#1 1.5885 / #2 1.5818 / #3 ours** — the
   board moved up while we did. Codex ranks 2–3 (SPC, SRC) were held; Fable round 22F returned
   **NO CANDIDATE**.
 - 2026-07-29 (consolidation, no submission): both shipped ds1 postprocessors and the ds2 MF
