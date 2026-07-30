@@ -43,6 +43,40 @@ class ProductionManifestTest(unittest.TestCase):
                       if s["order"] > 0]
         self.assertEqual(configured, active_ds1_chain_ids())
 
+    def test_dataset2_decoder_matches_the_registry(self):
+        from strategies.registry import active_ds2_chain_ids
+        decoder = PRODUCTION["dataset2"]["final_decoder"]
+        self.assertEqual([decoder["strategy_id"]], active_ds2_chain_ids())
+
+    def test_dataset2_decoder_implementation_is_tracked(self):
+        decoder = PRODUCTION["dataset2"]["final_decoder"]
+        self.assertEqual(decoder["implementation_status"], "GRADUATED")
+        self.assertTrue((REPO / decoder["implementation"]).exists(),
+                        f"missing {decoder['implementation']}")
+
+    def test_dataset2_decoder_gain_is_not_presented_as_a_gate_pass(self):
+        # The decoder shipped by an explicit override, NOT by passing its gate.
+        # Both figures must stay in the record so the distinction cannot be lost.
+        decoder = PRODUCTION["dataset2"]["final_decoder"]
+        gain = float(decoder["online_observed_gain"])
+        gate = float(decoder["original_locked_gate"])
+        self.assertLess(gain, gate)
+        self.assertAlmostEqual(float(decoder["shortfall_from_original_gate"]),
+                               gate - gain, places=15)
+        self.assertEqual(decoder["historical_lifecycle"], "CLOSED_AT_LOCKED_GATE")
+        self.assertEqual(decoder["operational_decision"],
+                         "FINAL_BOARD_MAXIMISATION_OVERRIDE")
+
+    def test_dataset2_decoder_component_arithmetic(self):
+        decoder = PRODUCTION["dataset2"]["final_decoder"]
+        before = decoder["component_score_before"]
+        after = decoder["component_score_after"]
+        self.assertEqual(after, PRODUCTION["dataset2"]["component_score"])
+        self.assertEqual(before,
+                         PRODUCTION["dataset2"]["decoder_input"]["component_score_at_this_stage"])
+        self.assertAlmostEqual(after - before, float(decoder["online_observed_gain"]),
+                               places=15)
+
     def test_every_referenced_implementation_exists(self):
         for dataset in ("dataset1", "dataset2"):
             for stage in PRODUCTION[dataset]["strategy_chain"]:
@@ -132,6 +166,108 @@ class ChainReproductionTest(unittest.TestCase):
             digest = write_score_matrix(scores, Path(td) / "dataset1.csv")
         self.assertEqual(digest, PRODUCTION["dataset1"]["member_sha256"],
                          "the tracked chain no longer reproduces the accepted member")
+
+
+class Dataset2DecoderReproductionTest(unittest.TestCase):
+    """The dataset2 counterpart: tracked code must regenerate the member exactly."""
+
+    def setUp(self):
+        self.base_zip = REPO / PRODUCTION["dataset2"]["decoder_input"]["path"]
+        self.test_csv = REPO / "data" / "data_A" / "dataset2" / "test.csv"
+        for asset in (self.base_zip, self.test_csv):
+            if not asset.exists():
+                self.skipTest(f"local asset not available: {asset}")
+
+    def test_decoder_reproduces_the_accepted_dataset2_member(self):
+        import io
+
+        import numpy as np
+        import pandas as pd
+
+        from strategies.ds2 import cross_time_exclusivity as xte
+
+        decoder_input = PRODUCTION["dataset2"]["decoder_input"]
+        with zipfile.ZipFile(self.base_zip) as archive:
+            payload = archive.read(decoder_input["member"])
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), decoder_input["sha256"],
+                         "the base matrix is not the one the accepted member was built from")
+
+        scores = pd.read_csv(io.BytesIO(payload), header=None).to_numpy(np.float64)
+        test = pd.read_csv(self.test_csv)
+        self.assertEqual(scores.shape, tuple(PRODUCTION["dataset2"]["shape"]))
+
+        _treatment, info = xte.apply(scores, test)
+
+        self.assertEqual(xte.census_mismatches(info["census"]), {},
+                         "the physical census differs from the accepted deployment")
+        want = PRODUCTION["dataset2"]["final_decoder"]["effect_on_member"]
+        self.assertEqual(info["actions"], want["rows_changed"])
+        self.assertEqual(info["cells_changed"], want["cells_changed"])
+        self.assertEqual(info["top1_changes"], want["top1_changes"])
+        self.assertEqual(info["pairs_collapsed_to_tie"], want["pairs_collapsed_to_tie"])
+
+        rebuilt = xte.swap_score_tokens(payload, info["action_rows"], info["c1_col"],
+                                       info["c2_col"], info["census"]["columns"])
+        self.assertEqual(len(rebuilt), PRODUCTION["dataset2"]["member_bytes"])
+        self.assertEqual(hashlib.sha256(rebuilt).hexdigest(),
+                         PRODUCTION["dataset2"]["member_sha256"],
+                         "the tracked decoder no longer reproduces the accepted member")
+
+    def test_rebuilt_member_satisfies_the_submission_schema(self):
+        import io
+
+        import numpy as np
+        import pandas as pd
+
+        from strategies.ds2 import cross_time_exclusivity as xte
+
+        with zipfile.ZipFile(self.base_zip) as archive:
+            payload = archive.read(PRODUCTION["dataset2"]["decoder_input"]["member"])
+        scores = pd.read_csv(io.BytesIO(payload), header=None).to_numpy(np.float64)
+        test = pd.read_csv(self.test_csv)
+        treatment, _ = xte.apply(scores, test)
+
+        rows, columns = PRODUCTION["dataset2"]["shape"]
+        self.assertEqual(treatment.shape, (rows, columns))
+        self.assertEqual(len(test), rows, "one prediction row per test query")
+        self.assertTrue(np.isfinite(treatment).all(), "a non-finite score would be invalid")
+        self.assertGreaterEqual(treatment.min(), 0.0, "scores must lie in [0, 1]")
+        self.assertLessEqual(treatment.max(), 1.0, "scores must lie in [0, 1]")
+        # Row-wise permutation: the decode may reorder scores within a row but
+        # must never add, drop or rewrite one.
+        self.assertTrue(np.array_equal(np.sort(treatment, axis=1), np.sort(scores, axis=1)))
+
+
+class EntryPointTest(unittest.TestCase):
+    """Both scenarios must expose a working, documented entry path."""
+
+    def test_unified_entry_point_exists(self):
+        self.assertTrue((REPO / "main.py").exists())
+
+    def test_describe_stage_runs_for_both_datasets(self):
+        import subprocess
+        result = subprocess.run([sys.executable, "main.py", "--stage", "describe"],
+                               cwd=REPO, capture_output=True, text=True, timeout=180)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for expected in ("dataset1", "dataset2", "xte_cross_time_exclusivity_decode",
+                         PRODUCTION["accepted_archive"]["sha256"]):
+            self.assertIn(expected, result.stdout)
+
+    def test_every_dataset_declares_a_build_command(self):
+        for dataset in ("dataset1", "dataset2"):
+            command = PRODUCTION[dataset]["build_command"]
+            self.assertTrue(command.startswith("python src/build_"),
+                            f"{dataset} build command is not a runnable entry point: {command}")
+            script = command.split()[1]
+            self.assertTrue((REPO / script).exists(), f"missing {script}")
+
+    def test_environment_specification_is_pinned(self):
+        spec = REPO / "environment.yaml"
+        if not spec.exists():
+            self.skipTest("environment.yaml not present")
+        text = spec.read_text(encoding="utf-8")
+        for package in ("python", "jittor", "numpy", "pandas", "scikit-learn", "lightgbm"):
+            self.assertIn(package, text, f"{package} is not pinned in environment.yaml")
 
 
 if __name__ == "__main__":
