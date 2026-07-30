@@ -1,7 +1,39 @@
-numpy
-pandas
-scipy
-torch
-tqdm
-# dataset2 ranker pipeline (ranker_basket_ds2.py)
-lightgbm
+# Pip-only installation of the reproduction dependencies.
+#
+# Role: this file installs into an existing Python 3.10 interpreter.
+# environment.yaml is the canonical specification for the A-board code
+# inspection and additionally pins the interpreter itself. The two files pin
+# IDENTICAL versions; change both together or neither.
+#
+# JittorGeometric is not on PyPI. Install it after this file:
+#   pip install --no-build-isolation git+https://github.com/AlgRUC/JittorGeometric.git
+
+# --- numerical core -------------------------------------------------------
+# numpy is held below 2.0: the frozen postprocessors depend on exact float64
+# comparison and stable argsort semantics, and the accepted member hashes were
+# produced under the 1.x behaviour.
+numpy==1.26.4
+pandas==2.2.3
+scipy==1.15.2
+scikit-learn==1.6.1
+
+# --- gradient-boosted ranker (dataset1 and dataset2 base score matrices) ---
+lightgbm==4.5.0
+
+# --- progress reporting in the embedding trainers -------------------------
+tqdm==4.67.1
+
+# --- mandatory competition framework --------------------------------------
+# Used by src/train_line_jt.py and src/train_bpr_jt.py. Compiles its own kernels
+# on first import and needs g++ >= 5.4; the GPU path additionally needs a CUDA
+# toolkit. See docs/competition/ab_algorithm_consistency_contract.md.
+jittor==1.3.10
+
+# --- optional, not part of the compliant reproduction path -----------------
+# The accepted A-board embeddings were produced by the PyTorch trainers
+# (src/train_line.py, src/train_bpr.py), which the Jittor ports above mirror.
+# PyTorch is recorded as an optional historical dependency and left commented
+# out because no accepted artifact hash depends on it and the framework
+# requirement is satisfied by Jittor. Uncomment only to re-run the historical
+# PyTorch trainers.
+# torch

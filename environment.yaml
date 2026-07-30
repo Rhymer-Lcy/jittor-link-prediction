@@ -1,0 +1,53 @@
+# Canonical reproduction environment for the A-board code inspection.
+#
+# Target environment stated by the official inspection notice:
+#   Ubuntu 22.04, NVIDIA RTX 4090, CUDA 12.4, Python 3.10, Jittor 1.3.10,
+#   JittorGeometric, version-pinned NumPy / Pandas / scikit-learn.
+#
+# Create it with:
+#   conda env create -f environment.yaml
+#   conda activate jittor-link-prediction-inspect
+#   pip install --no-build-isolation git+https://github.com/AlgRUC/JittorGeometric.git
+#
+# JittorGeometric is NOT on PyPI, so it is installed from the official
+# repository as the documented final step rather than pinned here; see
+# docs/competition/ab_algorithm_consistency_contract.md.
+#
+# Every version below was installed and imported in a clean environment on
+# Ubuntu 22.04 with Python 3.10. Two properties are deliberate:
+#
+#   * The pins are the newest versions that support Python 3.10, which the
+#     official notice requires. They are NOT identical to the stack that
+#     produced the accepted artifacts (Windows, Python 3.11, PyTorch); that
+#     deviation is forced by the required interpreter and is recorded in
+#     docs/CURRENT_PRODUCTION.md.
+#   * numpy is held below 2.0. The frozen postprocessors depend on exact
+#     float64 comparison and stable argsort semantics, and the accepted member
+#     hashes were produced under the 1.x behaviour.
+#
+# requirements.txt covers the same dependencies for a pip-only installation
+# without conda; the two files pin identical versions.
+
+name: jittor-link-prediction-inspect
+
+channels:
+  - conda-forge
+
+dependencies:
+  # The official inspection notice requires Python 3.10.
+  - python=3.10
+  - pip
+  - pip:
+      # --- numerical core -------------------------------------------------
+      - numpy==1.26.4
+      - pandas==2.2.3
+      - scipy==1.15.2
+      - scikit-learn==1.6.1
+      # --- gradient-boosted ranker (dataset1 and dataset2 base matrices) ---
+      - lightgbm==4.5.0
+      # --- progress reporting in the trainers ------------------------------
+      - tqdm==4.67.1
+      # --- mandatory competition framework ---------------------------------
+      # Jittor compiles its own kernels on first import and needs g++ >= 5.4
+      # (Ubuntu 22.04 ships 11.4) plus, for the GPU path, a CUDA toolkit.
+      - jittor==1.3.10
