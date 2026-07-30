@@ -29,22 +29,19 @@ tqdm==4.67.1
 # toolkit. See docs/competition/ab_algorithm_consistency_contract.md.
 jittor==1.3.10
 
-# --- REQUIRED: shared utilities on the ranking path ------------------------
-# torch is NOT optional. src/train_line.py is both the historical PyTorch
-# trainer AND the shared utility module (PROJECT_ROOT, rownorm, build_sim_cache,
-# train_csv, c_cols) imported by src/ensemble_predict.py, src/ranker_ds1.py,
-# src/ranker_basket_ds2.py and src/ds2_mf_basket_pack.py. Without torch those
-# four stages fail at import with ModuleNotFoundError, so no ranking stage runs
-# and no submission member can be produced -- regardless of which trainer
-# produced the embeddings.
+# --- NOT REQUIRED: PyTorch is reference-only --------------------------------
+# The canonical path does not need PyTorch and this specification deliberately
+# does not declare it. All neural model training runs on Jittor
+# (src/train_line_jt.py, src/train_bpr_jt.py), which import no torch.
 #
-# This does not weaken the framework requirement: the Jittor trainers remain the
-# compliant model path. On that path torch supplies utility functions only and a
-# CPU build is sufficient. A CUDA build is needed only to re-run the historical
-# PyTorch trainers.
+# src/train_line.py is the historical PyTorch trainer AND the shared utility
+# module the ranking stages import. Its torch import is guarded, and the one
+# utility that used torch (build_sim_cache, a cosine top-k) is now NumPy, so the
+# canonical stages import it without torch. Enforced by
+# tests/integration/test_framework_boundary.py.
 #
-# Left unpinned deliberately: no accepted artifact hash depends on the torch
-# version, and pinning a CUDA build would force a multi-gigabyte download on
-# reviewers who only need the utilities. Install the CPU wheel to keep it small:
+# Install torch ONLY to re-run the historical PyTorch trainer, and then use the
+# CPU wheel: a CUDA-enabled torch ships nvidia-* packages that shadow the CUDA
+# 12.4 libraries Jittor is built against and break it with
+# CURAND_STATUS_INITIALIZATION_FAILED.
 #   pip install torch --index-url https://download.pytorch.org/whl/cpu
-torch

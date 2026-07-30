@@ -9,6 +9,8 @@ virtual edges for the next training round -> evaluate leave-one-out tail MRR.
 
 Historical score note (from the original 1.py header): "21: redo: 0.424".
 """
+from __future__ import annotations
+
 import os
 import random
 from pathlib import Path
@@ -16,10 +18,34 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from tqdm import tqdm
+
+# PyTorch is REFERENCE-ONLY here and is imported lazily on purpose.
+#
+# This module is the historical PyTorch LINE trainer, but it is also the shared
+# utility module that the canonical ranking stages import (rownorm, build_cooc,
+# build_sim_cache, the path and constant definitions, ...). A top-level
+# `import torch` therefore made torch a hard dependency of the canonical
+# pipeline even though the canonical neural training runs on Jittor in
+# train_line_jt.py / train_bpr_jt.py, which import no torch at all.
+#
+# The guard below keeps the historical trainer working when torch is installed
+# while letting every canonical stage import this module without it. There is no
+# framework fallback: the Jittor trainers are separate entry points and nothing
+# here substitutes for them. Running the PyTorch trainer without torch fails
+# loudly at TORCH_IMPORT_ERROR rather than silently changing framework.
+try:                                            # pragma: no cover - env dependent
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    TORCH_AVAILABLE = True
+    TORCH_IMPORT_ERROR = None
+except ModuleNotFoundError as _exc:              # pragma: no cover - env dependent
+    torch = None
+    nn = None
+    F = None
+    TORCH_AVAILABLE = False
+    TORCH_IMPORT_ERROR = _exc
 
 # ===================== Global random seed =====================
 # Override via env (e.g. SEED=123) for multi-seed ensemble runs; non-default
@@ -27,14 +53,15 @@ from tqdm import tqdm
 SEED = int(os.environ.get("SEED", "42"))
 random.seed(SEED)
 np.random.seed(SEED)
-torch.manual_seed(SEED)
-torch.cuda.manual_seed(SEED)
-torch.cuda.manual_seed_all(SEED)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
+if TORCH_AVAILABLE:                              # reference-only trainer seeding
+    torch.manual_seed(SEED)
+    torch.cuda.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 # ===================== Hyperparameters =====================
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if TORCH_AVAILABLE else None
 # LINE model. Embedding dim and negatives-per-positive are env-tunable for
 # capacity experiments (e.g. EMB_DIM=512 NEG_RATIO=10); a non-default embedding
 # dim writes to a separate -d<dim> output dir so it never clobbers a prior run.
@@ -195,7 +222,10 @@ c_cols = [f"c{i}" for i in range(1, 101)]
 predict_run_count = 0
 
 # ===================== LINE model =====================
-class LINE(nn.Module):
+# Reference-only: defined only when torch is present. The canonical LINE
+# trainer is src/train_line_jt.py (Jittor).
+if TORCH_AVAILABLE:
+  class LINE(nn.Module):
     def __init__(self, n_node, d_sub):
         super().__init__()
         self.emb_first = nn.Embedding(n_node, d_sub)
@@ -403,8 +433,16 @@ def batch_sim_score(target_src: int, dst_batch: np.ndarray, cache_mat):
     return scores.astype(np.float32)
 
 def build_sim_cache(emb_matrix, real_src_np):
-    # GPU-batched cosine top-k: chunked matmul + torch.topk replaces the
-    # previous full numpy similarity matrix and per-target argpartition loop
+    # Two-band decayed similar-user cache: chunked cosine top-k.
+    #
+    # NumPy implementation. This function is on the CANONICAL ranking path
+    # (both rankers call it), so it must not depend on PyTorch. The previous
+    # implementation used torch.from_numpy/.to(device) + torch.topk, which made
+    # torch a hard dependency of the whole canonical pipeline. The mathematics
+    # is unchanged: L2-normalise, chunked matmul, zero the self-similarity,
+    # take the k largest per row in descending order, pad, then apply the
+    # two-band decay. Equivalence with the torch version is asserted by
+    # tests/strategies/test_sim_cache_equivalence.py.
     global sim_neigh_arr, sim_weight_arr  # src2row is only mutated, not rebound
     src2row.clear()
     max_emb_id = emb_matrix.shape[0] - 1
@@ -416,23 +454,31 @@ def build_sim_cache(emb_matrix, real_src_np):
         sim_weight_arr = np.zeros((0, TOP_N_SECOND), dtype=np.float32)
         return
 
-    emb_t = torch.from_numpy(np.ascontiguousarray(emb_matrix, dtype=np.float32)).to(device)
-    norm = emb_t.norm(dim=1, keepdim=True).clamp_min(1e-8)
-    emb_norm = emb_t / norm
-    target_ids = torch.tensor(valid_targets, dtype=torch.long, device=device)
+    emb = np.ascontiguousarray(emb_matrix, dtype=np.float32)
+    norm = np.maximum(np.linalg.norm(emb, axis=1, keepdims=True), 1e-8)
+    emb_norm = emb / norm
+    targets = np.asarray(valid_targets, dtype=np.int64)
 
     k = min(TOP_N_SECOND, emb_norm.shape[0])
     chunk = 1024
     neigh_chunks = []
     weight_chunks = []
-    for beg in tqdm(range(0, len(valid_targets), chunk), desc="Building two-band decayed similar-user cache"):
-        ids = target_ids[beg:beg + chunk]
+    for beg in tqdm(range(0, len(valid_targets), chunk),
+                    desc="Building two-band decayed similar-user cache"):
+        ids = targets[beg:beg + chunk]
         sim = emb_norm[ids] @ emb_norm.T
         # Exclude self-similarity, matching the original per-row zeroing
-        sim[torch.arange(len(ids), device=device), ids] = 0.0
-        vals, idx = torch.topk(sim, k, dim=1)  # sorted descending
-        neigh_chunks.append(idx.cpu().numpy().astype(np.int64))
-        weight_chunks.append(vals.cpu().numpy())
+        sim[np.arange(len(ids)), ids] = 0.0
+        # k largest per row, then order them descending. argpartition selects
+        # the top block, the subsequent argsort orders it; ties resolve by
+        # ascending column index, which is deterministic.
+        part = np.argpartition(-sim, k - 1, axis=1)[:, :k]
+        part_vals = np.take_along_axis(sim, part, axis=1)
+        order = np.argsort(-part_vals, axis=1, kind="stable")
+        idx = np.take_along_axis(part, order, axis=1)
+        vals = np.take_along_axis(part_vals, order, axis=1)
+        neigh_chunks.append(idx.astype(np.int64))
+        weight_chunks.append(vals)
 
     sim_neigh_arr = np.concatenate(neigh_chunks, axis=0)
     weights = np.concatenate(weight_chunks, axis=0)
@@ -450,7 +496,6 @@ def build_sim_cache(emb_matrix, real_src_np):
     for row_idx, src_id in enumerate(valid_targets):
         src2row[src_id] = row_idx
 
-# ===================== Test prediction (masks real history only) =====================
 def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch):
     build_sim_cache(emb_matrix, real_src_np)
 
