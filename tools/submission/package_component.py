@@ -356,9 +356,21 @@ def write_zip(out: Path, members: list[tuple[str, bytes]], rep: Report) -> dict:
         rep.emit(f"    overwriting existing {out.name}")
     with zipfile.ZipFile(out, "w", compression=COMPRESS_METHOD, compresslevel=COMPRESS_LEVEL) as z:
         for name, data in members:
-            # str arcname => create_system 0 / external_attr 0o600<<16, matching every
-            # accepted archive field for field
-            z.writestr(name, data)
+            # The container fields are pinned EXPLICITLY rather than inherited from
+            # the host. Passing a str arcname to writestr() derives create_system
+            # from sys.platform -- 0 on Windows, 3 on Linux -- so the same members
+            # produced a different container on the official Ubuntu 22.04 review
+            # environment than on the Windows host that built the accepted
+            # archives. Every accepted archive carries create_system 0,
+            # create_version 20, external_attr 0x1800000, flag_bits 0,
+            # internal_attr 0; pinning them here reproduces that container on any
+            # platform. date_time stays wall clock, which no accepted-archive
+            # check depends on.
+            entry = zipfile.ZipInfo(filename=name, date_time=time.localtime()[:6])
+            entry.create_system = 0
+            entry.external_attr = 0o600 << 16
+            entry.compress_type = COMPRESS_METHOD
+            z.writestr(entry, data, compresslevel=COMPRESS_LEVEL)
 
     size = out.stat().st_size
     info = {"zip_path": str(out), "zip_sha256": sha256_file(out), "zip_bytes": size,

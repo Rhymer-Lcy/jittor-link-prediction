@@ -165,10 +165,28 @@ class ZipWriterTest(unittest.TestCase):
                 self.assertEqual(z.comment, b"")
                 self.assertEqual(len(z.infolist()), 1)
                 self.assertFalse(i.is_dir())
-                # container fields must match every accepted archive
+                # Container fields must match every accepted archive, on every
+                # platform. They are pinned explicitly in write_zip because a str
+                # arcname would derive create_system from sys.platform (0 on
+                # Windows, 3 on Linux) and the official review environment is
+                # Ubuntu 22.04.
                 self.assertEqual((i.create_system, i.create_version,
                                   i.external_attr, i.flag_bits), (0, 20, 0x1800000, 0))
                 self.assertEqual(z.read("dataset1.csv"), payload)
+
+    def test_container_fields_do_not_depend_on_the_host_platform(self):
+        rep = report()
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "t.zip"
+            pc.write_zip(out, [("dataset1.csv", b"0.1,0.2\n")], rep)
+            with zipfile.ZipFile(out) as z:
+                entry = z.infolist()[0]
+        # 0 means MS-DOS/FAT, which is what all three accepted archives carry.
+        # A host-derived value (3, Unix) here would mean a rebuilt pack no longer
+        # matches the accepted container.
+        self.assertEqual(entry.create_system, 0,
+                         "create_system leaked from the host platform")
+        self.assertEqual(entry.compress_type, 8)
 
     def test_preserves_line_endings_verbatim(self):
         rep = report()
