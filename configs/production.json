@@ -1,28 +1,34 @@
 {
   "production_status": "ACCEPTED",
-  "accepted_total_score": 1.5752524794476366,
-  "accepted_total_score_exact_decimal": "1.5752524794476365",
-  "score_model": "total = dataset1_MRR + dataset2_MRR (strictly additive, verified to 16 digits)",
+  "accepted_total_score": 1.576996059163449,
+  "accepted_total_score_exact_decimal": "1.5769960591634492",
+  "score_model": "total = dataset1_MRR + dataset2_MRR (strictly additive; the Round-30 total was predicted from two separately observed components and then confirmed online)",
   "accepted_archive": {
-    "path": "outputs/submissions/round22_main/r22_rgr_main_d9.zip",
-    "sha256": "6b9f0cd928c49ec2b6f48554c5d3ef2cfae6dbc34650dd17f19c03105dd9dae7",
-    "bytes": 63984734,
+    "path": "outputs/submissions/round30_final/r30_xte_final.zip",
+    "sha256": "efe790a56a715ec451a809a560f25ac6d3ecb0cde1d71a46e4de7fcdb6a4a536",
+    "bytes": 63984486,
     "compress_method": 8,
     "compress_method_name": "standard deflate",
     "compress_level": 9,
-    "member_order": ["dataset1.csv", "dataset2.csv"],
+    "member_order": [
+      "dataset1.csv",
+      "dataset2.csv"
+    ],
     "directory_entries": 0,
     "archive_comment": "",
-    "accepted_utc": "2026-07-29"
-  },
-  "leaderboard_snapshot": {
-    "captured_utc": "2026-07-29",
-    "rank_1": 1.5885,
-    "rank_2": 1.5818,
-    "ours": 1.5752524794476366,
-    "our_visible_rank": 3,
-    "gap_to_rank_1": 0.0132475205523634,
-    "gap_to_rank_2": 0.0065475205523634
+    "accepted_utc": "2026-07-30",
+    "assembled_from": {
+      "dataset1.csv": {
+        "source_archive": "outputs/submissions/round22_main/r22_rgr_main_d9.zip",
+        "note": "accepted Round-22 member, byte-for-byte"
+      },
+      "dataset2.csv": {
+        "source_archive": "outputs/submissions/round23_components/r23_xte_d2_swap_ds2_only.zip",
+        "note": "exact Round-23 XTE member that was itself online-observed, byte-for-byte"
+      }
+    },
+    "deterministic_double_build_byte_identical": true,
+    "provenance": "scratchpad/round-30-opus/"
   },
   "immutable_inputs": {
     "data/data_A/dataset1/train.csv": "b679e4fe458d16c22c1cb12c52b013a8363c2191e25d913b3c763e8376bfc53e",
@@ -35,7 +41,10 @@
     "component_score_measured": "isolated single-member auxiliary submission, 2026-07-29",
     "member_sha256": "baa0dc21e1f4b93e579b4c895a8a44da2064b6f3cbbc3d2d1be18314e1125987",
     "member_bytes": 55006951,
-    "shape": [61051, 100],
+    "shape": [
+      61051,
+      100
+    ],
     "line_ending": "CRLF",
     "float_format": "%.6f",
     "chain_input": {
@@ -50,7 +59,11 @@
         "strategy_id": "ds1_lambdarank_ranker",
         "implementation": "src/ranker_ds1.py",
         "role": "base score matrix (cut-split LambdaRank, train-cut / infer-full)",
-        "upstream": ["src/train_line.py", "src/train_bpr.py", "src/ensemble_predict.py"]
+        "upstream": [
+          "src/train_line.py",
+          "src/train_bpr.py",
+          "src/ensemble_predict.py"
+        ]
       },
       {
         "order": 1,
@@ -59,8 +72,11 @@
         "actions": 3653,
         "top1_changes": 3653,
         "action_coverage": 0.0598,
-        "online_delta": 0.0263262456071370,
-        "config": {"minimum_other_slates": 2, "uniqueness_required": true}
+        "online_delta": 0.026326245607137,
+        "config": {
+          "minimum_other_slates": 2,
+          "uniqueness_required": true
+        }
       },
       {
         "order": 2,
@@ -70,37 +86,56 @@
         "top1_changes": 1365,
         "action_coverage": 0.0224,
         "online_delta": 0.0080096968108635,
-        "config": {"rank_depth": 2, "reverse_edge": "existence only, not counts"},
-        "anchors": {"directed_graph_edges": 5918104, "reverse_positive_cells": 105290}
+        "config": {
+          "rank_depth": 2,
+          "reverse_edge": "existence only, not counts"
+        },
+        "anchors": {
+          "directed_graph_edges": 5918104,
+          "reverse_positive_cells": 105290
+        }
       }
     ],
     "chain_is_order_sensitive": true,
     "build_command": "python src/build_ds1_member.py --verify",
-    "verify_command": "python tools/submission/package_component.py verify --zip outputs/submissions/round22_main/r22_rgr_main_d9.zip"
+    "verify_command": "python tools/submission/package_component.py verify --zip outputs/submissions/round22_main/r22_rgr_main_d9.zip",
+    "component_score_evidence_class": "ONLINE_OBSERVED",
+    "unchanged_since": "2026-07-29; carried into the Round-30 package byte-for-byte"
   },
   "dataset2": {
-    "component_score": 0.6789511047001768,
-    "component_score_measured": "isolated single-member auxiliary submission, 2026-07-29",
-    "member_sha256": "dc6928c266190c5bab97ec4426bc647b526f8717dc589d6381cb60b1dee18a99",
+    "component_score": 0.6806946844159895,
+    "component_score_measured": "isolated single-member auxiliary submission of the XTE component, 2026-07-29; re-served unchanged in the final Round-30 main pack, 2026-07-30",
+    "member_sha256": "beb13345dc020f32283cea2d132efa072eb52c73d29806f86f60fbf24982f971",
     "member_bytes": 138078000,
-    "shape": [153420, 100],
+    "shape": [
+      153420,
+      100
+    ],
     "line_ending": "LF",
     "float_format": "%.6f",
-    "unchanged_since": "2026-07-28 (shipped in submission_mf_full_main.zip at total 1.540916537029636)",
+    "unchanged_since": "2026-07-30 (Round-30 XTE graduation). The pre-XTE member dc6928c266190c5bab97ec4426bc647b526f8717dc589d6381cb60b1dee18a99 held from 2026-07-28 to 2026-07-29 at component 0.6789511047001768.",
     "strategy_chain": [
       {
         "order": 0,
         "strategy_id": "ds2_basket_lambdarank",
         "implementation": "src/ranker_basket_ds2.py",
         "role": "18-feature LambdaRank + 3-pass basket feedback",
-        "upstream": ["src/train_line.py", "src/train_bpr.py", "src/ensemble_predict.py"]
+        "upstream": [
+          "src/train_line.py",
+          "src/train_bpr.py",
+          "src/ensemble_predict.py"
+        ]
       },
       {
         "order": 1,
         "strategy_id": "mf_basket_geometry",
         "implementation": "src/ds2_mf_basket_pack.py",
         "role": "pass-2/3 sibling-message geometry: d128 SVD of the split0 src x dst matrix, replacing the hand-built item_profiles",
-        "config": {"rank": 128, "unit_norm": true, "mf_frozen": "split0 for train, full train for serve"},
+        "config": {
+          "rank": 128,
+          "unit_norm": true,
+          "mf_frozen": "split0 for train, full train for serve"
+        },
         "online_delta": 0.0145518,
         "reproduction_status": "ported verbatim from scratchpad; NOT re-executed during the 2026-07-29 consolidation"
       },
@@ -110,7 +145,7 @@
         "implementation": "src/crf_promote.py",
         "role": "equality CRF over same-time adjacency chains plus the structural invariant rules",
         "config": {
-          "tau": 0.20,
+          "tau": 0.2,
           "B": 70,
           "triple_rule": true,
           "pair_rule": false,
@@ -122,12 +157,40 @@
       }
     ],
     "build_command": "see docs/CURRENT_PRODUCTION.md -- dataset2 is rebuilt from src/ds2_mf_basket_pack.py then src/crf_promote.py",
-    "reproduction_risk": "HIGH: the dataset2 member has not been rebuilt end-to-end since 2026-07-28; see docs/maintenance/repository_reorganisation_ambiguities.md"
+    "reproduction_risk": "HIGH: the dataset2 member has not been rebuilt end-to-end since 2026-07-28; see docs/maintenance/repository_reorganisation_ambiguities.md",
+    "component_score_evidence_class": "ONLINE_OBSERVED",
+    "final_decoder": {
+      "strategy_id": "xte_cross_time_exclusivity_decode",
+      "applies_to": "the score matrix produced by the strategy_chain below",
+      "mechanism": "Group rows by (source, served top-1). A group spanning two or more distinct timestamps contradicts the measured zero-repeat generator invariant; keep the timestamp cluster with the largest row margin and swap the rank-1/rank-2 score tokens in every other row. One pass, no thresholds, no refit.",
+      "effect_on_member": {
+        "rows_changed": 7815,
+        "cells_changed": 15630,
+        "top1_changes": 7815,
+        "strict_inversions": 7815,
+        "pairs_collapsed_to_tie": 0
+      },
+      "component_score_before": 0.6789511047001768,
+      "component_score_after": 0.6806946844159895,
+      "online_observed_gain": "0.0017435797158127",
+      "historical_lifecycle": "CLOSED_AT_LOCKED_GATE",
+      "original_locked_gate": "+0.002",
+      "shortfall_from_original_gate": "0.0002564202841873",
+      "operational_decision": "FINAL_BOARD_MAXIMISATION_OVERRIDE",
+      "operational_lifecycle": "SHIPPED_ACTIVE",
+      "evidence_status": "ONLINE_VALIDATED",
+      "implementation_status": "NOT_YET_GRADUATED",
+      "implementation_provenance": "scratchpad/round-23-opus/xte/scripts/build_xte_member.py",
+      "reproduction_risk": "HIGH: the decoder is not yet tracked under src/. The shipped member is preserved byte-for-byte inside the accepted archive, so production is reproducible by extraction but not yet from tracked code. See docs/maintenance/repository-reorganisation-ambiguities.md."
+    }
   },
   "archive_policy": {
     "compress_method": 8,
     "compress_level": 9,
-    "member_names": ["dataset1.csv", "dataset2.csv"],
+    "member_names": [
+      "dataset1.csv",
+      "dataset2.csv"
+    ],
     "single_member_auxiliary_allowed": true,
     "missing_dataset_scores_zero": true,
     "size_thresholds": {
@@ -143,6 +206,55 @@
     "consolidated_utc": "2026-07-29",
     "strategy_inventory": "docs/strategy_inventory.json",
     "registry": "src/strategies/registry.py",
-    "round_history": ["docs/rounds/round-21.md", "docs/rounds/round-22.md"]
+    "round_history": [
+      "docs/rounds/round-21.md",
+      "docs/rounds/round-22.md"
+    ]
+  },
+  "accepted_total_score_evidence_class": "ONLINE_OBSERVED",
+  "superseded_archives": [
+    {
+      "path": "outputs/submissions/round22_main/r22_rgr_main_d9.zip",
+      "sha256": "6b9f0cd928c49ec2b6f48554c5d3ef2cfae6dbc34650dd17f19c03105dd9dae7",
+      "bytes": 63984734,
+      "total_score": 1.5752524794476366,
+      "lifecycle_status": "SHIPPED_SUPERSEDED",
+      "shipped_utc": "2026-07-29",
+      "superseded_utc": "2026-07-30",
+      "superseded_by": "outputs/submissions/round30_final/r30_xte_final.zip",
+      "production_tag": "a-board-r22-1.5752524794476366",
+      "note": "Held production from 2026-07-29 until the Round-30 XTE graduation. Retained on disk and immutable; it remains the fallback state."
+    }
+  ],
+  "release_tags": [
+    {
+      "tag": "a-board-r22-1.5752524794476366",
+      "total_score": 1.5752524794476366,
+      "archive": "outputs/submissions/round22_main/r22_rgr_main_d9.zip",
+      "status": "SHIPPED_SUPERSEDED"
+    },
+    {
+      "tag": "a-board-r30-1.576996059163449",
+      "total_score": 1.576996059163449,
+      "archive": "outputs/submissions/round30_final/r30_xte_final.zip",
+      "status": "SHIPPED_ACTIVE",
+      "note": "final A-board release"
+    }
+  ],
+  "final_board_result": {
+    "evidence_class": "USER_OBSERVED_SCREENSHOT",
+    "independently_fetched": false,
+    "official_timestamp_claimed": false,
+    "observation": "approximately final pre-closure user observation",
+    "platform_observed_total": 1.576996059163449,
+    "component_derived_exact_decimal_sum": "1.5769960591634492",
+    "displayed_score": "1.577",
+    "displayed_rank": 3,
+    "displayed_rank_1": 1.5946,
+    "displayed_rank_2": 1.5885,
+    "displayed_gap_to_rank_1": "approximately 0.0176",
+    "displayed_gap_to_rank_2": "approximately 0.0115",
+    "improvement_over_superseded_total": "0.0017435797158124",
+    "record": "docs/leaderboard_final.md"
   }
 }
