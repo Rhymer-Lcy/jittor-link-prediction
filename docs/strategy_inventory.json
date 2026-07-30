@@ -1,22 +1,27 @@
 {
   "schema_version": 1,
-  "generated_utc": "2026-07-29",
-  "generated_by": "repository consolidation pass, reconstructed from README.md (score ledger), configs/production.json, outputs/submissions/, scratchpad round reports and durable agent memory",
+  "generated_utc": "2026-07-30",
+  "generated_by": "repository consolidation pass 2026-07-29, extended by the A-board finalisation pass 2026-07-30 which added the round 23 and 26-29 records from the persisted agent ledgers",
   "lifecycle_statuses": [
-    "SHIPPED_ACTIVE", "SHIPPED_SUPERSEDED", "ONLINE_VALIDATED",
-    "CANDIDATE", "STANDBY", "CLOSED", "PROBE"
+    "SHIPPED_ACTIVE",
+    "SHIPPED_SUPERSEDED",
+    "ONLINE_VALIDATED",
+    "CANDIDATE",
+    "STANDBY",
+    "CLOSED",
+    "PROBE"
   ],
   "counts": {
     "SHIPPED_ACTIVE": 14,
     "SHIPPED_SUPERSEDED": 6,
-    "ONLINE_VALIDATED": 0,
+    "ONLINE_VALIDATED": 1,
     "CANDIDATE": 0,
-    "STANDBY": 1,
-    "CLOSED": 29,
+    "STANDBY": 2,
+    "CLOSED": 39,
     "PROBE": 3,
-    "total": 53
+    "total": 65
   },
-  "counts_note": "ONLINE_VALIDATED is empty by construction: in this project every mechanism that passed an isolated online test was shipped in the next main pack, and every mechanism that failed one was closed permanently.",
+  "counts_note": "ONLINE_VALIDATED holds exactly one record. It was empty until the final board: every earlier mechanism that passed an isolated online test was shipped in the next main pack, and every one that failed was closed permanently. xte_cross_time_exclusivity_decode is the sole mechanism that passed an isolated online test, was closed at its locked shipping gate anyway, and was later shipped under an explicit final-board operational override. Its lifecycle_status records the evidence axis; its operational_lifecycle field records that it ships. It is not SHIPPED_ACTIVE in this field because its decoder is not yet tracked under src/, and SHIPPED_ACTIVE is asserted only for mechanisms with a tracked implementation.",
   "strategies": [
     {
       "strategy_id": "line_embedding",
@@ -69,7 +74,10 @@
       "offline_evidence": "honest +0.0033 at w=12, entirely on non-repeat queries; w=15 bleeds repeats, w=18 collapses",
       "online_evidence": "1.50890 -> 1.51309 (+0.00419 incl. a lineage fix)",
       "implementation_path": "src/train_bpr.py",
-      "config": {"BPR_INNOV": 1, "W_IBPR": 12},
+      "config": {
+        "BPR_INNOV": 1,
+        "W_IBPR": 12
+      },
       "confidence": "high"
     },
     {
@@ -111,9 +119,18 @@
       "online_evidence": "isolated auxiliary A/B before shipping: 0.9136871602584966 -> 0.9400134058656336, delta +0.0263262456071370",
       "main_account_history": "shipped 2026-07-29 in submission_r2_main_d9.zip, accepted total 1.567242782636773 (rank #2)",
       "implementation_path": "src/strategies/ds1/source_slate_recurrence.py",
-      "action_anchor": {"rows": 61051, "actions": 3653},
+      "action_anchor": {
+        "rows": 61051,
+        "actions": 3653
+      },
       "provenance": "Codex round 21; executed scratchpad/round-21a-opus/r2/",
-      "prohibited_variants": ["threshold tuning", "relaxing uniqueness", "changing the row gate or history definition", "altering the score transform", "using candidate column position"],
+      "prohibited_variants": [
+        "threshold tuning",
+        "relaxing uniqueness",
+        "changing the row gate or history definition",
+        "altering the score transform",
+        "using candidate column position"
+      ],
       "confidence": "high"
     },
     {
@@ -127,9 +144,19 @@
       "online_evidence": "isolated auxiliary read 0.8963013747474597 vs baseline 0.8882916779365962, delta +0.0080096968108635 against a +0.0010 gate",
       "main_account_history": "shipped 2026-07-29 in r22_rgr_main_d9.zip, accepted total 1.5752524794476366 (rank #3)",
       "implementation_path": "src/strategies/ds1/test_graph_reciprocity.py",
-      "action_anchor": {"rows": 61051, "actions": 1365, "directed_graph_edges": 5918104, "reverse_positive_cells": 105290},
+      "action_anchor": {
+        "rows": 61051,
+        "actions": 1365,
+        "directed_graph_edges": 5918104,
+        "reverse_positive_cells": 105290
+      },
       "provenance": "Codex round 22; executed scratchpad/round-22-opus/rgr/",
-      "prohibited_variants": ["inspecting ranks below 2", "reverse-edge counts or thresholds", "widening eligibility", "adding recurrence / source-peak / source-role conditions"],
+      "prohibited_variants": [
+        "inspecting ranks below 2",
+        "reverse-edge counts or thresholds",
+        "widening eligibility",
+        "adding recurrence / source-peak / source-role conditions"
+      ],
       "confidence": "high"
     },
     {
@@ -156,7 +183,11 @@
       "online_evidence": "single-variable auxiliary A/B: 0.7166850834516475 -> 0.7312368936166302, +0.0145518 (a ~2.2x UPWARD transfer)",
       "main_account_history": "shipped 2026-07-28 in submission_mf_full_main.zip, accepted total 1.540916537029636 (rank #3); the ds2 member has been byte-identical ever since",
       "implementation_path": "src/ds2_mf_basket_pack.py",
-      "dependencies": ["src/ds2_basket_featurizer.py", "src/train_line.py", "src/ensemble_predict.py"],
+      "dependencies": [
+        "src/ds2_basket_featurizer.py",
+        "src/train_line.py",
+        "src/ensemble_predict.py"
+      ],
       "confidence": "high",
       "reproduction_risk": "HIGH -- graduated verbatim from scratchpad on 2026-07-29 but NOT re-executed; it also needs the cached train features built by ds2_basket_featurizer.build_or_load_features",
       "notes": "Was the README's flagged clean-checkout / B-board liability; now tracked, still unverified end to end."
@@ -171,7 +202,11 @@
       "offline_evidence": "(tau=0.25,B=100) then (0.20,70) are interior optima of a row-order-preserving replay harness; one pass is exact on chains",
       "online_evidence": "equality-CRF +0.01636 isolated; chain 1.49254 -> 1.50890",
       "implementation_path": "src/crf_promote.py",
-      "config": {"tau": 0.20, "B": 70, "flags": "--zr-exclude --demote-dups --st-exclude --no-pair"},
+      "config": {
+        "tau": 0.2,
+        "B": 70,
+        "flags": "--zr-exclude --demote-dups --st-exclude --no-pair"
+      },
       "confidence": "high",
       "notes": "The raw test row order is load-bearing: never sort before applying."
     },
@@ -199,7 +234,9 @@
       "offline_evidence": "rank-conditioned transfer predicted +0.0018",
       "online_evidence": "+0.001764 (1.5149319 -> 1.5166958)",
       "implementation_path": "src/crf_promote.py",
-      "config": {"flags": "--zr-exclude --demote-dups"},
+      "config": {
+        "flags": "--zr-exclude --demote-dups"
+      },
       "confidence": "high"
     },
     {
@@ -212,11 +249,12 @@
       "offline_evidence": "predicted +0.000536",
       "online_evidence": "+0.0006142 (1.5166958 -> 1.5173100)",
       "implementation_path": "src/crf_promote.py",
-      "config": {"flags": "--st-exclude"},
+      "config": {
+        "flags": "--st-exclude"
+      },
       "confidence": "high",
       "notes": "Its run definition (invariant IV) was the arbiter proposed for reopening the E1 family."
     },
-
     {
       "strategy_id": "ds1_linear_blend",
       "dataset": "dataset1",
@@ -269,7 +307,9 @@
       "online_evidence": "shipped for +0.00955; REMOVED for +0.0004173 (1.5145953 -> 1.5149319)",
       "superseded_by": "structural_row_order_crf",
       "implementation_path": "src/crf_promote.py",
-      "config": {"flags": "--no-pair (currently disabled)"},
+      "config": {
+        "flags": "--no-pair (currently disabled)"
+      },
       "confidence": "high",
       "notes": "Removed because it double-counted the chain the equality CRF already models. Still reachable behind a flag; it must stay off."
     },
@@ -299,7 +339,6 @@
       "confidence": "high",
       "notes": "Kept only to reproduce historical runs. The BACK_FILL_THRESHOLD gate is degenerate: it is a binary row filter, not a confidence filter."
     },
-
     {
       "strategy_id": "xlist_objective_diversity",
       "dataset": "dataset1",
@@ -314,7 +353,6 @@
       "confidence": "medium",
       "notes": "Deliberately inactive. Not a live direction."
     },
-
     {
       "strategy_id": "candidate_source_peak_crossing",
       "dataset": "dataset1",
@@ -354,7 +392,6 @@
       "provenance": "Codex round 22 residual atlas; never promoted to a proposal",
       "confidence": "medium"
     },
-
     {
       "strategy_id": "within_event_collision_exclusion",
       "dataset": "dataset2",
@@ -689,6 +726,227 @@
       "closure_reason": "the blind spot is real but does not convert to score",
       "confidence": "high",
       "notes": "Carry-forward: offline gates should still REPORT the in_pool slice separately as the production-matched number."
+    },
+    {
+      "strategy_id": "xte_cross_time_exclusivity_decode",
+      "dataset": "dataset2",
+      "mechanism": "group rows by (source, served top-1); a group spanning >=2 distinct timestamps contradicts the measured zero-repeat generator invariant; keep the timestamp cluster with the largest row margin and swap the rank-1/rank-2 score tokens in every other row (one pass, no thresholds, no refit)",
+      "lifecycle_status": "ONLINE_VALIDATED",
+      "operational_lifecycle": "SHIPPED_ACTIVE",
+      "historical_lifecycle": "CLOSED_AT_LOCKED_GATE",
+      "first_round": "23",
+      "last_round": "30",
+      "offline_evidence": "replay +0.02015932103723213 on the ds2 replay surface; not byte-equivalent to the accepted chain, and the realised online gain was 3.6x-4.0x smaller than the +0.0062..+0.0069 projection",
+      "online_evidence": "isolated ds2 component 0.6789511047001768 -> 0.6806946844159895, delta 0.0017435797158127; re-served unchanged in the final Round-30 main pack, observed total 1.576996059163449",
+      "implementation_path": null,
+      "implementation_status": "NOT_YET_GRADUATED",
+      "provenance": "scratchpad/round-23-opus/xte/, scratchpad/round-30-opus/",
+      "role": "final dataset2 score decoder",
+      "confidence": "high",
+      "notes": "Two-axis lifecycle. It did NOT pass its original Round-23 locked +0.002 shipping gate (required 0.6809511047001768; shortfall 0.0002564202841873) and was correctly closed at that gate. It was later selected for the final board under an owner-authorised FINAL_BOARD_MAXIMISATION_OVERRIDE scoped to the exact online-observed member bytes, and it shipped. The override does not reopen the XTE family for tuning, rescue or reconstruction, and it does not convert the sub-gate result into a gate pass. The decoder is not yet tracked under src/; production is reproducible by extraction from the accepted archive only."
+    },
+    {
+      "strategy_id": "role_aware_conditional_interaction_lift",
+      "dataset": "both",
+      "mechanism": "log-odds source-activity-bin x destination conditional interaction lift with strict zero crossing, applied as a deterministic overlay",
+      "lifecycle_status": "CLOSED",
+      "first_round": "26",
+      "last_round": "26",
+      "offline_evidence": "ds1 treatment delta -0.0055059200044918 (folds -0.0056666197381388, -0.0053461716093096; time halves -0.0049759973049606, -0.0060358501424741; in-pool -0.0054514452478153; mechanism null -0.005274313426865; matched placebo -0.0055690854347536); ds2 treatment delta -0.0215954535024748 (in-pool -0.019701824195132; mechanism null -0.0251233323499525; matched placebo -0.022369865932409)",
+      "online_evidence": "none",
+      "closure_reason": "negative on both datasets, both source-disjoint folds, both time halves and the production-matched in-pool slices; nulls and matched placebos show the movement is generic top-pair intervention cost",
+      "provenance": "scratchpad/round-26-codex/, scratchpad/round-26-opus/",
+      "notes": "Closes one conditional-lift construction at the deterministic-overlay rung. Role-aware interaction modelling in general is untested, not refuted.",
+      "confidence": "high"
+    },
+    {
+      "strategy_id": "head_to_head_candidate_competition",
+      "dataset": "both",
+      "mechanism": "global repeated strict-top-pair majority vote across leave-one-out head-to-head candidate comparisons, no support threshold",
+      "lifecycle_status": "CLOSED",
+      "first_round": "26",
+      "last_round": "26",
+      "offline_evidence": "ds1 treatment delta -0.0002526617210474 (folds -0.0001619034210897, -0.0003428827341049; time halves -0.0002175682883692, -0.0002877556463273; in-pool -0.0002869181709376; mechanism null -0.0038004533874217; matched placebo -0.0003684650098608); ds2 treatment delta -0.001401317730357 (in-pool -0.0012014882951785; mechanism null -0.002011833349723; matched placebo -0.0015631658307929)",
+      "online_evidence": "none",
+      "closure_reason": "negative on both datasets and every registered slice; additionally physically sparse at 70 ds1 and 637 ds2 actions",
+      "provenance": "scratchpad/round-26-codex/, scratchpad/round-26-opus/",
+      "notes": "Candidate-competition modelling in other forms is untested.",
+      "confidence": "high"
+    },
+    {
+      "strategy_id": "role_conditioned_winner_flow_residual",
+      "dataset": "both",
+      "mechanism": "empirical-Bayes leave-one-out winner-flow logit lift over accepted-winner rates",
+      "lifecycle_status": "CLOSED",
+      "first_round": "26",
+      "last_round": "26",
+      "offline_evidence": "ds1 treatment delta -0.0043057768295165 (folds -0.0042446853442208, -0.0043665066547241; time halves -0.0042531091210241, -0.0043584452772982; in-pool -0.0016477300673848; mechanism null -0.0066393885586351; matched placebo -0.0039934588687773); ds2 treatment delta -0.0259960828662274 (in-pool -0.0198310164849362; mechanism null -0.0282844920837841; matched placebo -0.0218597371095158)",
+      "online_evidence": "none",
+      "closure_reason": "negative on both datasets, both folds, both halves and the matched slices; accepted-winner flow is self-consistency information, not a truth source",
+      "provenance": "scratchpad/round-26-codex/, scratchpad/round-26-opus/",
+      "notes": "Bounds this formulation, not the family.",
+      "confidence": "high"
+    },
+    {
+      "strategy_id": "directed_role_svd_affinity",
+      "dataset": "dataset1",
+      "mechanism": "directed-SVD scalar role affinity columns appended to the ds1 ranker",
+      "lifecycle_status": "CLOSED",
+      "first_round": "26",
+      "last_round": "26",
+      "offline_evidence": "OOF delta 0.000075 (control 0.663812 -> treatment 0.663887); sign-unstable folds -0.000533, 0.000679; halves -0.000177, 0.000327; standalone svd_fwd 0.4517 vs sym_control 0.4607",
+      "online_evidence": "none",
+      "closure_reason": "offline dead at the treatment stage with sign-unstable folds; the null battery was never run to adjudication because the treatment did not survive",
+      "provenance": "scratchpad/round-26-fable/, scratchpad/round-26-opus/",
+      "notes": "Closes directed-SVD scalar affinity columns in the ds1 ranker. Role-factorised representations remain production-validated on ds2 via the shipped mf_basket_geometry and are not closed.",
+      "confidence": "high"
+    },
+    {
+      "strategy_id": "line_direct_candidate_affinity",
+      "dataset": "dataset1",
+      "mechanism": "direct LINE source-candidate cosine exposed to the accepted-aligned ranker as one deterministic column (21 + 1)",
+      "lifecycle_status": "STANDBY",
+      "first_round": "26",
+      "last_round": "27",
+      "offline_evidence": "paired OOF delta 0.004103 (control 0.663812 -> treatment 0.667915, 250 trees, paired); folds 0.003754, 0.00445; halves 0.006284, 0.001921; non-repeat 0.009062; cold-truth 0.033309; equal-capacity control one random-factor extra column: -0.000747 (0% of gain); semantic null -0.000671 (0% of gain; candidate identity is load-bearing); 100% physical coverage of 61,051 rows; conservative projected online gain approximately +0.00045",
+      "online_evidence": "none",
+      "implementation_path": null,
+      "provenance": "scratchpad/round-26-fable/, scratchpad/round-26-opus/, scratchpad/round-27-codex/",
+      "role": "validated control arm for later rounds",
+      "notes": "The only capacity-clean and null-clean positive offline finding of the late rounds, and deliberately NOT promoted: its conservative projection was approximately +0.00045 against a +0.002 gate. It became CONTROL B for Round 27, where it accounted for the entire apparent gain of all three tested model families. Kept on standby as data_B evidence; A-board execution was never authorised.",
+      "confidence": "high"
+    },
+    {
+      "strategy_id": "slate_confidence_context",
+      "dataset": "dataset1",
+      "mechanism": "slate-level confidence and dispersion context scalars added to the ds1 ranker",
+      "lifecycle_status": "CLOSED",
+      "first_round": "26",
+      "last_round": "26",
+      "offline_evidence": "OOF delta 0.000965 (control 0.663812 -> treatment 0.664777); folds 0.001361, 0.000571; halves 0.000814, 0.001116; semantic null -0.000378 (0% of gain; contexts are query-genuine)",
+      "online_evidence": "none",
+      "closure_reason": "real and null-clean but below the minimum-interesting offline floor; closed at the scalar context rung only",
+      "provenance": "scratchpad/round-26-fable/, scratchpad/round-26-opus/",
+      "notes": "The recorded 0.000965 is now the floor any deeper gating or confidence-aware architecture must beat before claiming mechanism value.",
+      "confidence": "high"
+    },
+    {
+      "strategy_id": "setwise_deepsets_residual",
+      "dataset": "dataset1",
+      "mechanism": "permutation-equivariant DeepSets residual over the 21 accepted scalars, the LINE-direct column and the frozen control score (2,385 parameters)",
+      "lifecycle_status": "CLOSED",
+      "first_round": "27",
+      "last_round": "27",
+      "offline_evidence": "increment over CONTROL B (accepted control + validated LINE-direct scalar) -0.0002116814524695; against CONTROL A alone 0.0043431687592967; folds -0.000676500579426, 0.0002371026164131; time halves -0.0005760628525836, 0.0001767659418293; equal-capacity control -0.000401812149306; conservative online projection -0.0000232616980736",
+      "online_evidence": "none",
+      "closure_reason": "Negative incremental delta with a negative fold and negative time half; no set-wise gain above CONTROL B.",
+      "provenance": "scratchpad/round-27-codex/, scratchpad/round-27-opus/",
+      "notes": "Closed at the tested DeepSets rung: a residual over scalar inputs only. Does not close set-wise modelling that consumes candidate representations rather than candidate scalars.",
+      "confidence": "high"
+    },
+    {
+      "strategy_id": "causal_event_sequence_ranker",
+      "dataset": "dataset1",
+      "mechanism": "bounded chronological event GRU (H<=64) with role-specific LINE/BPR projections and candidate-linear residual scoring (18,513 parameters)",
+      "lifecycle_status": "CLOSED",
+      "first_round": "27",
+      "last_round": "27",
+      "offline_evidence": "increment over CONTROL B (accepted control + validated LINE-direct scalar) 0.00011493543093; against CONTROL A alone 0.0046697856426963; folds 0.0002909610513389, -0.0000550177606952; time halves 0.0000932232823779, 0.0001380815836344; equal-capacity control 0.000285688122821; conservative online projection 0.0000126302671352; matched mean-pool capacity arm reaches 248.6% of the treatment gain and the zero-history null reaches 161.4%",
+      "online_evidence": "none",
+      "closure_reason": "Increment only +0.000115, fold 1 negative; matched mean pool (+0.000286) and zero-history null (+0.000185) exceed treatment.",
+      "provenance": "scratchpad/round-27-codex/, scratchpad/round-27-opus/",
+      "notes": "The decisive negative result of Round 27: event order and event timing carry no measurable ranking information at this rung. A mean pool with no sequence does better, and removing the history entirely reproduces most of the effect. Closes the cheap version of the hypothesis, not deeper-history sequence modelling.",
+      "confidence": "high"
+    },
+    {
+      "strategy_id": "objective_low_rank_adapter",
+      "dataset": "dataset1",
+      "mechanism": "rank-8 four-expert LINE/BPR bilinear adapter with a candidate-conditioned truth-free gate (10,869 parameters)",
+      "lifecycle_status": "CLOSED",
+      "first_round": "27",
+      "last_round": "27",
+      "offline_evidence": "increment over CONTROL B (accepted control + validated LINE-direct scalar) -0.0001136761036589; against CONTROL A alone 0.0044411741081074; folds 0.0002360253243738, -0.0004513137365897; time halves 0.0000969362708529, -0.0003381986178722; equal-capacity control -0.0005126317929902; conservative online projection -0.000012491879523",
+      "online_evidence": "none",
+      "closure_reason": "Negative incremental delta with fold 1 and late-half sign failures; no objective-diverse gain above CONTROL B.",
+      "provenance": "scratchpad/round-27-codex/, scratchpad/round-27-opus/",
+      "notes": "Closed at the tested rank-8 adapter rung. The general design hypothesis that each embedding objective should contribute its own direct score is not refuted; what is refuted is that a supervised low-rank adapter extracts more once those direct scores are present.",
+      "confidence": "high"
+    },
+    {
+      "strategy_id": "hard_negative_role_representation",
+      "dataset": "dataset1",
+      "mechanism": "frozen unit-norm LINE base plus trainable source/destination role delta tables, trained with full-slate softmax cross-entropy AND a hard-negative softplus auxiliary (H=32 from frozen replay competitor scores); one scalar feature over the control ranker",
+      "lifecycle_status": "CLOSED",
+      "first_round": "28",
+      "last_round": "28",
+      "offline_evidence": "full-OOF treatment 0.6864789067958795, increment over CONTROL B 0.018564187460258; folds 0.0174639364328727, 0.0196579250286621; halves 0.015133995390819, 0.0219944276788255; source-clustered 95% CI [0.01661860933902, 0.0206434844615614]; projected online 0.00204",
+      "online_evidence": "none; no package was built",
+      "closure_reason": "Section-17 mechanism audit: H0 (no hard-negative auxiliary) share 103.4% and H1 (random negatives) share 102.5% -- hard negatives contribute nothing; I0 (LINE removed) share 36.1% exceeds the 30% capacity threshold. Numeric gates 1-6 and 15 passed; Gate 7 failed; no package built.",
+      "provenance": "scratchpad/round-28-fable/, scratchpad/round-28-opus/",
+      "notes": "The largest offline gain the project ever measured, killed by its own pre-registered mechanism audit rather than by its numbers. Hard negatives are inert: removing the auxiliary (H0) yields 103.4% of the gain and equal-count random negatives (H1) yield 102.5%. Generic parameter capacity (I0) accounts for 36.1%, above the 30% kill threshold. The H0 control that outperformed its own treatment was correctly quarantined and re-registered as the separate Round-29 hypothesis rather than promoted in place.",
+      "confidence": "high"
+    },
+    {
+      "strategy_id": "full_slate_softmax_role_representation",
+      "dataset": "dataset1",
+      "mechanism": "frozen unit-norm cut-LINE base plus trainable source/destination delta tables retrained with full-slate softmax only -- no hard negatives, no propagation; one scalar feature over the control ranker",
+      "lifecycle_status": "CLOSED",
+      "first_round": "29",
+      "last_round": "29",
+      "offline_evidence": "exact Round-28 H0 reconstruction bit-identical, increment over CONTROL B 0.0191890929204567; independent second seed 0.0189969688773241; folds 0.0178017378899569, 0.0205682348433487; halves 0.0155790079878279, 0.0227992285273452; source-clustered 95% CI [0.0170973398003799, 0.0212434714311621] strictly positive; all registered gates A-L passed; conservative online projection +0.0020876888876181",
+      "online_evidence": "observed total 1.5494486598552333 with the accepted dataset2 member unchanged, implying dataset1 0.8704975551550565; observed delta -0.0258038195924033 against the then-active total 1.5752524794476366",
+      "closure_reason": "ONLINE_FAILED: the strongest offline evidence in the project inverted online. Predicted +0.0020876888876181, realised -0.0258038195924032 -- a transfer coefficient of -1.345 against an assumed +0.109. No rescue, recalibration or reinterpretation was performed.",
+      "provenance": "scratchpad/round-29-fable/, scratchpad/round-29-opus/, outputs/submissions/round29_component/",
+      "notes": "CLOSED_ONLINE_FAILURE. The decisive lesson of the project: exact reproduction, second-seed confirmation, clean nulls and a strictly positive source-clustered interval are not evidence of online gain when the replay is not a faithful image of the physical serving chain. The 9.1x replay-to-online shrink calibration is retired as a predictor; it rested on a single observation and failed on the sign at a nearly identical offline magnitude. Evidence is preserved deliberately.",
+      "confidence": "high"
     }
-  ]
+  ],
+  "late_round_evidence_index": {
+    "23": {
+      "verdict": "XTE closed at the locked +0.002 gate despite a positive online read",
+      "adjudication": "scratchpad/round-23-opus/",
+      "strategy_records_migrated": true
+    },
+    "24": {
+      "verdict": "no candidate; produced the RANK_TIE_POSITION_LEAK validation rule",
+      "adjudication": "scratchpad/round-24-opus/adjudication.md",
+      "validation_rule": "scratchpad/round-24-opus/validation_rule.md",
+      "strategy_records_migrated": false
+    },
+    "25": {
+      "verdict": "ROUND 25 CLOSED - NO ONLINE CANDIDATE; produced the null-preservation rule",
+      "adjudication": "scratchpad/round-25-opus/adjudication.md",
+      "validation_rule": "scratchpad/round-25-opus/validation_handoff.md",
+      "strategy_records_migrated": false
+    },
+    "26": {
+      "verdict": "ROUND 26 CLOSED - NO ONLINE CANDIDATE; produced the LINE-direct two-control requirement",
+      "adjudication": "scratchpad/round-26-opus/adjudication.md",
+      "handoff": "scratchpad/round-26-opus/round27_handoff.md",
+      "strategy_records_migrated": true
+    },
+    "27": {
+      "verdict": "ROUND 27 CLOSED - NO CANDIDATE",
+      "adjudication": "scratchpad/round-27-opus/adjudication.md",
+      "strategy_records_migrated": true
+    },
+    "28": {
+      "verdict": "ROUND 28 CLOSED - NO CANDIDATE (mechanism refuted at the tested rung)",
+      "adjudication": "scratchpad/round-28-opus/adjudication.md",
+      "strategy_records_migrated": true
+    },
+    "29": {
+      "verdict": "ROUND 29 CLOSED - ONLINE FAILURE",
+      "adjudication": "scratchpad/round-29-opus/adjudication.md",
+      "strategy_records_migrated": true
+    },
+    "30": {
+      "verdict": "FINAL XTE PACKAGE SHIPPED; observed total 1.576996059163449, rank 3",
+      "adjudication": "scratchpad/round-30-opus/finalisation_audit.md",
+      "graduation_record": "scratchpad/round-30-opus/graduation_record.md",
+      "online_outcome": "scratchpad/round-30-opus/online_outcome_addendum.md",
+      "strategy_records_migrated": true
+    },
+    "note": "Rounds 24 and 25 have full Opus adjudications but their per-strategy records were not migrated into this inventory. Their candidates are all closed and none shipped, so no production claim depends on them. Recorded as a known gap rather than silently omitted."
+  }
 }

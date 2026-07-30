@@ -11,14 +11,26 @@ Lifecycle vocabulary is defined in [`src/strategies/registry.py`](../src/strateg
 |---|---|
 | `SHIPPED_ACTIVE` | 14 |
 | `SHIPPED_SUPERSEDED` | 6 |
-| `ONLINE_VALIDATED` | 0 |
+| `ONLINE_VALIDATED` | 1 |
 | `CANDIDATE` | 0 |
-| `STANDBY` | 1 |
+| `STANDBY` | 2 |
 | `PROBE` | 3 |
-| `CLOSED` | 29 |
-| **total** | **53** |
+| `CLOSED` | 39 |
+| **total** | **65** |
 
-> ONLINE_VALIDATED is empty by construction: in this project every mechanism that passed an isolated online test was shipped in the next main pack, and every mechanism that failed one was closed permanently.
+> `ONLINE_VALIDATED` holds exactly one record. It was empty until the final board, because every
+> earlier mechanism that passed an isolated online test was shipped in the next main pack and every
+> one that failed was closed permanently. `xte_cross_time_exclusivity_decode` is the sole mechanism
+> that passed an isolated online test, was closed at its locked shipping gate anyway, and was later
+> shipped under an explicit final-board operational override. Its `lifecycle_status` records the
+> evidence axis; its `operational_lifecycle` field records that it ships. It is not `SHIPPED_ACTIVE`
+> in that field because its decoder is not yet tracked under `src/`, and `SHIPPED_ACTIVE` is asserted
+> only for mechanisms with a tracked implementation.
+
+The twelve records added on 2026-07-30 cover rounds 23 and 26-29 and are listed in
+[rounds/](rounds/). Rounds 24 and 25 were adjudicated in full but their per-strategy records were not
+migrated; see `late_round_evidence_index` in [strategy_inventory.json](strategy_inventory.json) and
+the coverage note in [rounds/README.md](rounds/README.md).
 
 ## SHIPPED_ACTIVE
 
@@ -56,7 +68,17 @@ Was in an accepted submission and was later replaced. Kept for reproduction of h
 
 ## ONLINE_VALIDATED
 
-*None.* Passed an isolated online test but is not in the accepted state.
+Passed an isolated online test. One record.
+
+| strategy | dataset | mechanism | evidence | implementation |
+|---|---|---|---|---|
+| `xte_cross_time_exclusivity_decode` | dataset2 | group rows by (source, served top-1); a group spanning two or more distinct timestamps contradicts the measured zero-repeat generator invariant, so keep the timestamp cluster with the largest row margin and swap the rank-1/rank-2 score tokens in every other row | isolated ds2 0.6789511047001768 -> 0.6806946844159895, delta +0.0017435797158127, **below its locked +0.002 gate** (required 0.6809511047001768, shortfall 0.0002564202841873); re-served unchanged in the final Round-30 pack at observed total 1.576996059163449 | -- (not yet graduated; provenance `scratchpad/round-23-opus/xte/`) |
+
+Two lifecycle axes: historically `CLOSED_AT_LOCKED_GATE`, operationally `SHIPPED_ACTIVE` in the final
+A-board package under an owner-authorised `FINAL_BOARD_MAXIMISATION_OVERRIDE` scoped to the exact
+online-observed member bytes. The override does not reopen the family for tuning, rescue or
+reconstruction, and it does not convert the sub-gate result into a gate pass. See
+[rounds/round-23.md](rounds/round-23.md) and [rounds/round-30.md](rounds/round-30.md).
 
 ## CANDIDATE
 
@@ -69,6 +91,12 @@ Weak-but-positive evidence, deliberately inactive.
 | strategy | dataset | mechanism | evidence | implementation |
 |---|---|---|---|---|
 | `xlist_objective_diversity` | dataset1 | objective-diversity blend over the ranker output | none | -- |
+| `line_direct_candidate_affinity` | dataset1 | direct LINE source-candidate cosine as one deterministic ranker column (21 + 1) | paired OOF +0.004103 (0.663812 -> 0.667915); folds +0.003754/+0.00445; equal-capacity control -0.000747 and slate-permutation null -0.000671, both 0% share; 100% coverage; conservative projection approximately +0.00045 against a +0.002 gate | -- |
+
+`line_direct_candidate_affinity` is the strongest capacity-clean and null-clean offline gain since the
+ranker itself and was deliberately not promoted on online economics. It became the mandatory second
+control arm for later rounds, where it accounted for the entire apparent gain of all three Round-27
+model families. See [rounds/round-26.md](rounds/round-26.md).
 
 ## PROBE
 
@@ -115,6 +143,24 @@ Refuted by offline or online evidence. **Do not reopen in the same formulation.*
 | `crf_refinement_axis` | dataset2 | band width W, potential exponent p, candidate-reliability coupling eta, semi-Markov, CRF round-2 / ensemble, ds1 row-order | the (tau,B) plane is one w-curve; --W monotone-negative (double-counts the chain); --p dead; --eta killed even with perfect per-bin truth | -- |
 | `rank_derivative_features` | both | ordinal derivatives of transferring features (e.g. cfreq_rank) | -0.0028 | -- |
 | `in_pool_query_reweighting` | dataset2 | reweight queries toward the production-matched in-pool slice | monotonically negative (w3 -0.00177, w6 -0.00410) | -- |
+| `role_aware_conditional_interaction_lift` | both | log-odds source-activity-bin x destination conditional interaction lift with strict zero crossing, as a deterministic overlay | ds1 -0.005505920004491764, ds2 -0.021595453502474844; negative on both folds, both time halves and the production-matched in-pool slices | -- |
+| `head_to_head_candidate_competition` | both | global repeated strict-top-pair majority vote over leave-one-out head-to-head comparisons, no support threshold | ds1 -0.0002526617210474232, ds2 -0.0014013177303569672; physically sparse at 70 ds1 / 637 ds2 actions | -- |
+| `role_conditioned_winner_flow_residual` | both | empirical-Bayes leave-one-out winner-flow logit lift over accepted-winner rates | ds1 -0.004305776829516504, ds2 -0.025996082866227423; accepted-winner flow is self-consistency information, not a truth source | -- |
+| `directed_role_svd_affinity` | dataset1 | directed-SVD scalar role affinity columns in the ds1 ranker | +0.000075 with sign-unstable folds -0.000533/+0.000679; dead at the treatment stage, null battery never adjudicated | -- |
+| `slate_confidence_context` | dataset1 | slate-level confidence and dispersion context scalars in the ds1 ranker | +0.000965, semantic null -0.000378 (contexts query-genuine) but below the minimum-interesting floor; closed at the scalar-context rung only | -- |
+| `setwise_deepsets_residual` | dataset1 | permutation-equivariant DeepSets residual over the 21 accepted scalars, the LINE-direct column and the frozen control score (2,385 parameters) | -0.00021168145246953707 incremental to the LINE-direct control (+0.004343168759296733 against the bare control); negative fold and negative time half; equal-capacity arm -0.00040181214930601523 | -- |
+| `causal_event_sequence_ranker` | dataset1 | bounded chronological event GRU (H<=64) with role-specific LINE/BPR projections (18,513 parameters) | +0.00011493543092999476 incremental; matched mean-pool capacity arm reaches 248.6% of the gain and the zero-history null 161.4%; order shuffle and timestamp-gap removal indistinguishable | -- |
+| `objective_low_rank_adapter` | dataset1 | rank-8 four-expert LINE/BPR bilinear adapter with a candidate-conditioned truth-free gate (10,869 parameters) | -0.00011367610365886334 incremental; fold-1 and late-half sign failures; equal-capacity arm -0.0005126317929901844 | -- |
+| `hard_negative_role_representation` | dataset1 | frozen LINE base plus trainable role delta tables, full-slate softmax **plus** a hard-negative softplus auxiliary (H=32) | full-OOF +0.018564187460257984, source-clustered CI [+0.01661860933901996, +0.0206434844615614] -- the largest offline gain in the project, killed by its own controls: H0 share 103.4%, H1 share 102.5%, I0 capacity share 36.1% above the 30% threshold | -- |
+| `full_slate_softmax_role_representation` | dataset1 | the same representation retrained with full-slate softmax only -- no hard negatives, no propagation | offline +0.0191890929204567 (bit-identical reconstruction, second seed +0.0189969688773241, CI strictly positive, all gates A-L passed, projected +0.0020876888876181); **online observed total 1.5494486598552333, implied ds1 0.8704975551550565, delta -0.0258038195924032** | -- |
+
+The last two are the late competition's decisive negatives.
+`hard_negative_role_representation` is `CLOSED_MECHANISM_REFUTED_AT_TESTED_RUNG`: hard negatives are
+inert, since removing the auxiliary yields 103.4% of the gain and equal-count random negatives yield
+102.5%. `full_slate_softmax_role_representation` is `CLOSED_ONLINE_FAILURE`: the strongest offline
+evidence the project ever assembled inverted online, at a realised transfer coefficient of `-1.345`
+against an assumed `+0.109`. The 9.1x replay-to-online shrink calibration is retired as a predictor.
+See [rounds/round-28.md](rounds/round-28.md) and [rounds/round-29.md](rounds/round-29.md).
 
 ## Prohibited variants on active strategies
 
