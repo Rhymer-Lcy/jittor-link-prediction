@@ -33,7 +33,7 @@ closed; this state is final. The superseded Round-22 state was 1.575252479447636
 **Am I on the same state as everyone else?**
 
 ```bash
-python -m unittest discover -s tests -t .      # 55 tests; local-data tests skip cleanly
+python -m unittest discover -s tests -t .      # 97 tests; local-data tests skip cleanly
 python src/build_ds1_member.py --verify        # needs local artifacts
 ```
 
@@ -53,22 +53,28 @@ The production truth travels entirely through tracked paths:
 | tracked path | what it carries |
 |---|---|
 | `configs/production.json` | the accepted state: scores, hashes, ordered chain, commands, archive policy |
-| `src/` | every mechanism holding the accepted score **except the final dataset2 decoder** (see the caveat below), including the two frozen dataset1 postprocessors |
+| `src/` | every mechanism holding the accepted score, including the two frozen dataset1 postprocessors and the final dataset2 decoder |
 | `tools/` | component validation and submission packaging |
-| `tests/` | 55 tests; those needing local artifacts skip with an explicit reason |
+| `tests/` | 97 tests; those needing local artifacts skip with an explicit reason |
 | `docs/` | production state, strategy lifecycle, submission protocol, round history |
 
-A collaborator can therefore verify they are on the same strategy state, reproduce the dataset1
-member byte for byte (given the raw data and the ranker output), and build a submission — without
-possessing a single historical run directory.
+A collaborator can therefore verify they are on the same strategy state, reproduce **both** members
+byte for byte (given the raw data and the two hash-pinned chain inputs), and build a submission —
+without possessing a single historical run directory.
 
-> **One caveat, added at A-board closure.** The final dataset2 decoder
-> (`xte_cross_time_exclusivity_decode`, worth +0.0017435797158127 online) is **not yet graduated into
-> `src/`**; its implementation exists only in the git-ignored provenance tree. The shipped member bytes
-> are hash-pinned in `configs/production.json`, so the final state is reproducible **by extraction**
-> from the accepted archive but **not yet from tracked code**. This is the largest outstanding
-> reproducibility gap and is recorded in
-> [maintenance/repository-reorganisation-ambiguities.md](maintenance/repository-reorganisation-ambiguities.md).
+```bash
+python main.py --stage describe              # every stage, implementation and status
+python main.py --stage postprocess --verify  # rebuild both members and assert their hashes
+```
+
+> **What is still not reproducible, stated plainly.** Both members rebuild byte-exactly from their
+> hash-pinned *chain inputs*, verified in the official target environment. Neither is proven
+> reproducible from **raw competition data**: the dataset2 base matrix needs cached features and a
+> multi-hour rebuild that has not been re-executed (ambiguity A1), and the accepted embeddings were
+> produced by the PyTorch trainers rather than the Jittor ports, which agree statistically but not
+> byte for byte. Both gaps are recorded in
+> [maintenance/repository-reorganisation-ambiguities.md](maintenance/repository-reorganisation-ambiguities.md)
+> and in [competition/ab_algorithm_consistency_contract.md](competition/ab_algorithm_consistency_contract.md).
 
 The ignored trees hold **local provenance only**: the conversational record
 (`docs_local/agent_runs/`, indexed by `docs_local/agent_runs_index.json`) and the execution record

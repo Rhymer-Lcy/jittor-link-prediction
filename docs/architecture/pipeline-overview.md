@@ -89,6 +89,18 @@ that was adjudicated by an isolated online A/B *before* it entered the main pack
 
 ## Framework note
 
-The implementation is PyTorch; the competition requires a Jittor release. `train_line_jt.py` and
-`train_bpr_jt.py` are the ports — only the LINE model, the BPR trainer, Adam and BCE are
-framework-specific, everything else is numpy/scipy. See the TODO in the root README.
+The competition requires Jittor for model design, training and prediction. `train_line_jt.py` and
+`train_bpr_jt.py` are the Jittor implementations and are the framework-compliant path; only the LINE
+model, the BPR trainer, Adam and BCE are framework-specific, everything else is numpy/scipy.
+
+**The accepted A-board embeddings were produced by the PyTorch trainers**, not by these ports. Both
+implementations share the objective, the knobs and the output format, and both run sampling in seeded
+NumPy, so they agree statistically but **not** byte for byte: a Jittor retrain yields a different
+embedding table by construction, and therefore a different member hash. This provenance gap is stated
+rather than implied, and its consequences for reproduction are set out in
+[../competition/ab_algorithm_consistency_contract.md](../competition/ab_algorithm_consistency_contract.md)
+section 9.
+
+Everything downstream of the ranker is framework-neutral and **is** byte-exact: `python
+src/build_ds1_member.py --verify` and `python src/build_ds2_member.py --verify` regenerate both
+accepted members exactly, verified on Ubuntu 22.04 with Python 3.10.

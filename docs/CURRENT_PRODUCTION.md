@@ -89,10 +89,11 @@ src/ds2_mf_basket_pack.py                         pass-2/3 sibling-message geome
 src/crf_promote.py                                equality CRF tau=0.20 B=70
   --zr-exclude --demote-dups --st-exclude --no-pair  + triple / zero-repeat / same-time invariants
         |
-        -> component 0.6789511047001768   (held production 2026-07-28 to 2026-07-29)
+        -> base matrix    component 0.6789511047001768   (held production 2026-07-28 to 2026-07-29)
+        |                 sha256 dc6928c2...  hash-pinned as dataset2.decoder_input
         |
-xte_cross_time_exclusivity_decode                 cross-time answer-exclusivity decode
-  NOT YET TRACKED UNDER src/                      7,815 rows / 15,630 cells swapped
+src/strategies/ds2/cross_time_exclusivity.py      cross-time answer-exclusivity decode
+                                                  7,815 rows / 15,630 cells swapped
         |
         -> dataset2.csv   component 0.6806946844159895
 ```
@@ -110,17 +111,28 @@ the two existing score tokens at rank 1 and rank 2 in every row of every other c
 no thresholds, no refit. It changes 7,815 of 153,420 rows (5.09%), creates no ties, and moves the
 component by **+0.0017435797158127** online.
 
-> **Reproduction risk — HIGH, and higher than dataset2's base chain.** This decoder is **not yet
-> graduated into `src/`**. Its implementation lives only in the git-ignored local provenance tree at
-> `scratchpad/round-23-opus/xte/scripts/build_xte_member.py`. Production is therefore reproducible
-> **by extraction** from the accepted archive, whose member bytes are hash-pinned above, but **not
-> yet from tracked code**. Graduating it is the single largest outstanding reproducibility item; see
-> [maintenance/repository-reorganisation-ambiguities.md](maintenance/repository-reorganisation-ambiguities.md).
+Reproduce and prove it:
 
-> **Reproduction risk — HIGH (base chain).** `ds2_mf_basket_pack.py` and `ds2_basket_featurizer.py` were
-> graduated from the scratchpad on 2026-07-29 **verbatim but not re-executed**, and the pipeline
-> also needs the cached train features that `build_or_load_features` produces. dataset2 is
-> therefore tracked but not currently proven reproducible from a clean checkout. See
+```bash
+python src/build_ds2_member.py --verify
+```
+
+That re-derives the action set from the hash-pinned base matrix and the test file, asserts all twelve
+physical census anchors and the four effect counts, and asserts the member SHA256. It currently
+reproduces the accepted member **exactly**. The rebuild swaps the two affected score *tokens* in the
+base member's own bytes, so the other 15,326,370 cells are the exact bytes that were scored online;
+no score is re-serialised from a float.
+
+**Graduated 2026-07-30**, closing what was ambiguity A8. Until then the decoder existed only in the
+git-ignored provenance tree at `scratchpad/round-23-opus/xte/scripts/build_xte_member.py` and
+production was reproducible only by extraction.
+
+> **Reproduction risk — HIGH (base chain, still open).** `ds2_mf_basket_pack.py` and
+> `ds2_basket_featurizer.py` were graduated from the scratchpad on 2026-07-29 **verbatim but not
+> re-executed**, and the pipeline also needs the cached train features that `build_or_load_features`
+> produces. So the decode above is proven from the base matrix, but **the base matrix itself is not
+> proven reproducible from raw data**. This is ambiguity A1 and it is now the largest open
+> reproducibility item. See
 > [maintenance/repository-reorganisation-ambiguities.md](maintenance/repository-reorganisation-ambiguities.md).
 
 ## What must not be changed casually
@@ -138,7 +150,9 @@ component by **+0.0017435797158127** online.
 
 ```bash
 git rev-parse HEAD
-python -m unittest discover -s tests -t .            # 55 tests; data-dependent ones skip cleanly
+python main.py --stage describe                      # every stage, implementation and status
+python -m unittest discover -s tests -t .            # 97 tests; data-dependent ones skip cleanly
+python main.py --stage postprocess --verify          # rebuild both members and assert their hashes
 python tools/submission/package_component.py verify \
     --zip outputs/submissions/round30_final/r30_xte_final.zip
 ```

@@ -112,9 +112,38 @@ They were left untouched because they are records of what was done at the time; 
 legacy-name maps resolve them. Only the graduated copies under `src/` had their path handling
 corrected.
 
-## A8 — the final dataset2 decoder is not graduated into `src/` (HIGH)
+## A8 — the final dataset2 decoder is not graduated into `src/` (RESOLVED 2026-07-30)
 
-Added at A-board closure, 2026-07-30.
+Added at A-board closure, 2026-07-30. **Resolved the same day** during the pre-B-board code-inspection
+preparation, before B-board development began.
+
+**What was done.** The decoder is graduated to `src/strategies/ds2/cross_time_exclusivity.py` with the
+same `apply(scores, test, train)` call shape as the two dataset1 postprocessors, plus a
+byte-preserving `swap_score_tokens` path that swaps the two affected score *tokens* in the base
+member's own bytes rather than re-serialising floats. Entry point `src/build_ds2_member.py --verify`.
+The registry patch drafted below was applied in full: `lifecycle_status` is now `SHIPPED_ACTIVE`,
+`implementation_path` names the tracked module, counts moved `SHIPPED_ACTIVE` 14 to 15 and
+`ONLINE_VALIDATED` 1 to 0.
+
+**Result: `BYTE_EXACT_REPRODUCTION`.** The tracked decoder regenerates
+`beb13345dc020f32283cea2d132efa072eb52c73d29806f86f60fbf24982f971` from the hash-pinned base matrix,
+verified on the Windows host **and** in the official target environment (Ubuntu 22.04, Python 3.10).
+All twelve physical census anchors and all four effect counts match. Coverage: 31 unit tests plus 2
+integration tests. **No test was weakened**; the suite went from 55 tests to 97, all passing.
+
+One defect was found and fixed during the port. The original scratchpad script asserted that the
+top-1 change mask equals the action mask. That holds for the accepted deployment but not in general:
+an acted row whose two swapped scores are *equal* changes no ranking, and a tie is legitimate input
+that will occur at B-board scale. The graduated module asserts the two invariants that actually hold
+— no unacted row moves, and every acted row with a positive margin does move — and counts the
+zero-margin case instead of raising on it.
+
+**What remains open is A1, not A8.** The decode is proven from the base matrix; the base matrix is
+still not proven reproducible from raw data.
+
+The original record follows for history.
+
+---
 
 The final accepted `dataset2.csv` is produced by
 `xte_cross_time_exclusivity_decode` applied on top of the `crf_promote.py` output. That decoder is
