@@ -18,16 +18,39 @@ Full docs live in [`docs/`](docs/); the accepted state is defined machine-readab
 Start with [docs/CURRENT_PRODUCTION.md](docs/CURRENT_PRODUCTION.md) (what is live and how to
 reproduce it), [docs/STRATEGY_REGISTRY.md](docs/STRATEGY_REGISTRY.md) (every strategy and its
 lifecycle status) and [docs/SUBMISSION_PROTOCOL.md](docs/SUBMISSION_PROTOCOL.md).
+The closing result is in [docs/leaderboard_final.md](docs/leaderboard_final.md) and the round-by-round
+history in [docs/rounds/](docs/rounds/).
+
+### Final A-board result
+
+**1.576996059163449 — rank #3**, shipped 2026-07-30, archive
+`outputs/submissions/round30_final/r30_xte_final.zip` (SHA256 `efe790a5...a4a536`). Components
+`0.8963013747474597 (dataset1) + 0.6806946844159895 (dataset2)`, exact decimal sum
+`1.5769960591634492`. The A board is closed and this state is final; the superseded Round-22 state was
+`1.5752524794476366`.
+
+The final gain came from a mechanism that had been **correctly closed at its own locked shipping
+gate** seven rounds earlier and was later selected for the closing board under an explicit operational
+override. It did not pass that gate. See [docs/rounds/round-23.md](docs/rounds/round-23.md) and
+[docs/rounds/round-30.md](docs/rounds/round-30.md).
+
+The late rounds also produced the project's sharpest negative result: Round 29 carried the strongest
+offline evidence ever assembled here — a bit-identical reconstruction, an independent second seed,
+clean nulls, a strictly positive source-clustered interval, every registered gate passed — and lost
+`-0.0258038195924033` online. See [docs/rounds/round-29.md](docs/rounds/round-29.md).
 
 ### Submission mechanics (measured 2026-07-29, not assumed)
 
-- **The total is strictly additive: `total = ds1_MRR + ds2_MRR`.** Verified to 16 digits twice:
-  `0.8619654323294592 + 0.6789511047001768 = 1.540916537029636` and
-  `0.8963013747474597 + 0.6789511047001768 = 1.5752524794476365`.
+- **The total is strictly additive: `total = ds1_MRR + ds2_MRR`.** Verified to 16 digits three times:
+  `0.8619654323294592 + 0.6789511047001768 = 1.540916537029636`,
+  `0.8963013747474597 + 0.6789511047001768 = 1.5752524794476365` and
+  `0.8963013747474597 + 0.6806946844159895 = 1.5769960591634492`. The third case is the strongest:
+  the combined total was predicted from two separately observed components **before** upload and then
+  confirmed online, which is the only direct test of additivity on an untested pairing.
 - **A ZIP may contain a single dataset CSV, and the platform scores it directly.** This is the
   default protocol for isolated experiments — no zero-filled placeholder needed, smaller archive,
-  exact attribution. Frozen component baselines: **dataset1 0.8963013747474597**,
-  **dataset2 0.6789511047001768**; a new component's combined total is the sum.
+  exact attribution. Final component baselines: **dataset1 0.8963013747474597**,
+  **dataset2 0.6806946844159895**; a new component's combined total is the sum.
 - **A dataset missing from the ZIP scores 0 — it is NOT carried over from a previous upload.**
   So a single-CSV upload can never reach the combined total; the main account needs one archive
   containing both members. (An all-zero placeholder instead contributes exactly
