@@ -5,6 +5,7 @@ Start here.
 | document | answers |
 |---|---|
 | [CURRENT_PRODUCTION.md](CURRENT_PRODUCTION.md) | What is live right now? Which hashes define it? How do I reproduce it? |
+| [leaderboard_final.md](leaderboard_final.md) | The closing A-board result and this project's final placement |
 | [STRATEGY_REGISTRY.md](STRATEGY_REGISTRY.md) | Every strategy ever tried, with its lifecycle status and evidence |
 | [SUBMISSION_PROTOCOL.md](SUBMISSION_PROTOCOL.md) | How the platform actually scores and ingests a submission |
 | [architecture/pipeline-overview.md](architecture/pipeline-overview.md) | How the two pipelines fit together and why they differ |
@@ -18,14 +19,16 @@ Machine-readable companions, both tracked:
 - [`../configs/production.json`](../configs/production.json) — the accepted state: scores,
   hashes, the ordered strategy chain, build and verify commands, archive policy. **Source of
   truth**; if a document disagrees with it, the JSON wins.
-- [`strategy_inventory.json`](strategy_inventory.json) — 53 strategies with lifecycle status,
-  offline and online evidence, implementation paths and prohibited variants.
-  `STRATEGY_REGISTRY.md` is generated from it.
+- [`strategy_inventory.json`](strategy_inventory.json) — 65 strategies with lifecycle status,
+  offline and online evidence, implementation paths and prohibited variants, plus
+  `late_round_evidence_index`. `STRATEGY_REGISTRY.md` is generated from it.
 
 ## Quick answers
 
-**What is the score?** 1.5752524794476366, rank #3, accepted 2026-07-29. It is exactly
-`0.8963013747474597 (dataset1) + 0.6789511047001768 (dataset2)`.
+**What is the score?** **1.576996059163449, rank #3, final**, shipped 2026-07-30. It is
+`0.8963013747474597 (dataset1) + 0.6806946844159895 (dataset2)`, whose exact decimal sum is
+`1.5769960591634492` — the platform displays the same quantity one digit shorter. The A board is
+closed; this state is final. The superseded Round-22 state was 1.5752524794476366.
 
 **Am I on the same state as everyone else?**
 
@@ -50,7 +53,7 @@ The production truth travels entirely through tracked paths:
 | tracked path | what it carries |
 |---|---|
 | `configs/production.json` | the accepted state: scores, hashes, ordered chain, commands, archive policy |
-| `src/` | every mechanism holding the accepted score, including the two frozen dataset1 postprocessors |
+| `src/` | every mechanism holding the accepted score **except the final dataset2 decoder** (see the caveat below), including the two frozen dataset1 postprocessors |
 | `tools/` | component validation and submission packaging |
 | `tests/` | 55 tests; those needing local artifacts skip with an explicit reason |
 | `docs/` | production state, strategy lifecycle, submission protocol, round history |
@@ -58,6 +61,14 @@ The production truth travels entirely through tracked paths:
 A collaborator can therefore verify they are on the same strategy state, reproduce the dataset1
 member byte for byte (given the raw data and the ranker output), and build a submission — without
 possessing a single historical run directory.
+
+> **One caveat, added at A-board closure.** The final dataset2 decoder
+> (`xte_cross_time_exclusivity_decode`, worth +0.0017435797158127 online) is **not yet graduated into
+> `src/`**; its implementation exists only in the git-ignored provenance tree. The shipped member bytes
+> are hash-pinned in `configs/production.json`, so the final state is reproducible **by extraction**
+> from the accepted archive but **not yet from tracked code**. This is the largest outstanding
+> reproducibility gap and is recorded in
+> [maintenance/repository-reorganisation-ambiguities.md](maintenance/repository-reorganisation-ambiguities.md).
 
 The ignored trees hold **local provenance only**: the conversational record
 (`docs_local/agent_runs/`, indexed by `docs_local/agent_runs_index.json`) and the execution record
