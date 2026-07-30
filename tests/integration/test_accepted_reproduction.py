@@ -269,6 +269,47 @@ class EntryPointTest(unittest.TestCase):
         for package in ("python", "jittor", "numpy", "pandas", "scikit-learn", "lightgbm"):
             self.assertIn(package, text, f"{package} is not pinned in environment.yaml")
 
+    def test_third_party_imports_of_maintained_modules_are_declared(self):
+        """Every third-party module the maintained sources import must be declared.
+
+        This guards a defect found on the target environment: `src/train_line.py`
+        is both the historical PyTorch trainer and the shared utility module that
+        `ensemble_predict`, `ranker_ds1`, `ranker_basket_ds2` and
+        `ds2_mf_basket_pack` import. With torch absent from the environment
+        specification, all four failed at import with ModuleNotFoundError, so no
+        ranking stage could run and no submission member could be produced.
+        """
+        import ast
+
+        stdlib = set(getattr(sys, "stdlib_module_names", ()))
+        local = {p.stem for p in (REPO / "src").rglob("*.py")}
+        local |= {"strategies", "tools"}
+
+        imported: set[str] = set()
+        for path in sorted((REPO / "src").rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        imported.add(alias.name.split(".")[0])
+                elif isinstance(node, ast.ImportFrom):
+                    if node.level == 0 and node.module:
+                        imported.add(node.module.split(".")[0])
+        third_party = {m for m in imported if m not in stdlib and m not in local}
+
+        declared = " ".join(
+            (REPO / name).read_text(encoding="utf-8")
+            for name in ("environment.yaml", "requirements.txt")
+            if (REPO / name).exists()
+        )
+        # Import name to distribution name where they differ.
+        distribution = {"sklearn": "scikit-learn", "yaml": "pyyaml"}
+        missing = sorted(
+            m for m in third_party
+            if distribution.get(m, m) not in declared
+        )
+        self.assertEqual(missing, [], f"imported but not declared as a dependency: {missing}")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

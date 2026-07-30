@@ -29,11 +29,22 @@ tqdm==4.67.1
 # toolkit. See docs/competition/ab_algorithm_consistency_contract.md.
 jittor==1.3.10
 
-# --- optional, not part of the compliant reproduction path -----------------
-# The accepted A-board embeddings were produced by the PyTorch trainers
-# (src/train_line.py, src/train_bpr.py), which the Jittor ports above mirror.
-# PyTorch is recorded as an optional historical dependency and left commented
-# out because no accepted artifact hash depends on it and the framework
-# requirement is satisfied by Jittor. Uncomment only to re-run the historical
+# --- REQUIRED: shared utilities on the ranking path ------------------------
+# torch is NOT optional. src/train_line.py is both the historical PyTorch
+# trainer AND the shared utility module (PROJECT_ROOT, rownorm, build_sim_cache,
+# train_csv, c_cols) imported by src/ensemble_predict.py, src/ranker_ds1.py,
+# src/ranker_basket_ds2.py and src/ds2_mf_basket_pack.py. Without torch those
+# four stages fail at import with ModuleNotFoundError, so no ranking stage runs
+# and no submission member can be produced -- regardless of which trainer
+# produced the embeddings.
+#
+# This does not weaken the framework requirement: the Jittor trainers remain the
+# compliant model path. On that path torch supplies utility functions only and a
+# CPU build is sufficient. A CUDA build is needed only to re-run the historical
 # PyTorch trainers.
-# torch
+#
+# Left unpinned deliberately: no accepted artifact hash depends on the torch
+# version, and pinning a CUDA build would force a multi-gigabyte download on
+# reviewers who only need the utilities. Install the CPU wheel to keep it small:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch
