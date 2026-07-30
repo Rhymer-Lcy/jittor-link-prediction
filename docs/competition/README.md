@@ -13,7 +13,7 @@ For what the project built and shipped, see [../CURRENT_PRODUCTION.md](../CURREN
 |---|---|
 | [official_competition_dossier.md](official_competition_dossier.md) | Consolidated official rules: governance, schedule, task definition, dataset semantics, evaluation, submission format, A/B consistency, data-use limits, framework requirement, code inspection, open-source obligations, defence, awards |
 | [source_register.md](source_register.md) | Provenance and verification status of every source the dossier relies on, the claim-to-source matrix, identified source tensions, and the organiser-clarification workflow |
-| `ab_algorithm_consistency_contract.md` | The frozen A/B algorithmic skeleton, the configuration surface permitted to vary, and the changes prohibited without disclosure. Added by the pre-B-board preparation work |
+| [ab_algorithm_consistency_contract.md](ab_algorithm_consistency_contract.md) | The frozen A/B algorithmic skeleton, the configuration surface permitted to vary, the changes prohibited without disclosure, and the B-board scale obligations |
 
 ## Authority order
 
