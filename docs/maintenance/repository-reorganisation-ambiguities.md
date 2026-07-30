@@ -111,3 +111,43 @@ directory names and, in some cases, absolute `F:\` paths from the machine that p
 They were left untouched because they are records of what was done at the time; the two
 legacy-name maps resolve them. Only the graduated copies under `src/` had their path handling
 corrected.
+
+## A8 — the final dataset2 decoder is not graduated into `src/` (HIGH)
+
+Added at A-board closure, 2026-07-30.
+
+The final accepted `dataset2.csv` is produced by
+`xte_cross_time_exclusivity_decode` applied on top of the `crf_promote.py` output. That decoder is
+worth **+0.0017435797158127** of the final score and its implementation exists **only** in the
+git-ignored local provenance tree, at
+`scratchpad/round-23-opus/xte/scripts/build_xte_member.py`.
+
+Consequences, stated plainly:
+
+- The accepted state is reproducible **by extraction** — the member bytes are hash-pinned in
+  `configs/production.json` and inside the accepted archive, and `tests/` verifies them — but **not
+  from tracked code**. This is a weaker guarantee than dataset1 enjoys, where
+  `src/build_ds1_member.py --verify` regenerates the member byte for byte.
+- `docs/README.md` previously claimed that `src/` carries every mechanism holding the accepted score.
+  That claim was corrected rather than left to rot.
+- The strategy is recorded in `docs/strategy_inventory.json` as `lifecycle_status: ONLINE_VALIDATED`
+  with a separate `operational_lifecycle: SHIPPED_ACTIVE` field, and **not** as `SHIPPED_ACTIVE` in the
+  test-guarded field, because `tests/integration/test_accepted_reproduction.py` requires every
+  `SHIPPED_ACTIVE` record to name a tracked implementation that exists. Asserting `SHIPPED_ACTIVE`
+  there would have meant either weakening that test or pointing it at a git-ignored path. Neither was
+  acceptable, so the two-axis record was used instead.
+
+**Why it was not fixed in the finalisation pass.** Graduating the decoder means porting roughly 380
+lines of byte-level CSV token manipulation and proving it reproduces
+`beb13345dc020f32283cea2d132efa072eb52c73d29806f86f60fbf24982f971` exactly. That is a code change with
+a real chance of a subtle mismatch, and the finalisation pass was explicitly scoped to evidence
+consolidation, documentation, hygiene and release — not to model or pipeline code. Doing it badly under
+time pressure would have been worse than recording it honestly.
+
+**Recommended follow-up.** Port the decoder to `src/strategies/ds2/cross_time_exclusivity.py` with the
+same `apply(scores, test, train)` shape as the two dataset1 postprocessors, add a
+`src/build_ds2_member.py --verify` entry point that asserts the member hash, extend
+`tests/integration/test_accepted_reproduction.py` with a dataset2 chain-reproduction test that skips
+cleanly when local assets are absent, then flip the inventory record to `SHIPPED_ACTIVE` with the new
+`implementation_path`. A concrete registry patch is drafted at
+`scratchpad/a-board-finalisation-opus/registry_patch_proposal.md`.
