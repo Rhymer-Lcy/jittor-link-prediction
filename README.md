@@ -108,16 +108,30 @@ jittor-link-prediction/
 └── README.md
 ```
 
-The dataset1 chain is reproducible and hash-verified from a clean checkout:
+Both member chains are reproducible and hash-verified from their pinned chain inputs:
 
 ```bash
-python src/build_ds1_member.py --verify     # regenerates the accepted dataset1.csv byte for byte
-python -m unittest discover -s tests -t .   # 55 tests
+python main.py --stage describe              # every stage, its implementation and its status
+python main.py --stage postprocess --verify  # regenerates BOTH accepted members byte for byte
+python src/build_ds1_member.py --verify      # dataset1 alone
+python src/build_ds2_member.py --verify      # dataset2 alone (the final cross-time decode)
+python -m unittest discover -s tests -t .    # 97 tests
 ```
+
+Verified 2026-07-30 on the official target environment (Ubuntu 22.04, Python 3.10, Jittor 1.3.10) as
+well as on the Windows host. What is **not** reproduced is the path from raw competition data: the
+dataset2 base matrix needs cached features and a multi-hour rebuild, and the accepted embeddings came
+from the PyTorch trainers rather than the Jittor ports. See
+[docs/competition/ab_algorithm_consistency_contract.md](docs/competition/ab_algorithm_consistency_contract.md).
 
 ## Setup and run
 
 ```bash
+# Canonical pinned environment for the A-board code inspection
+conda env create -f environment.yaml && conda activate jittor-link-prediction-inspect
+pip install --no-build-isolation git+https://github.com/AlgRUC/JittorGeometric.git
+
+# Or, into an existing Python 3.10 interpreter
 pip install -r requirements.txt
 
 # Train the LINE embedding (resumes from outputs/<dataset>/checkpoints/line_last.pt)
@@ -682,12 +696,17 @@ resume).
 
 ## TODO
 
-- [ ] **Jittor port**: the current implementation is PyTorch. The final
-  open-source release must use Jittor; only the LINE model (3 embedding
-  layers), the BPR trainer, Adam and BCE are framework-specific — everything
-  else is numpy/scipy. Port and verify on CPU (RTX 5080/5090 are Blackwell sm_120;
-  no reliable evidence of Jittor GPU support on them — use the competition
-  server for Jittor GPU runs).
+- [ ] **Jittor port**: the ports exist (`train_line_jt.py`, `train_bpr_jt.py`) and are the
+  framework-compliant path; only the LINE model, the BPR trainer, Adam and BCE are
+  framework-specific — everything else is numpy/scipy. What remains open is that the
+  **accepted A-board embeddings were produced by the PyTorch trainers**, and a Jittor
+  retrain gives a different embedding table by construction, so it cannot reproduce the
+  accepted member hashes. Verified 2026-07-30 in the target environment: Jittor 1.3.10
+  imports and runs on CPU; the **GPU path is blocked locally** because 1.3.10 predates
+  Blackwell sm_120 (this host is an RTX 5080) — the official target is an RTX 4090, on
+  which 1.3.10 is the organisers' own specified pairing. See
+  [docs/competition/ab_algorithm_consistency_contract.md](docs/competition/ab_algorithm_consistency_contract.md)
+  section 9.
 - [ ] Data package B (`data_B`): not yet released by the organizers (confirmed
   by teammate 2026-07-18); `data_A.zip` with its two datasets is everything
   currently available. Rerun the pipeline on `data_B` once it is released.
