@@ -9,23 +9,24 @@ Lifecycle vocabulary is defined in [`src/strategies/registry.py`](../src/strateg
 
 | status | count |
 |---|---|
-| `SHIPPED_ACTIVE` | 14 |
+| `SHIPPED_ACTIVE` | 15 |
 | `SHIPPED_SUPERSEDED` | 6 |
-| `ONLINE_VALIDATED` | 1 |
+| `ONLINE_VALIDATED` | 0 |
 | `CANDIDATE` | 0 |
 | `STANDBY` | 2 |
 | `PROBE` | 3 |
 | `CLOSED` | 39 |
 | **total** | **65** |
 
-> `ONLINE_VALIDATED` holds exactly one record. It was empty until the final board, because every
-> earlier mechanism that passed an isolated online test was shipped in the next main pack and every
-> one that failed was closed permanently. `xte_cross_time_exclusivity_decode` is the sole mechanism
-> that passed an isolated online test, was closed at its locked shipping gate anyway, and was later
-> shipped under an explicit final-board operational override. Its `lifecycle_status` records the
-> evidence axis; its `operational_lifecycle` field records that it ships. It is not `SHIPPED_ACTIVE`
-> in that field because its decoder is not yet tracked under `src/`, and `SHIPPED_ACTIVE` is asserted
-> only for mechanisms with a tracked implementation.
+> `ONLINE_VALIDATED` is empty again as of 2026-07-30. It held exactly one record between the final
+> board and the pre-B-board code-inspection preparation:
+> `xte_cross_time_exclusivity_decode` is the sole mechanism that passed an isolated online test, was
+> closed at its locked shipping gate anyway, and was then shipped under an explicit final-board
+> operational override. It sat on the evidence axis only because `SHIPPED_ACTIVE` is asserted only for
+> mechanisms with a tracked implementation and its decoder was not yet graduated. The decoder is now
+> tracked at [`src/strategies/ds2/cross_time_exclusivity.py`](../src/strategies/ds2/cross_time_exclusivity.py)
+> and reproduces the accepted member byte for byte, so the record moved to `SHIPPED_ACTIVE` with both
+> other axes preserved. **It still did not pass its +0.002 gate**; see the entry below.
 
 The twelve records added on 2026-07-30 cover rounds 23 and 26-29 and are listed in
 [rounds/](rounds/). Rounds 24 and 25 were adjudicated in full but their per-strategy records were not
@@ -52,6 +53,7 @@ Part of the current accepted submission. Changing any of these changes productio
 | `triple_promotion` | dataset2 | promote the unique common warm candidate of every strict three-row same-time window (three distinct sources) to top-1 in all three rows | 1.45725 -> 1.47499 (+0.01775), matching the risk-adjusted projection ~1:1 | `src/crf_promote.py` |
 | `zero_repeat_exclusion` | dataset2 | fifth invariant -- 0 of 2.2M (src,dst) pairs recur at distinct times, so a labelled cross-time answer is a negative; excluded, plus duplicate demotion | +0.001764 (1.5149319 -> 1.5166958) | `src/crf_promote.py` |
 | `same_time_structural_exclusion` | dataset2 | sixth invariant -- within a timestamp a shared answer forms one contiguous raw-order run, so a warm candidate in a shorter disjoint same-time compo... | +0.0006142 (1.5166958 -> 1.5173100) | `src/crf_promote.py` |
+| `xte_cross_time_exclusivity_decode` | dataset2 | the final decode: a (source, served top-1) group spanning >= 2 distinct timestamps contradicts the zero-repeat invariant, so keep the best-margin timestamp cluster and swap rank-1/rank-2 in every other row | isolated ds2 0.6789511047001768 -> 0.6806946844159895, delta +0.0017435797158127, **below its locked +0.002 gate**; shipped under a final-board override. See the note below | `src/strategies/ds2/cross_time_exclusivity.py` |
 
 ## SHIPPED_SUPERSEDED
 
@@ -66,19 +68,27 @@ Was in an accepted submission and was later replaced. Kept for reproduction of h
 | `triple_promote_standalone` | dataset2 | the triple rule applied on its own, without the equality CRF | +0.01775 when first shipped alone | `src/triple_promote.py` |
 | `virtual_edge_self_training` | both | candidates above BACK_FILL_THRESHOLD become virtual edges merged into later LINE training rounds | present in early accepted runs; contribution measured as null | `src/train_line.py` |
 
-## ONLINE_VALIDATED
+### The final dataset2 decoder
 
-Passed an isolated online test. One record.
+Listed under `SHIPPED_ACTIVE` above; recorded separately here because its lifecycle is unusual.
 
 | strategy | dataset | mechanism | evidence | implementation |
 |---|---|---|---|---|
-| `xte_cross_time_exclusivity_decode` | dataset2 | group rows by (source, served top-1); a group spanning two or more distinct timestamps contradicts the measured zero-repeat generator invariant, so keep the timestamp cluster with the largest row margin and swap the rank-1/rank-2 score tokens in every other row | isolated ds2 0.6789511047001768 -> 0.6806946844159895, delta +0.0017435797158127, **below its locked +0.002 gate** (required 0.6809511047001768, shortfall 0.0002564202841873); re-served unchanged in the final Round-30 pack at observed total 1.576996059163449 | -- (not yet graduated; provenance `scratchpad/round-23-opus/xte/`) |
+| `xte_cross_time_exclusivity_decode` | dataset2 | group rows by (source, served top-1); a group spanning two or more distinct timestamps contradicts the measured zero-repeat generator invariant, so keep the timestamp cluster with the largest row margin and swap the rank-1/rank-2 score tokens in every other row | isolated ds2 0.6789511047001768 -> 0.6806946844159895, delta +0.0017435797158127, **below its locked +0.002 gate** (required 0.6809511047001768, shortfall 0.0002564202841873); re-served unchanged in the final Round-30 pack at observed total 1.576996059163449 | `src/strategies/ds2/cross_time_exclusivity.py` |
 
-Two lifecycle axes: historically `CLOSED_AT_LOCKED_GATE`, operationally `SHIPPED_ACTIVE` in the final
-A-board package under an owner-authorised `FINAL_BOARD_MAXIMISATION_OVERRIDE` scoped to the exact
-online-observed member bytes. The override does not reopen the family for tuning, rescue or
-reconstruction, and it does not convert the sub-gate result into a gate pass. See
-[rounds/round-23.md](rounds/round-23.md) and [rounds/round-30.md](rounds/round-30.md).
+Three lifecycle axes, all simultaneously true: historically `CLOSED_AT_LOCKED_GATE`, on the evidence
+axis `ONLINE_VALIDATED`, and operationally `SHIPPED_ACTIVE` in the final A-board package under an
+owner-authorised `FINAL_BOARD_MAXIMISATION_OVERRIDE` scoped to the exact online-observed member bytes.
+The override does not reopen the family for tuning, rescue or reconstruction, and **it does not
+convert the sub-gate result into a gate pass**. See [rounds/round-23.md](rounds/round-23.md) and
+[rounds/round-30.md](rounds/round-30.md).
+
+Graduated into tracked code on 2026-07-30 for the A-board code inspection; `python
+src/build_ds2_member.py --verify` reproduces the accepted member byte for byte.
+
+## ONLINE_VALIDATED
+
+*None.* Passed an isolated online test but never shipped in the accepted state.
 
 ## CANDIDATE
 

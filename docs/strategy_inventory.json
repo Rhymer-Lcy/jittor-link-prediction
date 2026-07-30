@@ -12,9 +12,9 @@
     "PROBE"
   ],
   "counts": {
-    "SHIPPED_ACTIVE": 14,
+    "SHIPPED_ACTIVE": 15,
     "SHIPPED_SUPERSEDED": 6,
-    "ONLINE_VALIDATED": 1,
+    "ONLINE_VALIDATED": 0,
     "CANDIDATE": 0,
     "STANDBY": 2,
     "CLOSED": 39,
@@ -731,19 +731,21 @@
       "strategy_id": "xte_cross_time_exclusivity_decode",
       "dataset": "dataset2",
       "mechanism": "group rows by (source, served top-1); a group spanning >=2 distinct timestamps contradicts the measured zero-repeat generator invariant; keep the timestamp cluster with the largest row margin and swap the rank-1/rank-2 score tokens in every other row (one pass, no thresholds, no refit)",
-      "lifecycle_status": "ONLINE_VALIDATED",
+      "lifecycle_status": "SHIPPED_ACTIVE",
       "operational_lifecycle": "SHIPPED_ACTIVE",
       "historical_lifecycle": "CLOSED_AT_LOCKED_GATE",
       "first_round": "23",
       "last_round": "30",
       "offline_evidence": "replay +0.02015932103723213 on the ds2 replay surface; not byte-equivalent to the accepted chain, and the realised online gain was 3.6x-4.0x smaller than the +0.0062..+0.0069 projection",
       "online_evidence": "isolated ds2 component 0.6789511047001768 -> 0.6806946844159895, delta 0.0017435797158127; re-served unchanged in the final Round-30 main pack, observed total 1.576996059163449",
-      "implementation_path": null,
-      "implementation_status": "NOT_YET_GRADUATED",
+      "implementation_path": "src/strategies/ds2/cross_time_exclusivity.py",
+      "implementation_status": "GRADUATED",
       "provenance": "scratchpad/round-23-opus/xte/, scratchpad/round-30-opus/",
       "role": "final dataset2 score decoder",
       "confidence": "high",
-      "notes": "Two-axis lifecycle. It did NOT pass its original Round-23 locked +0.002 shipping gate (required 0.6809511047001768; shortfall 0.0002564202841873) and was correctly closed at that gate. It was later selected for the final board under an owner-authorised FINAL_BOARD_MAXIMISATION_OVERRIDE scoped to the exact online-observed member bytes, and it shipped. The override does not reopen the XTE family for tuning, rescue or reconstruction, and it does not convert the sub-gate result into a gate pass. The decoder is not yet tracked under src/; production is reproducible by extraction from the accepted archive only."
+      "notes": "Two-axis lifecycle. It did NOT pass its original Round-23 locked +0.002 shipping gate (required 0.6809511047001768; shortfall 0.0002564202841873) and was correctly closed at that gate. It was later selected for the final board under an owner-authorised FINAL_BOARD_MAXIMISATION_OVERRIDE scoped to the exact online-observed member bytes, and it shipped. The override does not reopen the XTE family for tuning, rescue or reconstruction, and it does not convert the sub-gate result into a gate pass. The decoder is graduated into src/ and reproduces the accepted member byte for byte from the hash-pinned base matrix; the BASE matrix itself remains a separate, unverified rebuild (ambiguity A1).",
+      "graduated_utc": "2026-07-30",
+      "reproduction_status": "BYTE_EXACT_REPRODUCTION: python src/build_ds2_member.py --verify regenerates member sha256 beb13345dc020f32283cea2d132efa072eb52c73d29806f86f60fbf24982f971 from the hash-pinned base matrix"
     },
     {
       "strategy_id": "role_aware_conditional_interaction_lift",
