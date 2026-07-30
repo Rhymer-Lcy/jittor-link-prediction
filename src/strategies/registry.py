@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Callable
 
 from .ds1 import source_slate_recurrence, test_graph_reciprocity
+from .ds2 import cross_time_exclusivity
 
 SHIPPED_ACTIVE = "SHIPPED_ACTIVE"
 SHIPPED_SUPERSEDED = "SHIPPED_SUPERSEDED"
@@ -52,6 +53,19 @@ DS1_POSTPROCESSOR_CHAIN: list[tuple[str, object, Callable]] = [
     (test_graph_reciprocity.STRATEGY_ID, test_graph_reciprocity, test_graph_reciprocity.apply),
 ]
 
+#: Ordered dataset2 score postprocessors of the accepted submission. One stage:
+#: the final cross-time exclusivity decode applied on top of the CRF output.
+DS2_POSTPROCESSOR_CHAIN: list[tuple[str, object, Callable]] = [
+    (cross_time_exclusivity.STRATEGY_ID, cross_time_exclusivity, cross_time_exclusivity.apply),
+]
+
+#: Postprocessor chain per dataset, so an entry point can select by configuration
+#: rather than by branching on a dataset name.
+POSTPROCESSOR_CHAINS: dict[str, list[tuple[str, object, Callable]]] = {
+    "dataset1": DS1_POSTPROCESSOR_CHAIN,
+    "dataset2": DS2_POSTPROCESSOR_CHAIN,
+}
+
 
 def load_inventory() -> dict:
     """Load the full strategy lifecycle inventory."""
@@ -69,3 +83,16 @@ def strategies_by_status(status: str) -> list[dict]:
 def active_ds1_chain_ids() -> list[str]:
     """Strategy ids of the ordered dataset1 postprocessor chain."""
     return [sid for sid, _, _ in DS1_POSTPROCESSOR_CHAIN]
+
+
+def active_ds2_chain_ids() -> list[str]:
+    """Strategy ids of the ordered dataset2 postprocessor chain."""
+    return [sid for sid, _, _ in DS2_POSTPROCESSOR_CHAIN]
+
+
+def active_chain_ids(dataset: str) -> list[str]:
+    """Strategy ids of the ordered postprocessor chain for ``dataset``."""
+    if dataset not in POSTPROCESSOR_CHAINS:
+        raise ValueError(f"unknown dataset {dataset!r}; "
+                         f"known: {sorted(POSTPROCESSOR_CHAINS)}")
+    return [sid for sid, _, _ in POSTPROCESSOR_CHAINS[dataset]]

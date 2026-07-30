@@ -111,3 +111,42 @@ def row_max_normalise(scores: np.ndarray) -> np.ndarray:
 def stable_rank_order(scores: np.ndarray) -> np.ndarray:
     """Descending score order per row, ties broken by ascending column index."""
     return np.argsort(-scores, axis=1, kind="stable")
+
+
+def dense_group_ids(*columns: np.ndarray) -> tuple[np.ndarray, int]:
+    """Dense group id per row for a tuple of integer columns.
+
+    Group ids are assigned in lexicographic order of the key tuple, which the
+    dataset2 cross-time decoder relies on: it resolves a keeper tie by taking the
+    first eligible cluster of a group, and lexicographic ``(group, time)``
+    ordering makes that the smallest-timestamp cluster.
+
+    Returns ``(group_id_per_row, number_of_groups)``.
+    """
+    keys = np.stack([np.asarray(c, np.int64) for c in columns], axis=1)
+    order = np.lexsort(tuple(keys[:, i] for i in range(keys.shape[1] - 1, -1, -1)))
+    sorted_keys = keys[order]
+    boundary = np.ones(len(order), bool)
+    boundary[1:] = (sorted_keys[1:] != sorted_keys[:-1]).any(axis=1)
+    dense = np.empty(len(order), np.int64)
+    dense[order] = np.cumsum(boundary) - 1
+    return dense, int(boundary.sum())
+
+
+def csv_record_spans(payload: bytes, expected_rows: int | None = None) -> np.ndarray:
+    """Start/end byte offsets of each CSV record, the terminating newline excluded.
+
+    Used by the byte-preserving dataset2 decoder: rewriting only the affected
+    score tokens and copying every other byte is what makes the rebuilt member
+    byte-identical to the online-scored one, since no score is ever
+    re-serialised from a float.
+    """
+    newlines = np.flatnonzero(np.frombuffer(payload, np.uint8) == 0x0A)
+    if not len(payload) or payload[-1] != 0x0A:
+        raise ValueError("payload does not end with a newline")
+    if expected_rows is not None and newlines.size != expected_rows:
+        raise ValueError(f"{newlines.size} records for {expected_rows} expected rows")
+    starts = np.empty(newlines.size, np.int64)
+    starts[0] = 0
+    starts[1:] = newlines[:-1] + 1
+    return np.stack([starts, newlines], axis=1)
