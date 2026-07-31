@@ -34,7 +34,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-import train_line as tl
+import pipeline_common as tl   # framework-neutral shared components
 
 # Item-CF: cosine similarity between a candidate's embedding and the src's
 # historical dst embeddings (mean over all, plus mean of the top-3 closest).

@@ -27,6 +27,7 @@ SRC = REPO / "src"
 
 #: Modules that make up the canonical production path. None may require torch.
 CANONICAL_MODULES = [
+    "pipeline_common.py",
     "train_line_jt.py", "train_bpr_jt.py", "ensemble_predict.py",
     "ranker_ds1.py", "ranker_basket_ds2.py", "ds2_basket_featurizer.py",
     "ds2_mf_basket_pack.py", "crf_promote.py", "triple_promote.py",
@@ -105,7 +106,7 @@ class CanonicalPathIsTorchFree(unittest.TestCase):
         try:
             # Only leaf utility modules are safe to import here: several ranking
             # modules execute pipeline work at module scope by design.
-            for name in ("train_line",):
+            for name in ("pipeline_common", "train_line"):
                 sys.modules.pop(name, None)
                 try:
                     importlib.import_module(name)

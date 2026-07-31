@@ -39,7 +39,7 @@ import pandas as pd  # noqa: E402
 import scipy.sparse as sp  # noqa: E402
 from scipy.sparse.linalg import svds  # noqa: E402
 import lightgbm as lgb  # noqa: E402
-import train_line as tl  # noqa: E402
+import pipeline_common as tl   # framework-neutral shared components  # noqa: E402
 import ensemble_predict as ep  # noqa: E402
 import ds2_basket_featurizer as bag  # noqa: E402
 bag.REPO = REPO

@@ -33,6 +33,8 @@ import pandas as pd
 import jittor as jt
 from jittor import nn
 
+import pipeline_common as pc
+
 SEED = int(os.environ.get("SEED", "42"))
 emb_total_dim = int(os.environ.get("EMB_DIM", "400"))
 sub_dim = emb_total_dim // 2
@@ -56,15 +58,15 @@ assert NEG_DIST in ("uniform", "pop075"), f"unknown NEG_DIST: {NEG_DIST}"
 EVAL_HOLDOUT = os.environ.get("EVAL_HOLDOUT", "0") == "1"
 LINE_TIME_MAX = float(os.environ.get("LINE_TIME_MAX", "0"))
 LINE_TAU_FRAC = float(os.environ.get("LINE_TAU_FRAC", "0"))
-JT_OUT_SUFFIX = os.environ.get("JT_OUT_SUFFIX", "-jt")
+# Canonical runs write the contract name. JT_OUT_SUFFIX remains available for
+# side-by-side verification runs, but defaults to empty so a canonical run needs
+# no environment variable and cannot silently land in a parallel directory.
+JT_OUT_SUFFIX = os.environ.get("JT_OUT_SUFFIX", "")
 
-_suffix = (("" if SEED == 42 else f"-s{SEED}")
-           + ("-negpop" if NEG_DIST == "pop075" else "")
-           + (f"-d{emb_total_dim}" if emb_total_dim != 400 else "")
-           + ("-novirt")
-           + (f"-tmax{LINE_TIME_MAX:g}" if LINE_TIME_MAX > 0 else "")
-           + ("-holdout" if EVAL_HOLDOUT else ""))
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / (DATASET + _suffix + JT_OUT_SUFFIX)
+# Single source of truth, shared with the rankers that consume this output.
+_BASE_DIR = pc.line_run_dir(DATASET, seed=SEED, neg_dist=NEG_DIST, emb_dim=emb_total_dim,
+                            time_max=LINE_TIME_MAX, holdout=EVAL_HOLDOUT, root=PROJECT_ROOT)
+OUTPUT_DIR = _BASE_DIR.parent / (_BASE_DIR.name + JT_OUT_SUFFIX)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 latest_emb_path = OUTPUT_DIR / "line_latest_emb.csv"
 

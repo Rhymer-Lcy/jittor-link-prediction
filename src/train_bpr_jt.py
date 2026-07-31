@@ -27,6 +27,8 @@ import pandas as pd
 import jittor as jt
 from jittor import nn
 
+import pipeline_common as pc
+
 SEED = int(os.environ.get("SEED", "42"))
 DIM = int(os.environ.get("BPR_DIM", "256"))
 EPOCHS = int(os.environ.get("BPR_EPOCHS", "120"))
@@ -44,18 +46,14 @@ DATASET = os.environ.get("DATASET", "dataset2")
 assert DATASET in ("dataset1", "dataset2"), f"unknown dataset: {DATASET}"
 DATA_PACK = os.environ.get("DATA_PACK", "data_A")
 DATA_DIR = PROJECT_ROOT / "data" / DATA_PACK / DATASET
-JT_OUT_SUFFIX = os.environ.get("JT_OUT_SUFFIX", "-jt")
+# Canonical runs write the contract name; see train_line_jt.py.
+JT_OUT_SUFFIX = os.environ.get("JT_OUT_SUFFIX", "")
 
-OUT_DIR = PROJECT_ROOT / "outputs" / (
-    DATASET + "-bpr"
-    + ("-innov" if INNOV else "")
-    + (f"-t{TAU_FRAC:g}" if TAU_FRAC > 0 else "")
-    + (f"-d{DIM}" if DIM != 256 else "")
-    + (f"-tmax{TIME_MAX:g}" if TIME_MAX > 0 else "")
-    + (f"-s{SEED}" if SEED != 42 else "")
-    + ("-holdout" if EVAL_HOLDOUT else "")
-    + JT_OUT_SUFFIX
-)
+# Single source of truth, shared with the rankers that consume this output.
+_BASE_DIR = pc.bpr_run_dir(DATASET, seed=SEED, tau_frac=TAU_FRAC, dim=DIM,
+                           time_max=TIME_MAX, innov=INNOV, holdout=EVAL_HOLDOUT,
+                           root=PROJECT_ROOT)
+OUT_DIR = _BASE_DIR.parent / (_BASE_DIR.name + JT_OUT_SUFFIX)
 os.makedirs(OUT_DIR, exist_ok=True)
 
 jt.flags.use_cuda = 1 if jt.has_cuda else 0

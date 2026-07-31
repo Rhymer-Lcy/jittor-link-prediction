@@ -72,7 +72,7 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-import train_line as tl
+import pipeline_common as tl   # framework-neutral shared components
 import ensemble_predict as ep
 
 assert tl.DATASET == "dataset2", "this pipeline is dataset2-only"

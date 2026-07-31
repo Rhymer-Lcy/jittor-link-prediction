@@ -33,7 +33,7 @@ import numpy as np
 import pandas as pd
 import lightgbm as lgb
 
-import train_line as tl
+import pipeline_common as tl   # framework-neutral shared components
 import ensemble_predict as ep
 
 REPO = Path(__file__).resolve().parent.parent
@@ -160,10 +160,12 @@ def main():
         tq.append((src, t, np.array(negs + [dst], dtype=np.int64)))
     log(f"train replay queries {len(tq)}")
 
-    cut_bpr = [REPO / "outputs" / ("dataset1-bpr-t0.25-tmax1.1548e+08" + (f"-s{s}" if s != 42 else ""))
+    # Producer/consumer path contract: these names come from the same helpers the
+    # Jittor trainers use, so a producer and its consumer cannot disagree.
+    cut_bpr = [tl.bpr_run_dir("dataset1", seed=s, tau_frac=0.25, time_max=CUT)
                for s in BPR_SEEDS]
-    cut_ibpr = REPO / "outputs" / "dataset1-bpr-innov-t0.25-tmax1.1548e+08"
-    cut_line = REPO / "outputs" / "dataset1-novirt-tmax1.1548e+08"
+    cut_ibpr = tl.bpr_run_dir("dataset1", tau_frac=0.25, time_max=CUT, innov=True)
+    cut_line = tl.line_run_dir("dataset1", time_max=CUT)
     log("featurize TRAIN (cut-frozen) ...")
     Xtr = featurize(split0, CUT, tq, cut_line, cut_bpr, cut_ibpr, num_entity, freq_cand, cfreq_log)
     lens = np.array([len(q[2]) for q in tq])
@@ -180,9 +182,9 @@ def main():
 
     # ---- INFER: real test rows, features frozen at full-train end ----
     full_t = float(df_raw["time"].max())
-    full_bpr = [REPO / "outputs" / ("dataset1-bpr-t0.25" + (f"-s{s}" if s != 42 else "")) for s in BPR_SEEDS]
-    full_ibpr = REPO / "outputs" / "dataset1-bpr-innov-t0.25"
-    full_line = REPO / "outputs" / "dataset1"                   # holds line_latest_emb.csv
+    full_bpr = [tl.bpr_run_dir("dataset1", seed=s, tau_frac=0.25) for s in BPR_SEEDS]
+    full_ibpr = tl.bpr_run_dir("dataset1", tau_frac=0.25, innov=True)
+    full_line = tl.line_run_dir("dataset1")     # holds line_latest_emb.csv
     iq = [(int(test_df["src"].values[i]), float(test_df["time"].values[i]), cand_mat[i])
           for i in range(len(test_df))]
     log(f"featurize INFER (full-frozen, freeze_t={full_t:g}) ...")

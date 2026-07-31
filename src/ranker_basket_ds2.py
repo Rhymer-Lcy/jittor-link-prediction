@@ -55,7 +55,7 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 
-import train_line as tl
+import pipeline_common as tl   # framework-neutral shared components
 import ensemble_predict as ep
 
 assert tl.DATASET == "dataset2", "this pipeline is dataset2-only"
@@ -216,8 +216,8 @@ for row in lab.itertuples(index=False):
 print(f"train queries {len(train_q)}", flush=True)
 tdir = tl.PROJECT_ROOT / "outputs"
 Xtr = build_features(split0, CUT, train_q,
-                     [tdir / ("dataset2-bpr-tmax1.26196e+09" + (f"-s{s}" if s != 42 else "")) for s in SEEDS],
-                     tdir / "dataset2-novirt-tmax1.26196e+09",
+                     [tl.bpr_run_dir("dataset2", seed=s, time_max=CUT) for s in SEEDS],
+                     tl.line_run_dir("dataset2", time_max=CUT),
                      np.unique(np.array([s for s, _, _ in train_q], dtype=np.int64)))
 lens = np.array([len(q[2]) for q in train_q])
 off = np.concatenate([[0], np.cumsum(lens)])
@@ -300,8 +300,8 @@ for d, tv in df_raw.groupby("dst")["time"].max().items():
 seen = (np.bincount(df_raw["dst"].values, minlength=num_entity) > 0).astype(np.float64)
 rps = popwin(df_raw["dst"].values, df_raw["time"].values, CUTp, tmin, 0.05)
 rpl = popwin(df_raw["dst"].values, df_raw["time"].values, CUTp, tmin, 0.40)
-bprs = [np.load(tdir / ("dataset2-bpr" + (f"-s{s}" if s != 42 else "")) / "bpr_emb.npy") for s in SEEDS]
-emb = ep.load_embedding(tdir / "dataset2", expected_rows=num_entity)
+bprs = [np.load(tl.bpr_run_dir("dataset2", seed=s) / "bpr_emb.npy") for s in SEEDS]
+emb = ep.load_embedding(tl.line_run_dir("dataset2"), expected_rows=num_entity)
 emb_n = emb / np.maximum(np.linalg.norm(emb, axis=1, keepdims=True), 1e-8)
 tl.build_sim_cache(emb, np.unique(test_srcs))
 for beg in range(0, N, CHUNK):
