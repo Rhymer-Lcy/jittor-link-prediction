@@ -95,9 +95,10 @@ EXPECTED_ROWS = 153420
 EXPECTED_COLUMNS = 100
 EXPECTED_ACTIONS = 7815
 
-#: Full physical census of the accepted deployment. Every value is a property of
-#: the base member and the test file together, so any disagreement means an input
-#: is not the one that was shipped -- which must abort a rebuild, not warn.
+#: Full physical census of the accepted deployment. These are the values observed
+#: when the shipped base member was decoded against the official test file. They
+#: identify one specific deployment, so they are the reference for frozen
+#: verification -- see :func:`census_mismatches` and the two key sets below.
 CENSUS_ANCHORS = {
     "rows": 153420,
     "columns": 100,
@@ -112,6 +113,18 @@ CENSUS_ANCHORS = {
     "max_violation_group_size": 8,
     "violation_groups_after_one_pass": 1589,
 }
+
+#: Census keys that are properties of the physical test file alone. They are
+#: independent of the score matrix, so they can be -- and are -- validated
+#: against the test frame itself on every run, whatever produced the scores.
+STRUCTURAL_ANCHOR_KEYS = frozenset({"rows", "columns", "sources"})
+
+#: Census keys that are functions of the served top-1 ranking, hence of the
+#: particular model that produced the base matrix. A legitimately retrained model
+#: yields different values here; they identify the frozen deployment rather than
+#: a correctness property, so they are enforced only in frozen-reference
+#: verification and recorded as observations otherwise.
+SCORE_DEPENDENT_ANCHOR_KEYS = frozenset(CENSUS_ANCHORS) - STRUCTURAL_ANCHOR_KEYS
 
 
 def derive_actions(scores: np.ndarray, candidates: np.ndarray, sources: np.ndarray,
@@ -219,11 +232,40 @@ def derive_actions(scores: np.ndarray, candidates: np.ndarray, sources: np.ndarr
     }
 
 
-def census_mismatches(census: dict, anchors: dict | None = None) -> dict:
-    """Census entries that disagree with the accepted-deployment anchors."""
+def census_mismatches(census: dict, anchors: dict | None = None,
+                      keys: frozenset | set | None = None) -> dict:
+    """Census entries that disagree with the accepted-deployment anchors.
+
+    ``keys`` restricts the comparison to a subset of anchor names. The default,
+    ``None``, compares every anchor, which is the historical behaviour.
+    """
     anchors = CENSUS_ANCHORS if anchors is None else anchors
+    if keys is not None:
+        anchors = {key: want for key, want in anchors.items() if key in keys}
     return {key: {"expected": want, "observed": census.get(key)}
             for key, want in anchors.items() if census.get(key) != want}
+
+
+def structural_mismatches(census: dict, test: pd.DataFrame) -> dict:
+    """Census entries that contradict the physical test frame they came from.
+
+    This is a self-consistency check, not a comparison against a frozen result:
+    the expected values are read off ``test`` at call time. It therefore holds
+    for any correct decode of any input, including a legitimately retrained one,
+    and a failure always means the score matrix and the test file disagree about
+    the shape of the problem. Blocking, unconditionally.
+    """
+    columns = [c for c in test.columns if c.startswith("c") and c[1:].isdigit()]
+    expected = {
+        "rows": int(len(test)),
+        "columns": int(len(columns)),
+        "sources": int(pd.unique(test["src"]).size),
+    }
+    if set(expected) != set(STRUCTURAL_ANCHOR_KEYS):       # keeps the two in step
+        raise AssertionError("structural key sets have diverged: "
+                             f"{sorted(expected)} != {sorted(STRUCTURAL_ANCHOR_KEYS)}")
+    return {key: {"expected": want, "observed": census.get(key)}
+            for key, want in expected.items() if census.get(key) != want}
 
 
 def apply(scores: np.ndarray, test: pd.DataFrame, train: pd.DataFrame | None = None

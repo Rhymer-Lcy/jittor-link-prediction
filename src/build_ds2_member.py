@@ -114,13 +114,43 @@ def main() -> int:
           f"({100 * info['action_coverage']:.2f}% of rows), "
           f"{info['cells_changed']} cells")
 
-    mismatches = xte.census_mismatches(census)
-    if mismatches:
-        print("  [FAIL] physical census differs from the accepted deployment:")
-        print(json.dumps(mismatches, indent=4))
-        failures.append("census")
+    # Structural validation: the census must agree with the test frame it was
+    # derived from. True for any correct decode of any input, so it blocks on
+    # every run and is not gated by --verify.
+    structural = xte.structural_mismatches(census, test)
+    if structural:
+        print("  [FAIL] census contradicts the physical test file:")
+        print(json.dumps(structural, indent=4))
+        failures.append("structural census")
     else:
-        print(f"  [OK  ] all {len(xte.CENSUS_ANCHORS)} census anchors match")
+        print(f"  [OK  ] all {len(xte.STRUCTURAL_ANCHOR_KEYS)} structural census "
+              f"entries agree with {args.test.name}")
+
+    # Frozen-result census: the remaining entries are functions of the served top-1
+    # and therefore of the particular model that produced the base. A retrained
+    # model legitimately moves them, so they identify the frozen deployment
+    # rather than a correctness property. Enforced under --verify, which is the
+    # explicit frozen-reference verification mode; recorded otherwise.
+    frozen_census = xte.census_mismatches(census, keys=xte.SCORE_DEPENDENT_ANCHOR_KEYS)
+    n_score_dep = len(xte.SCORE_DEPENDENT_ANCHOR_KEYS)
+    if args.verify:
+        if frozen_census:
+            print(f"  [FAIL] score-dependent census differs from the accepted "
+                  f"deployment:")
+            print(json.dumps(frozen_census, indent=4))
+            failures.append("census")
+        else:
+            print(f"  [OK  ] all {n_score_dep} score-dependent census anchors match")
+    elif frozen_census:
+        print(f"  [NOTE] {len(frozen_census)} of {n_score_dep} score-dependent census "
+              f"entries differ from the accepted deployment.")
+        print("         Expected when the base matrix comes from a retrained model; "
+              "run with --verify to")
+        print("         assert the frozen values instead. Observed differences:")
+        print(json.dumps(frozen_census, indent=4))
+    else:
+        print(f"  [OK  ] all {n_score_dep} score-dependent census anchors match "
+              f"the accepted deployment")
 
     if anchors:
         want = anchors["dataset2"]["final_decoder"]["effect_on_member"]
