@@ -157,11 +157,21 @@ def main():
         n_before = len(df_raw)
         df_raw, _ = split_train_val_by_tail(df_raw)
         print(f"[EVAL_HOLDOUT] Dropped {n_before - len(df_raw)} per-src tail rows")
+    # The entity table is sized from the UNFILTERED frame, before any time
+    # cutoff, so node ids stay aligned with full-data artifacts. This mirrors
+    # train_line.py, which computes full_num_entity before applying
+    # LINE_TIME_MAX, and train_bpr_jt.py, which already does the same.
+    #
+    # Sizing it after the cutoff instead shrinks the embedding table to only the
+    # nodes seen before the cut (dataset1: 42,361 instead of 43,215), which
+    # silently misaligns every downstream node id and makes ranker_ds1 fail with
+    # "embedding has 42361 rows, expected 43215". Nodes that appear only after
+    # the cut keep their initialised rows, which is the frozen behaviour.
+    num_entity = int(max(df_raw.src.max(), df_raw.dst.max())) + 1
     if LINE_TIME_MAX > 0:
         n_before = len(df_raw)
         df_raw = df_raw[df_raw["time"] <= LINE_TIME_MAX].reset_index(drop=True)
         print(f"[LINE_TIME_MAX] Kept {len(df_raw)}/{n_before} edges with time <= {LINE_TIME_MAX:g}")
-    num_entity = int(max(df_raw.src.max(), df_raw.dst.max())) + 1
 
     # Bidirectional real edges, interleaved [u,v],[v,u] as in train_line.py
     uv = df_raw[["src", "dst"]].values.astype(np.int64)
