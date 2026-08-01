@@ -16,6 +16,7 @@ the accepted bytes are reproducible on any platform rather than only on Windows.
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 
 import numpy as np
@@ -45,17 +46,79 @@ def read_score_matrix(path: str | Path) -> np.ndarray:
     return scores
 
 
+def validate_submission_matrix(scores: np.ndarray,
+                               expected_shape: tuple[int, int] | None = None) -> None:
+    """Final-member gate. Raise ``ValueError`` on anything unsubmittable.
+
+    The competition format requires one value per supplied candidate, every value
+    finite, and every value inside ``[0, 1]``. A canonical dataset1 reconstruction
+    has already produced a member reaching -4.7e24 that passed every other check
+    because its shape and row count were correct, so this gate is not optional.
+
+    It reports problems and never repairs them: a member that fails here is a
+    signal about the chain that produced it, and silently clamping the values
+    would destroy the evidence and change the ranking.
+    """
+    problems: list[str] = []
+    if scores.ndim != 2:
+        problems.append(f"not a 2-D matrix: ndim {scores.ndim}")
+    elif expected_shape is not None and scores.shape != tuple(expected_shape):
+        problems.append(f"shape {scores.shape} != expected {tuple(expected_shape)}")
+    if scores.size and not np.isfinite(scores).all():
+        problems.append(f"non-finite values: {int(np.isnan(scores).sum())} NaN, "
+                        f"{int(np.isposinf(scores).sum())} +Inf, "
+                        f"{int(np.isneginf(scores).sum())} -Inf")
+    elif scores.size and (scores.min() < 0.0 or scores.max() > 1.0):
+        problems.append(f"values outside [0, 1]: range "
+                        f"[{scores.min():.6g}, {scores.max():.6g}]")
+    if problems:
+        raise ValueError("submission matrix rejected: " + "; ".join(problems))
+
+
+def verify_submission_file(path: str | Path, expected_shape: tuple[int, int]) -> None:
+    """Structural gate on the SERIALISED member: row count and per-row field count.
+
+    Catches a truncated or ragged write, which an in-memory check cannot see.
+    """
+    payload = Path(path).read_bytes()
+    rows, columns = int(expected_shape[0]), int(expected_shape[1])
+    lines = payload.split(b"\n")
+    if lines and lines[-1] == b"":
+        lines.pop()
+    problems: list[str] = []
+    if len(lines) != rows:
+        problems.append(f"{len(lines)} serialised rows != expected {rows}")
+    widths = {line.count(b",") + 1 for line in lines}
+    if widths != {columns}:
+        problems.append(f"per-row field counts {sorted(widths)} != {{{columns}}}")
+    if problems:
+        raise ValueError(f"serialised member rejected ({path}): " + "; ".join(problems))
+
+
 def write_score_matrix(scores: np.ndarray, path: str | Path) -> str:
-    """Write a headerless submission CSV in the accepted format; return its SHA256."""
+    """Write a headerless submission CSV in the accepted format; return its SHA256.
+
+    The write is atomic: the CSV is serialised to a sibling temporary file and then
+    renamed over the target, so an interrupted run cannot leave a truncated member
+    under the real name for a later stage to mistake for a finished one. The
+    serialised bytes are structurally verified before the rename.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".part")
     pd.DataFrame(scores).to_csv(
-        path,
+        tmp,
         index=False,
         header=False,
         float_format=SCORE_FORMAT,
         lineterminator=LINE_TERMINATOR,
     )
+    try:
+        verify_submission_file(tmp, scores.shape)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
+    os.replace(tmp, path)
     return sha256_file(path)
 
 

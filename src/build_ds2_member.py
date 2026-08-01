@@ -37,7 +37,10 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from strategies.ds2 import cross_time_exclusivity as xte  # noqa: E402
-from strategies.shared.frozen_ops import sha256_file  # noqa: E402
+from strategies.shared.frozen_ops import (  # noqa: E402
+    sha256_file,
+    validate_submission_matrix,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 PRODUCTION_CONFIG = REPO / "configs" / "production.json"
@@ -170,6 +173,18 @@ def main() -> int:
         print(json.dumps(census, indent=2))
         print("\nAUDIT-ONLY: no CSV written")
         return 0
+
+    # Mandatory final gate on the float path, before any byte is serialised. It
+    # reports and aborts; it does not clamp or otherwise repair the values.
+    try:
+        validate_submission_matrix(
+            treatment, tuple(anchors["dataset2"]["shape"]) if anchors else None)
+    except ValueError as problem:
+        print(f"  [FAIL] {problem}")
+        print(f"\nelapsed {time.time() - started:.1f}s")
+        print("OUTPUT GATE REJECTED the final matrix; no CSV was written")
+        return 1
+    print("  [OK  ] output gate: shape, finite values and [0, 1] range")
 
     # Byte-preserving serialisation: swap the two score TOKENS in the base
     # member's own bytes. Writing `treatment` through a float formatter would

@@ -33,6 +33,7 @@ from strategies.registry import DS1_POSTPROCESSOR_CHAIN  # noqa: E402
 from strategies.shared.frozen_ops import (  # noqa: E402
     read_score_matrix,
     sha256_file,
+    validate_submission_matrix,
     write_score_matrix,
 )
 
@@ -105,6 +106,18 @@ def main() -> int:
             stage_path = Path(args.stage_dir) / f"stage{stage_index}_{sid}.csv"
             stage_hashes[sid] = write_score_matrix(scores, stage_path)
             print(f"  stage CSV -> {stage_path} ({stage_hashes[sid]})")
+
+    # Mandatory final gate: never serialise a matrix that is not submittable.
+    # It reports and aborts; it does not clamp or otherwise repair the values.
+    try:
+        validate_submission_matrix(
+            scores, tuple(anchors["dataset1"]["shape"]) if anchors else None)
+    except ValueError as problem:
+        print(f"  [FAIL] {problem}")
+        print(f"\nelapsed {time.time() - started:.1f}s")
+        print("OUTPUT GATE REJECTED the final matrix; no CSV was written")
+        return 1
+    print(f"  [OK  ] output gate: shape, finite values and [0, 1] range")
 
     output_sha = write_score_matrix(scores, args.output)
     print(f"output  : {args.output}")
