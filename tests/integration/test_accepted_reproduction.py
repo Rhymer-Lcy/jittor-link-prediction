@@ -144,8 +144,12 @@ class ChainReproductionTest(unittest.TestCase):
         for asset in (self.test_csv, self.train_csv):
             if not asset.exists():
                 self.skipTest(f"local asset not available: {asset}")
+
+    def _frozen_control(self) -> Path:
+        """The frozen chain input, located by hash. Only the chain-reproduction
+        test needs it, so the lookup must not gate the other tests in this class."""
         want = PRODUCTION["dataset1"]["chain_input"]["sha256"]
-        seen, self.control = [], None
+        seen = []
         for rel in self.CONTROL_CANDIDATES:
             candidate = REPO / rel
             if not candidate.exists():
@@ -153,12 +157,10 @@ class ChainReproductionTest(unittest.TestCase):
                 continue
             got = sha256_file(candidate)
             if got == want:
-                self.control = candidate
-                break
+                return candidate
             seen.append(f"{rel}: {got[:16]}...")
-        if self.control is None:
-            self.skipTest(f"the frozen dataset1 chain input ({want[:16]}...) is "
-                          f"not available locally; searched {', '.join(seen)}")
+        self.skipTest(f"the frozen dataset1 chain input ({want[:16]}...) is "
+                      f"not available locally; searched {', '.join(seen)}")
 
     def test_immutable_inputs_are_unchanged(self):
         for rel, want in PRODUCTION["immutable_inputs"].items():
@@ -172,11 +174,12 @@ class ChainReproductionTest(unittest.TestCase):
         from strategies.registry import DS1_POSTPROCESSOR_CHAIN
         from strategies.shared.frozen_ops import read_score_matrix, write_score_matrix
 
-        self.assertEqual(sha256_file(self.control),
+        control = self._frozen_control()
+        self.assertEqual(sha256_file(control),
                          PRODUCTION["dataset1"]["chain_input"]["sha256"])
         test = pd.read_csv(self.test_csv)
         train = pd.read_csv(self.train_csv)
-        scores = read_score_matrix(self.control)
+        scores = read_score_matrix(control)
 
         anchors = {s["strategy_id"]: s for s in PRODUCTION["dataset1"]["strategy_chain"]}
         for sid, _module, apply_fn in DS1_POSTPROCESSOR_CHAIN:
