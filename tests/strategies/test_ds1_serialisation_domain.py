@@ -186,8 +186,16 @@ class FrozenRankerFixedPointTest(unittest.TestCase):
         out = [serialisation_normalise(row).tolist() for row in matrix]
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "result_ranker.csv"
+            # The line terminator is pinned to the CRLF that
+            # configs/production.json records, NOT left to the platform default.
+            # ranker_ds1.py calls to_csv without pinning it, so the intermediate
+            # ranker artifact carries CRLF when produced on Windows and LF on
+            # Linux -- a 61,051-byte difference on this matrix. That is a real
+            # platform dependence of the intermediate artifact, recorded here so
+            # this test measures the transform rather than the host. The final
+            # member is unaffected: frozen_ops.write_score_matrix pins CRLF.
             pd.DataFrame(out).to_csv(path, index=False, header=False,
-                                     float_format="%.6f")
+                                     float_format="%.6f", lineterminator="\r\n")
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             self.assertEqual(path.stat().st_size, self.frozen.stat().st_size)
         self.assertEqual(digest, self.EXPECTED,
