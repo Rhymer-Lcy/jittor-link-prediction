@@ -16,3 +16,7 @@ venv/
 .idea/
 .vscode/
 scratchpad/
+
+# Durable evidence copies pulled off a rented instance. Large binary members and
+# reconstruction intermediates; provenance lives in artifacts_durable/FINAL_MANIFEST.md.
+artifacts_durable/
