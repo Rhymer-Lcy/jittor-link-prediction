@@ -184,7 +184,13 @@ def main():
     Xall_list = bag.build_features(
         df_raw, CUTp, prod_q,
         [tdir / ("dataset2-bpr" + (f"-s{s}" if s != 42 else "")) for s in SEEDS],
-        tdir / "dataset2",
+        # The LINE run directory is named by pipeline_common, not spelled out here.
+        # The verbatim port carried "outputs/dataset2" from the original build host,
+        # which predates the run-suffix contract; the trainer now writes the serve
+        # embedding to outputs/dataset2-novirt, so the literal resolved to a stale
+        # directory and the stage failed on the missing export. line_run_dir is the
+        # same call the producer (train_line_jt) and the order-0 ranker already use.
+        tl.line_run_dir("dataset2"),
         np.unique(test_srcs), num_entity, freq_cand, cfreq_log)
     Xall = np.vstack(Xall_list).astype(np.float32); del Xall_list
     lens_sv = np.array([len(c) for c in cand_mat])   # all 100
