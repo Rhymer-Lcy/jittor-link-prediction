@@ -63,6 +63,12 @@ src/strategies/ds1/test_graph_reciprocity.py      1,365 actions   online +0.0080
         -> dataset1.csv   component 0.8963013747474597
 ```
 
+**dataset1 score-domain contract.** LambdaRank margins are unbounded and mostly negative, so
+`src/ranker_ds1.py` serialises through a **per-row min-max**: every row of `result_ranker.csv` has
+minimum exactly 0 and maximum exactly 1. The step is order-preserving, so it has no ranking or MRR
+effect, but it is load-bearing — both ds1 postprocessors and the final output gate assume the
+`[0, 1]` domain, and `frozen_ops.promoted_value` is "exactly 3.0" only when a row's range is 1.
+
 **The chain is order-sensitive.** Reciprocity reads the rank-2 candidate of the
 recurrence-adjusted matrix; swapping the two produces a different file. The order above is the
 one that was adjudicated online and accepted.

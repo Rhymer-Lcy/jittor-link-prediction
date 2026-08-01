@@ -53,6 +53,50 @@ def log(m):
     print(f"[{time.time() - T0:7.1f}s] {m}", flush=True)
 
 
+def serialisation_normalise(row: np.ndarray) -> np.ndarray:
+    """Map one LambdaRank score row into [0, 1] the way the frozen chain did.
+
+    LambdaRank margins straddle zero: on the frozen A-board embeddings 97.5% of
+    the 6,105,100 predicted cells are negative and every one of the 61,051 rows
+    contains a negative value. ``pipeline_common.rownorm`` divides by the row
+    maximum, which fixes the maximum at 1 but passes negatives straight through
+    and, on a row whose maximum is not positive, is undefined. Serialising that
+    yields a matrix the submission format rejects.
+
+    The frozen A-board artifact
+    ``outputs/dataset1-ensemble/result_ranker.csv`` (sha256 ``cb4964ea...``) does
+    not have that shape. Every one of its 61,051 rows has minimum exactly 0.0 AND
+    maximum exactly 1.0, with 1.0005 zeros and 1.0000 ones per row over 660,816
+    distinct values. Among the candidate transforms that is uniquely the
+    signature of a per-row min-max: ``rownorm`` cannot place an exact 0.0 in every
+    row, clipping at 0 would leave about 97 zeros per row rather than one, a rank
+    map would admit only 100 distinct values, and a bare shift would not fix the
+    maximum at 1. So the frozen path applied this transform and the port to
+    ``src/`` did not carry it across.
+
+    It is a serialisation-domain step, not a scoring change. Subtracting a
+    per-row constant and dividing by a positive per-row constant preserves the
+    within-row order exactly, and MRR depends on nothing else; replaying the
+    chain under both transforms produced identical postprocessor action counts
+    (3,647 and 1,374).
+
+    A degenerate row -- every candidate scored identically -- has no min-max.
+    It takes the established repository convention for exactly this case:
+    ``frozen_ops.row_max_normalise`` maps a constant row to 0.5, pinned by
+    ``test_constant_negative_rows_map_to_one_half``. The value is in range,
+    order-neutral and free of division by zero, and it is NOT invented here. No
+    constant row occurs in any real artifact -- the frozen ranker, the frozen
+    member and the pre-repair reconstruction contain zero of them -- and
+    ``tools/submission/package_component.py`` independently fails a member that
+    has any, so this branch cannot let one ship unnoticed.
+    """
+    lo = float(row.min())
+    span = float(row.max()) - lo
+    if span <= 1e-12:
+        return np.full_like(row, 0.5)
+    return (row - lo) / span
+
+
 def popwin(dvals, tvals, hi, lo, frac, num_entity):
     m = tvals >= (hi - frac * (hi - lo))
     return np.log1p(np.bincount(dvals[m], minlength=num_entity).astype(np.float64))
@@ -203,7 +247,7 @@ def main():
         m = len(iq[i][2])
         s = scores[pos:pos + m]
         pos += m
-        out_rows.append(tl.rownorm(s.astype(np.float64)).tolist())
+        out_rows.append(serialisation_normalise(s.astype(np.float64)).tolist())
     pd.DataFrame(out_rows).to_csv(save_path, index=False, header=False, float_format="%.6f")
     log(f"[OK] ds1 ranker submission -> {save_path}  ({len(out_rows)} rows)")
 
