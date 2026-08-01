@@ -818,6 +818,27 @@ resume).
   (53 strategies: 14 shipped-active, 6 superseded, 1 standby, 3 probe, 29 closed). The pass also
   **refuted the archive-size cliff** recorded above. Details in
   `docs/maintenance/repository-reorganisation.md`.
+- 2026-08-01 (P0 canonical reproduction, no submission, **score unchanged at
+  1.576996059163449**): the **dataset2 production lineage was rebuilt end-to-end from the official
+  raw competition data** — ranker → MF basket pack (`--geom MF`) → frozen CRF → XTE decode — on a
+  rented RTX 4090. The corrected production CLI completed and its member is **byte-identical**
+  (sha256 `3709308c…f647d`) to an independently generated diagnostic decode, which localises the
+  census fix to validation control flow. **Ambiguity A1** in
+  `docs/maintenance/repository-reorganisation-ambiguities.md` — the ds2 base matrix had never been
+  re-executed end-to-end — is therefore **closed in execution**. Five commits landed
+  (`7d72660`, `0748fa8`, `0c23789`, `64c32e8`, `880e6c3`); the suite grew 112 → 177 tests and both
+  accepted A-board members still reproduce byte-exactly. **Dataset1 remains BLOCKED at the ranker
+  score-domain contract**: the frozen A-board ranker artifact lies in `[0, 1]`, while the retrained
+  ranker carries **negative values in 99.95% of rows (61,018 / 61,051)**. Scheme C (repair
+  `row_max_normalise` only where a row's maximum is not strictly positive) was valid within its
+  authorised scope — 24 rows / 2,400 cells changed, every value below −1e6 removed, the other
+  61,027 rows bit-identical — but **insufficient**, because those rows are mixed-sign with a
+  positive maximum and stay on the frozen computation by design. The new **final-output gate
+  correctly refused to publish** the candidate: **no dataset1 member and no partial file were
+  written, and no new competition score was produced.** Whole-row min-max, sigmoid, clipping,
+  shifting, ranking-only replacement and any other global transformation **remain unauthorised**
+  until provenance evidence shows they belong to the frozen scientific pipeline. Root cause
+  deferred to **P1**; audit records under `artifacts_durable/`.
 
 **Logging convention.** Every submission milestone is recorded above; every
 tested-and-refuted card is recorded under **Closed axes** / **Refuted
