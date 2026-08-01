@@ -229,16 +229,68 @@ class ManifestSchemaTest(SmallSpecMixin):
         "predicted_combined_total", "created_utc", "command_line",
     ]
 
+    #: ``REQUIRED`` describes a single-dataset COMPONENT manifest. A combined-pack
+    #: manifest (``mode == "main"``) assembles two members and legitimately carries
+    #: no per-dataset change counts, so it is a different schema, not a defective
+    #: one. These are the modes each schema owns.
+    COMPONENT_MODES = ("ds1", "ds2")
+    COMBINED_MODES = ("main",)
+
+    #: Keys a combined-pack manifest must still carry. Asserted so that excluding
+    #: it from REQUIRED cannot become a way to check nothing at all.
+    COMBINED_REQUIRED = ["experiment", "dataset", "mode", "zip_path", "zip_sha256",
+                         "member_names", "member_sha256", "rows", "cols",
+                         "archive_bytes", "created_utc", "command_line"]
+
+    def _manifests(self):
+        """Every packaging manifest, in a DETERMINISTIC order.
+
+        The previous implementation took ``rglob(...)[0]``, i.e. whichever path the
+        filesystem happened to yield first. That silently decided which schema was
+        checked: on one ordering it examined a component manifest and passed, on
+        another it examined a combined-pack manifest and failed on ``changed_rows``.
+        Selection is now by declared ``mode``, and every manifest is checked.
+        """
+        import json
+        found = []
+        for path in sorted((REPO / "outputs" / "submissions").rglob("*_manifest.json")):
+            found.append((path, json.loads(path.read_text(encoding="utf-8"))))
+        return found
+
     def test_manifest_carries_every_required_field(self):
         if not pc.GOLD_ZIP.exists():
             self.skipTest("accepted archive not available locally")
-        import json
-        manifests = list((REPO / "outputs" / "submissions").rglob("*_manifest.json"))
+        manifests = self._manifests()
         if not manifests:
             self.skipTest("no packaging manifest present locally")
-        payload = json.loads(manifests[0].read_text(encoding="utf-8"))
-        for field in self.REQUIRED:
-            self.assertIn(field, payload, f"manifest is missing {field}")
+
+        component = [(p, m) for p, m in manifests if m.get("mode") in self.COMPONENT_MODES]
+        combined = [(p, m) for p, m in manifests if m.get("mode") in self.COMBINED_MODES]
+        unknown = [p.name for p, m in manifests
+                   if m.get("mode") not in self.COMPONENT_MODES + self.COMBINED_MODES]
+        self.assertEqual(unknown, [], f"manifest with an unrecognised mode: {unknown}")
+
+        # Anti-vacuity: the assertions below must actually run on something.
+        self.assertTrue(component,
+                        "no single-dataset component manifest present; this test "
+                        "would otherwise pass without checking the REQUIRED schema")
+
+        for path, payload in component:            # every one, not an arbitrary one
+            for field in self.REQUIRED:
+                self.assertIn(field, payload, f"{path.name} is missing {field}")
+        for path, payload in combined:
+            for field in self.COMBINED_REQUIRED:
+                self.assertIn(field, payload, f"{path.name} is missing {field}")
+
+    def test_selection_is_not_filesystem_order_dependent(self):
+        # The defect this replaced: manifests[0] chose a schema by directory order.
+        manifests = self._manifests()
+        if len(manifests) < 2:
+            self.skipTest("need at least two manifests to demonstrate the hazard")
+        modes = {m.get("mode") for _, m in manifests}
+        self.assertGreater(len(modes), 1,
+                           "expected both component and combined-pack manifests, so "
+                           "that order-dependent selection would be observable")
 
 
 if __name__ == "__main__":
