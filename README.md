@@ -839,6 +839,25 @@ resume).
   shifting, ranking-only replacement and any other global transformation **remain unauthorised**
   until provenance evidence shows they belong to the frozen scientific pipeline. Root cause
   deferred to **P1**; audit records under `artifacts_durable/`.
+- 2026-08-02 (P1 closure — dataset1 raw-to-final reexecution, no submission, **no new
+  competition score**): the **dataset1 chain was re-executed end to end from the official raw
+  competition data on Jittor**, so **DATASET-1 RAW-TO-FINAL LINEAGE is now COMPLETE** and joins
+  dataset2. The P1 root cause was a **`MISSING_PERSISTENCE_TRANSFORM`**: the frozen ranker artifact
+  carries a per-row **min-max** fingerprint (all 61,051 rows have minimum exactly 0 *and* maximum
+  exactly 1) that `rownorm` cannot produce. The restoration was validated and integrated as
+  **`1479f64`**, which is the **artifact-producing commit**; the later test and audit commits
+  (`b75c2c6`…`48f9205`) changed no production code and produced no artifact — the two identities
+  must not be conflated. Clean run: LINE 2309 s + 1802 s, 12 BPR runs, ranker, member; every stage
+  exit 0, ranker contract PASS (61,051/61,051 rows min 0 / max 1), member PASS through the
+  final-output gate. The clean-run member (`395338ed…`) is a **valid reconstruction, NOT the
+  historical A-board member** (`baa0dc21…`) — it is not byte-identical (top-1 95.6037%, mean
+  Spearman 0.8729), which is expected because the historical model state was never preserved and
+  Jittor GPU training is not bit-reproducible. Two findings recorded and deliberately **not**
+  repaired: the established driver **skipped stages on file existence alone**, so a fail-closed
+  driver was used instead and the stage-completion contract **remains open**; and
+  `ranker_ds1.py` writes a **platform-dependent line terminator** (CRLF/LF, one byte per row) which
+  does not affect the member because `write_score_matrix` pins CRLF. Evidence under
+  `artifacts_durable/ds1_cleanrun_20260802/`.
 
 **Logging convention.** Every submission milestone is recorded above; every
 tested-and-refuted card is recorded under **Closed axes** / **Refuted
