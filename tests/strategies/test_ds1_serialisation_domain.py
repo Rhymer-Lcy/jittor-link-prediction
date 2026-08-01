@@ -140,10 +140,40 @@ class FrozenRankerFixedPointTest(unittest.TestCase):
 
     EXPECTED = "cb4964ea21dcefdecb2a34f13ca8500adcc54120684f10052f78a87df88da16b"
 
+    #: The frozen ranker is located by IDENTITY, never by path. The canonical
+    #: production path legitimately holds a freshly computed artifact after any
+    #: clean raw-to-final run, and asserting on whatever happens to sit there
+    #: would make this test fail for a correct reason -- the "file existence is
+    #: not artifact identity" defect family this repository has already been bitten
+    #: by twice.
+    CANDIDATES = (
+        Path("outputs") / "dataset1-ensemble" / "result_ranker.csv",
+        Path("reference") / "result_ranker.csv",
+    )
+
+    @staticmethod
+    def _sha256(path: Path) -> str:
+        import hashlib
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(block)
+        return digest.hexdigest()
+
     def setUp(self):
-        self.frozen = REPO / "outputs" / "dataset1-ensemble" / "result_ranker.csv"
-        if not self.frozen.is_file():
-            self.skipTest(f"local asset not available: {self.frozen}")
+        seen = []
+        for rel in self.CANDIDATES:
+            candidate = REPO / rel
+            if not candidate.is_file():
+                seen.append(f"{rel}: absent")
+                continue
+            digest = self._sha256(candidate)
+            if digest == self.EXPECTED:
+                self.frozen = candidate
+                return
+            seen.append(f"{rel}: {digest[:16]}...")
+        self.skipTest("the frozen dataset1 ranker (sha256 cb4964ea...) is not "
+                      f"available locally; searched {', '.join(seen)}")
 
     def test_patched_persistence_reproduces_the_frozen_ranker_bytes(self):
         import hashlib
