@@ -104,8 +104,42 @@ def promoted_value(row: np.ndarray) -> float:
 
 
 def row_max_normalise(scores: np.ndarray) -> np.ndarray:
-    """Divide each row by its maximum, guarding against a zero row."""
-    return scores / np.maximum(scores.max(axis=1, keepdims=True), 1e-12)
+    """Divide each row by its maximum, mapping every row into [0, 1].
+
+    Rows whose maximum is strictly positive are divided by it exactly as before,
+    bit for bit. That is every row the frozen A-board chain ever produced, so the
+    accepted member is unchanged.
+
+    A row whose maximum is NOT strictly positive has no meaningful "divide by the
+    maximum" normalisation. The previous guard, ``np.maximum(row_max, 1e-12)``,
+    was written for an all-ZERO row; applied to an all-NEGATIVE row it divides by
+    1e-12 and AMPLIFIES the row by twelve orders of magnitude. A canonical
+    dataset1 run whose LambdaRank model scored 33 of 61,051 queries entirely
+    negative produced member values down to -4.7e24, far outside the [0, 1] the
+    submission format requires.
+
+    Such a row is instead shifted by its own minimum and then divided by the
+    shifted maximum. The shift is a per-row constant and the divisor is positive,
+    so the candidate ORDER is preserved exactly, which is all MRR depends on. A
+    constant non-positive row shifts to all zeros and is mapped to 0.5, which is
+    in range, order-neutral and free of division by zero.
+
+    Scope: this repair belongs to ``row_max_normalise`` alone. It must NOT be
+    applied to ``pipeline_common.rownorm``, whose degenerate input is the all-ZERO
+    row and which correctly returns it unchanged; mapping those to 0.5 would
+    rewrite 117 measured dataset2 ``f_collab`` feature rows and change frozen
+    dataset2 semantics.
+    """
+    row_max = scores.max(axis=1, keepdims=True)
+    defined = row_max > 1e-12
+    if defined.all():                       # the frozen path, untouched
+        return scores / np.maximum(row_max, 1e-12)
+
+    shifted = scores - scores.min(axis=1, keepdims=True)
+    shifted_max = shifted.max(axis=1, keepdims=True)
+    repaired = np.where(shifted_max > 1e-12,
+                        shifted / np.maximum(shifted_max, 1e-12), 0.5)
+    return np.where(defined, scores / np.maximum(row_max, 1e-12), repaired)
 
 
 def stable_rank_order(scores: np.ndarray) -> np.ndarray:
