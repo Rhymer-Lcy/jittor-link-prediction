@@ -187,27 +187,35 @@ seven placeholders present, and no occurrence of `autodl-tmp`, `seetacloud`, a W
 `<TEAM_NAME>`, `<A_BOARD_RANK>`, `<A_BOARD_BEST_TOTAL_SCORE>`, `<CONTACT_NAME>`, `<WECHAT_ID>`,
 `<PHONE_NUMBER>`, `<SUBMISSION_DATE>`.
 
-## 7. Open production defect
+## 7. The output-root defect — CLOSED
 
-**`--output-root` is not honoured by the Dataset-2 feature-construction stage.**
-`src/ds2_basket_featurizer.py:413-416` and `src/ds2_mf_basket_pack.py:183-187` resolve the Dataset-2
-embedding directories from a literal `<project>/outputs/...` instead of the shared path contract, so
-`OUTPUTS_ROOT` does not reach them. The **documented reproduction procedure is unaffected** (it uses
-the default output root, where the two locations coincide); with `--output-root` set the stage either
-fails visibly on a missing file or silently reads artifacts left in the default tree by an earlier
-run. Found by targeted validation on 2026-08-02. The fix is three lines and provably
-default-identical; it is **held for review**, not applied. Disclosed in the submission document,
-section 12 item 9, and analysed in `artifacts_durable/rc_validation_20260802/RC_VALIDATION_AUDIT.md`
-section 8.
+`src/ds2_basket_featurizer.py:413-416` and `src/ds2_mf_basket_pack.py:183-187` resolved the
+Dataset-2 embedding directories from a literal `<project>/outputs/...`, so `OUTPUTS_ROOT` never
+reached them and `--output-root` was honoured by the driver but ignored by those consumers. Fixed in
+`b4776a2` by calling `tl.bpr_run_dir` / `tl.line_run_dir`, plus removal of one dead
+`tdir = tl.PROJECT_ROOT / "outputs"` assignment in `ranker_basket_ds2.py` whose two call arguments
+already used the helpers.
+
+Classification: **`PATH_AND_ORCHESTRATION_ONLY`**. No filename, scientific configuration,
+environment variable, stage ID or output format changed. Under the default output root the new
+expressions resolve byte-for-byte to the former literals for all five required cases plus every
+seed, so no existing artifact is orphaned. Both frozen replay tests still reproduce the accepted
+members byte for byte.
+
+`tests/strategies/test_ds2_output_root_contract.py` adds 14 tests. They evaluate the **actual source
+expressions**, extracted from the AST rather than retyped, so they cannot pass against a copy of the
+fix while the shipped code still holds a literal. Against the pre-fix tree at `6d2ff15`, **10 of the
+14 fail** — including the stale-default-tree trap, the isolated-root routing, the real
+`build_or_load_features` subprocess check and both static guards.
+
+Full analysis: `artifacts_durable/rc_validation_20260802/RC_VALIDATION_AUDIT.md` section 8.
 
 ## 8. Blockers to a final package
 
 1. **Owner input** for the seven placeholders.
 2. **Owner review** of the document content.
-3. **Decision on the `--output-root` defect above**: ship as documented, or apply the three-line fix
-   and re-validate.
-4. **Rename** the reviewed PDF to `提交说明文档.pdf`.
-5. **Build and verify the final archive**: deterministic ZIP, extraction dry run, SHA256 freeze.
+3. **Rename** the reviewed PDF to `提交说明文档.pdf`.
+4. **Build and verify the final archive**: deterministic ZIP, extraction dry run, SHA256 freeze.
 
 Closed since the previous audit:
 

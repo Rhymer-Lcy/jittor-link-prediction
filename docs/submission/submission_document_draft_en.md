@@ -584,16 +584,15 @@ roughly 2.8 h.
    commit, so a record written inside the package can never be mistaken for one written in a
    checkout, and vice versa. Every other identity a record binds — input hashes, configuration
    digest, relevant-code digest, output hash, epoch counts — is unaffected and still enforced.
-9. **`--output-root` is not honoured by the Dataset-2 feature-construction stage.**
-   `src/ds2_basket_featurizer.py` and `src/ds2_mf_basket_pack.py` resolve the Dataset-2 embedding
-   directories from a literal `<project>/outputs/...` rather than through the shared path contract,
-   so a run redirected with `--output-root` reads embeddings from the default location. **The
-   documented reproduction procedure in section 7 is unaffected**, because it does not pass
-   `--output-root` and the two locations then coincide. If the option is used, the stage either
-   fails with a missing-file error or, where a previous run left artifacts in the default tree,
-   silently reads those instead. Use the default output root for reproduction. Found by targeted
-   validation on 2026-08-02; the correction is a three-line path-contract change with identical
-   default behaviour and is held for review rather than applied without one.
+9. **`--output-root` routing is correct throughout, including the Dataset-2 stages.** Every
+   producer and every consumer derives its run directory from the shared path contract
+   (`pipeline_common.line_run_dir`, `bpr_run_dir`, `outputs_root`), so an artifact written under a
+   requested output root is read from that root and from nowhere else. Two Dataset-2 consumers
+   previously spelled the directory out as a literal and therefore ignored the option; that was
+   found by targeted validation on 2026-08-02 and corrected. Under the default output root the
+   corrected expressions resolve to byte-identical paths, so no existing artifact is orphaned, and
+   `tests/strategies/test_ds2_output_root_contract.py` pins the identity, the isolated-root routing
+   and the stale-default-tree case behaviourally.
 
 ---
 
