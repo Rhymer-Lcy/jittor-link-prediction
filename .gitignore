@@ -32,3 +32,6 @@ submission_staging/
 # Rendered forms of docs/submission/*.md. The markdown is the tracked source.
 docs/submission/*.pdf
 docs/submission/*.docx
+
+# Generated friend-review bundles. Built by tools from tracked sources; never a release source.
+submission_review_bundle_*/
