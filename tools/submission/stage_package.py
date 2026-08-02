@@ -52,6 +52,9 @@ PACKAGE_NAME = f"contest1_{DIRECTORY_PLACEHOLDER}_003"
 
 #: (repository path, classification, why it is in the package).
 CODE_MEMBERS: list[tuple[str, str, str]] = [
+    ("run_all.py", "entrypoint",
+     "one-command reproduction: runs both dataset pipelines in the required "
+     "order; an orchestration wrapper with no scientific logic of its own"),
     ("main.py", "entrypoint",
      "the organiser-facing command; executes the canonical graph for one dataset"),
     ("src/canonical_pipeline.py", "orchestration",

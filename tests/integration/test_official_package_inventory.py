@@ -22,6 +22,7 @@ SRC = REPO / "src"
 
 #: Every module the organiser-facing runtime needs, in dependency order.
 CANONICAL_RUNTIME = [
+    "run_all.py",
     "main.py",
     "src/canonical_pipeline.py",
     "src/stage_contract.py",
