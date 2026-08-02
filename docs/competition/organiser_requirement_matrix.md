@@ -6,14 +6,14 @@ validation result. No requirement is left unclassified.
 Verdicts: **SATISFIED** / **BLOCKED_BY_OWNER_PLACEHOLDER** / **BLOCKED_BY_LATER_TRANSLATION** /
 **NOT_APPLICABLE_WITH_REASON** / **DEFECT**.
 
-State at `49314cd` (staged code at the validated hotfix `b4776a2`).
+State at `aca5c0e` (staged code at the validated hotfix `b4776a2`); code-structure expansion audited 2026-08-02.
 
 ## 1. Archive
 
 | # | Requirement | Verdict | Evidence |
 |---|---|---|---|
 | 1.1 | Archive named `contest1_<TEAM_NAME>_003.zip` | BLOCKED_BY_OWNER_PLACEHOLDER | name template recorded in `STAGING_REPORT.json` as `intended_archive_name`; the staging directory uses `TEAM_NAME_PLACEHOLDER` because Windows rejects `<`/`>` in a path component |
-| 1.2 | Root contains `code/` | SATISFIED | staging root holds exactly one `code/` directory, 25 files |
+| 1.2 | Root contains `code/` | SATISFIED | staging root holds exactly one `code/` directory, 26 files |
 | 1.3 | Root contains `requirements.txt` or `environment.yaml` | SATISFIED | **both** are staged (stricter than required) |
 | 1.4 | Root contains `提交说明文档.pdf` | **BLOCKED_BY_LATER_TRANSLATION** | the final Chinese PDF is produced after this task from the final English source; no placeholder or substitute PDF has been inserted |
 | 1.5 | Archive extracts cleanly, not damaged or incomplete | SATISFIED | deterministic snapshot extracted into an empty directory on the target host and locally; `testzip` clean, no path traversal, 0 manifest hash mismatches |
@@ -23,11 +23,11 @@ State at `49314cd` (staged code at the validated hotfix `b4776a2`).
 | # | Requirement | Verdict | Evidence |
 |---|---|---|---|
 | 2.1 | Reproduces the best A-board result | SATISFIED | both raw-to-final Jittor executions completed on the target RTX 4090; document §11 |
-| 2.2 | Data processing | SATISFIED | `src/pipeline_common.py`, `src/ds2_basket_featurizer.py`; document §4 |
-| 2.3 | Model training | SATISFIED | `src/train_line_jt.py`, `src/train_bpr_jt.py`; both executed for real in Phase A |
-| 2.4 | Inference and prediction | SATISFIED | `src/ranker_ds1.py`, `src/ranker_basket_ds2.py`, `src/ds2_mf_basket_pack.py`; real LightGBM path executed from the extracted package |
-| 2.5 | Core algorithm logic | SATISFIED | `src/crf_promote.py`, `src/strategies/`; real CRF executed from the extracted package |
-| 2.6 | Final prediction generation | SATISFIED | `src/build_ds1_member.py`, `src/build_ds2_member.py`; both executed, output gates asserted |
+| 2.2 | Data processing | SATISFIED | `src/pipeline_common.py` §4.3, `src/ds2_basket_featurizer.py` §4.6 |
+| 2.3 | Model training | SATISFIED | `src/train_line_jt.py`, `src/train_bpr_jt.py`; **logic documented in §4.4**, training/inference split in §4.8; both executed for real in Phase A |
+| 2.4 | Inference and prediction | SATISFIED | `src/ranker_ds1.py` §4.5, `src/ranker_basket_ds2.py` and `src/ds2_mf_basket_pack.py` §4.6, matrix §4.8; real LightGBM path executed from the extracted package |
+| 2.5 | Core algorithm logic | SATISFIED | `src/crf_promote.py` §4.6 steps 15–19, `src/strategies/` §4.5 steps 11–13 and §4.6 step 20; real CRF executed from the extracted package |
+| 2.6 | Final prediction generation | SATISFIED | `src/build_ds1_member.py` §4.5, `src/build_ds2_member.py` §4.6, gates §4.7; both executed, output gates asserted |
 | 2.7 | Starts from official raw data alone | SATISFIED | document §6, §7; no stage reads a reference prediction or frozen member; the Dataset-2 passthrough refuses an unrecorded member |
 | 2.8 | Training and inference run independently | SATISFIED | `python main.py --dataset dataset1` / `dataset2`; 33 stages contract-checked |
 | 2.9 | Produces both final members | SATISFIED | `outputs/members/dataset1.csv` (61,051 x 100), `outputs/members/dataset2.csv` (153,420 x 100); document §7.3 |
@@ -36,6 +36,9 @@ State at `49314cd` (staged code at the validated hotfix `b4776a2`).
 | 2.12 | Consistent with the frozen A-board algorithm | SATISFIED | document §13; AST comparison of every scientific constant and function body against the full-run baselines; both frozen replays byte-exact at the release candidate |
 | 2.13 | B-board adaptation disclosed | NOT_APPLICABLE_WITH_REASON | no B-board adaptation has been made or authorised; document §13 states future operation must remain consistent |
 | 2.14 | Code manually inspectable and reproducible | SATISFIED | document §14 gives four reviewer commands; every command verified from an extracted copy |
+| **2.15** | **Detailed code-file listing and per-file function** | **SATISFIED** | **§4.10** lists all **26** packaged files with purpose, category, reachability, principal caller and whether each runs during a full reproduction. Verified by a machine coverage audit: **26/26 documented**, zero undocumented |
+| **2.16** | **Key-module logic explained** | **SATISFIED** | §4.1 entrypoints and the call chain; §4.2 the completion contract; §4.3 shared utilities; §4.4 both Jittor trainers; §4.5 and §4.6 the two complete chains; §4.7 validation and serialisation. Each module answers: why it exists, who invokes it, what it reads, what it computes, what it writes, and what validates the result |
+| **2.17** | **Stage traceability** | **SATISFIED** | **§4.9** maps all **33** canonical stages (16 + 17, every BPR seed explicit) to module, stage type, input, output, device and Jittor use. Coverage audit: **33/33 documented** |
 
 ## 3. Environment
 
@@ -68,18 +71,18 @@ English section that will supply it.
 | 4.6 | Phone number | BLOCKED_BY_OWNER_PLACEHOLDER | §1 `<PHONE_NUMBER>` |
 | 4.7 | Project overview | SATISFIED | §2 |
 | 4.8 | Task and solution | SATISFIED | §2.1–2.3 |
-| 4.9 | Model selection | SATISFIED | §2.3, §4.3 |
+| 4.9 | Model selection | SATISFIED | §2.3 overview; §4.4 LINE and BPR-MF; §4.5 and §4.6 the two LambdaRank rankers |
 | 4.10 | Algorithm innovations | SATISFIED | §2.4 |
-| 4.11 | Code structure | SATISFIED | §4 |
-| 4.12 | Training and inference logic | SATISFIED | §4.3 |
+| 4.11 | Code structure | SATISFIED | §4, expanded 2026-08-02 into §4.1–§4.10: entrypoints, contract, shared utilities, trainers, both chains, serialisation, training-vs-inference matrix, 33-stage matrix, 26-file inventory |
+| 4.12 | Training and inference logic | SATISFIED | §4.4 trainers; §4.5 Dataset-1 chain; §4.6 Dataset-2 chain; §4.8 training-vs-inference matrix |
 | 4.13 | Operating system | SATISFIED | §5 |
 | 4.14 | CUDA | SATISFIED | §5 |
 | 4.15 | Python | SATISFIED | §5 |
 | 4.16 | Dependency installation | SATISFIED | §5.1 |
-| 4.17 | Full Dataset-1 reproduction command | SATISFIED | §7.1, §7.2 |
-| 4.18 | Full Dataset-2 reproduction command | SATISFIED | §7.1, §7.2 |
+| 4.17 | Full Dataset-1 reproduction command | SATISFIED | §7.1 one-command, §7.2 equivalent, §7.3 table |
+| 4.18 | Full Dataset-2 reproduction command | SATISFIED | §7.1 one-command, §7.2 equivalent, §7.3 table |
 | 4.19 | Input paths | SATISFIED | §6 |
-| 4.20 | Output paths | SATISFIED | §7.3 |
+| 4.20 | Output paths | SATISFIED | §7.4; also §4.9 per stage |
 | 4.21 | Important hyperparameters | SATISFIED | §8.1–8.6 |
 | 4.22 | How final submission-format files are generated | SATISFIED | §9 |
 | 4.23 | Known issues | SATISFIED | §12 (nine items) |
@@ -112,7 +115,7 @@ English section that will supply it.
 
 | Verdict | Count |
 |---|---:|
-| SATISFIED | 46 |
+| SATISFIED | 49 |
 | BLOCKED_BY_OWNER_PLACEHOLDER | 6 |
 | BLOCKED_BY_LATER_TRANSLATION | 2 |
 | NOT_APPLICABLE_WITH_REASON | 1 |
