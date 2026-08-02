@@ -52,7 +52,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATASET = os.environ.get("DATASET", "dataset2")
 assert DATASET in ("dataset1", "dataset2"), f"unknown dataset: {DATASET}"
 DATA_PACK = os.environ.get("DATA_PACK", "data_A")
-DATA_DIR = PROJECT_ROOT / "data" / DATA_PACK / DATASET
+DATA_DIR = pc.data_dir(DATASET, DATA_PACK)   # one definition, shared with the consumers
 NEG_DIST = os.environ.get("NEG_DIST", "uniform")
 assert NEG_DIST in ("uniform", "pop075"), f"unknown NEG_DIST: {NEG_DIST}"
 EVAL_HOLDOUT = os.environ.get("EVAL_HOLDOUT", "0") == "1"

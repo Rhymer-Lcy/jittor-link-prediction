@@ -57,6 +57,7 @@ import scipy.sparse as sp
 
 import pipeline_common as tl   # framework-neutral shared components
 import ensemble_predict as ep
+import stage_contract as sc    # atomic publication helper (imports no framework)
 
 assert tl.DATASET == "dataset2", "this pipeline is dataset2-only"
 SEEDS = (42, 123, 777, 2024, 31337)
@@ -64,7 +65,7 @@ CUT = 1261958400.0
 W = {"collab": 0.25, "rpop": 1.25, "icfm": 0.5, "icf3": 1.0, "bpr": 0.7}
 YEAR = 365.0 * 86400.0
 RNG = np.random.default_rng(42)
-OUT_DIR = tl.PROJECT_ROOT / "outputs" / "dataset2-ranker"
+OUT_DIR = tl.ranker_dir("dataset2")     # the shared path contract, not a literal
 os.makedirs(OUT_DIR, exist_ok=True)
 OUT = str(OUT_DIR / "ranker_basket3_dataset2.csv")
 PASS1_MODEL = str(OUT_DIR / "ranker_pass1.txt")
@@ -364,5 +365,8 @@ for i in range(N):
     lo, hi = s.min(), s.max()
     out[i] = (s - lo) / (hi - lo) if hi > lo else np.full(100, 0.5)
 print(f"pass3 vs pass2 top-1 disagreement: {(s3.argmax(1) != s2_all.argmax(1)).mean() * 100:.2f}%", flush=True)
-pd.DataFrame(out).to_csv(OUT, index=False, header=False, float_format="%.6f")
+# Atomic publication: identical formatter, identical bytes, but the final name
+# only starts existing once the whole matrix is on disk.
+with sc.atomic_output(OUT) as staged:
+    pd.DataFrame(out).to_csv(staged, index=False, header=False, float_format="%.6f")
 print(f"[OK] wrote {OUT}", flush=True)

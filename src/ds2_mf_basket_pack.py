@@ -41,6 +41,7 @@ from scipy.sparse.linalg import svds  # noqa: E402
 import lightgbm as lgb  # noqa: E402
 import pipeline_common as tl   # framework-neutral shared components  # noqa: E402
 import ensemble_predict as ep  # noqa: E402
+import stage_contract as sc    # atomic publication helper  # noqa: E402
 import ds2_basket_featurizer as bag  # noqa: E402
 bag.REPO = REPO
 
@@ -218,7 +219,11 @@ def main():
             s = np.where(hm_all[i], s.min() - 1.0, s)
         lo, hi = s.min(), s.max()
         out[i] = (s - lo) / (hi - lo) if hi > lo else np.full(100, 0.5)
-    pd.DataFrame(out).to_csv(args.out, index=False, header=False, float_format="%.6f")
+    # Atomic publication: identical formatter, identical bytes. This stage costs
+    # ~2.5 h, so a truncated base matrix left under the real name is expensive
+    # in exactly the way the completion contract exists to prevent.
+    with sc.atomic_output(args.out) as staged:
+        pd.DataFrame(out).to_csv(staged, index=False, header=False, float_format="%.6f")
     log(f"WROTE {args.out}  ({N} rows)")
 
 

@@ -74,6 +74,7 @@ import pandas as pd
 import scipy.sparse as sp
 import pipeline_common as tl   # framework-neutral shared components
 import ensemble_predict as ep
+import stage_contract as sc    # completion contract for the train-feature cache
 
 assert tl.DATASET == "dataset2", "this pipeline is dataset2-only"
 
@@ -89,6 +90,21 @@ FEATURE_FRACTION = 0.8
 CACHE = HERE / "bagging_cache"
 METRICS = HERE / "bagging_ensemble_ds2_metrics.json"
 T0 = time.time()
+
+#: Arrays the train-feature cache must contain. Named here rather than inferred
+#: from the file, so a cache missing one is a failure and not a smaller cache.
+CACHE_KEYS = ("Xf", "yf", "lens", "qsrc_tr", "qt_tr", "qorig_tr",
+              "cands_concat", "num_entity")
+#: Geometry that only exists once the cache has been built. Recorded and
+#: re-validated on every load, but excluded from the reuse digest, which has to
+#: be computable before the stage runs.
+CACHE_GEOMETRY_KEYS = ("queries", "feature_width")
+#: The configuration that decides whether an existing cache is the right cache.
+CACHE_DIGEST_KEYS = ("cut", "negatives_per_sample", "max_queries",
+                     "negative_sampling_seed", "subsample_seed", "num_entity",
+                     "npz_keys", "tag")
+CACHE_CODE_FILES = ("ds2_basket_featurizer.py", "pipeline_common.py",
+                    "ensemble_predict.py")
 
 
 def log(m):
@@ -260,12 +276,57 @@ def top1(score_list):
     return np.array([int(np.argmax(s)) for s in score_list])
 
 
+def cache_spec(feat: Path, tag: str, max_queries: int, num_entity: int,
+               geometry: dict | None = None) -> sc.StageSpec:
+    """The completion contract for one train-feature cache file.
+
+    Everything in ``CACHE_DIGEST_KEYS`` is knowable before the stage runs, so it
+    can gate reuse. The geometry -- how many queries were built and how wide the
+    feature matrix is -- is only knowable afterwards, so it is recorded and
+    replayed into the validator on load instead of taking part in the digest.
+    """
+    config = {
+        "cut": CUT,
+        "negatives_per_sample": int(ep.NEG_PER_SAMPLE),
+        "max_queries": int(max_queries or 0),
+        "negative_sampling_seed": 42,      # module-level RNG that draws the negatives
+        "subsample_seed": 20260726,        # only reached when max_queries is set
+        "num_entity": int(num_entity),
+        "npz_keys": list(CACHE_KEYS),
+        "tag": tag,
+        "queries": None,
+        "feature_width": None,
+    }
+    config.update(geometry or {})
+    return sc.StageSpec(
+        stage_id=f"ds2_train_features_{tag}",
+        dataset="dataset2",
+        artifact_kind="train_feature_cache_npz",
+        command=[sys.executable, "src/ds2_basket_featurizer.py"],
+        env={"DATASET": "dataset2", "DATA_PACK": os.environ.get("DATA_PACK", "data_A")},
+        output=feat,
+        inputs=[tl.train_csv, tl.test_csv],
+        config=config,
+        digest_keys=CACHE_DIGEST_KEYS,
+        code_files=[SRC / name for name in CACHE_CODE_FILES],
+        validator=sc.validate_npz_cache,
+        description="cached dataset2 train-side LambdaRank feature matrix",
+    )
+
+
 def build_or_load_features(force, max_queries):
     """Build (and cache) the expensive train-side feature matrix, or load it.
 
     Cached: Xf, yf, lens, qsrc_tr, qt_tr, qorig_tr, cands_concat, num_entity.
     The light df-derived objects (split0, warm_full, train_labels, P_tr) are
     rebuilt each run -- they are cheap next to the per-query feature loop.
+
+    Reuse is governed by :mod:`stage_contract`, not by the file existing. The
+    historical guard was ``feat.is_file()`` plus a single ``num_entity``
+    assertion, over a cache that ``np.savez`` wrote straight to its final name;
+    a cache produced from other inputs, by other code, or by an interrupted
+    write was indistinguishable from a good one. Feature VALUES are unchanged:
+    the build path below is untouched, only when it runs and how it is published.
     """
     CACHE.mkdir(parents=True, exist_ok=True)
     tag = "all" if not max_queries else f"q{max_queries}"
@@ -280,18 +341,40 @@ def build_or_load_features(force, max_queries):
     warm_full = np.zeros(num_entity, bool); warm_full[df_raw["dst"].values.astype(np.int64)] = True
     split0 = df_raw[df_raw["time"] <= CUT].reset_index(drop=True)
 
-    if feat.is_file() and not force:
-        log(f"loading cached features {feat}")
-        z = np.load(feat, allow_pickle=False)
-        Xf = z["Xf"]; yf = z["yf"]; lens = z["lens"]
-        qsrc_tr = z["qsrc_tr"]; qt_tr = z["qt_tr"]; qorig_tr = z["qorig_tr"]
-        cands_concat = z["cands_concat"]
-        assert int(z["num_entity"]) == num_entity
-        off = np.concatenate([[0], np.cumsum(lens)])
-        cands_tr = [cands_concat[off[i]:off[i + 1]] for i in range(len(lens))]
-        return dict(df_raw=df_raw, split0=split0, num_entity=num_entity, warm_full=warm_full,
-                    Xf=Xf, yf=yf, lens=lens, off=off, qsrc_tr=qsrc_tr, qt_tr=qt_tr,
-                    qorig_tr=qorig_tr, cands_tr=cands_tr)
+    spec = cache_spec(feat, tag, max_queries, num_entity)
+    if force:
+        # An explicit operator action, not a silent skip: the old cache and its
+        # record are moved aside intact so the rebuild starts from a clean slate
+        # and the superseded artifact remains available as evidence.
+        stale = [p for p in (feat, sc.record_path(feat), sc.part_path(feat)) if p.exists()]
+        if stale:
+            slot = sc.quarantine(stale, outputs_root=tl.outputs_root(),
+                                 reason=f"--force rebuild of {spec.stage_id}")
+            log(f"--force: quarantined the previous cache to {slot}")
+    else:
+        decision = sc.evaluate(spec, repo=REPO)
+        if decision.action == "STOP":
+            raise sc.StageContractError(
+                f"{spec.stage_id}: {decision.code}. {decision.detail}\n"
+                + json.dumps(decision.mismatches, indent=2, default=str)
+                + f"\nInspect it, then either quarantine {feat} or rebuild with --force.")
+        if decision.action == "REUSE":
+            log(f"reusing cached features {feat} "
+                f"(record from commit {decision.record['producing_commit'][:12]})")
+            # The record proves the bytes; this re-proves the internal geometry,
+            # which is what a truncated or mis-shaped NPZ fails.
+            reused = cache_spec(feat, tag, max_queries, num_entity, geometry={
+                key: decision.record["config"][key] for key in CACHE_GEOMETRY_KEYS})
+            sc.validate_npz_cache(reused, feat)
+            z = np.load(feat, allow_pickle=False)
+            Xf = z["Xf"]; yf = z["yf"]; lens = z["lens"]
+            qsrc_tr = z["qsrc_tr"]; qt_tr = z["qt_tr"]; qorig_tr = z["qorig_tr"]
+            cands_concat = z["cands_concat"]
+            off = np.concatenate([[0], np.cumsum(lens)])
+            cands_tr = [cands_concat[off[i]:off[i + 1]] for i in range(len(lens))]
+            return dict(df_raw=df_raw, split0=split0, num_entity=num_entity, warm_full=warm_full,
+                        Xf=Xf, yf=yf, lens=lens, off=off, qsrc_tr=qsrc_tr, qt_tr=qt_tr,
+                        qorig_tr=qorig_tr, cands_tr=cands_tr)
 
     _allcand = np.clip(test_df[tl.c_cols].values.astype(np.int64).ravel(), 0, num_entity - 1)
     freq_cand = np.bincount(_allcand, minlength=num_entity).astype(np.float64)
@@ -337,8 +420,22 @@ def build_or_load_features(force, max_queries):
     qt_tr = np.array([q[1] for q in train_q], np.float64)
     cands_concat = np.concatenate([q[2] for q in train_q]).astype(np.int64)
     log(f"train matrix {Xf.shape}; caching -> {feat}")
-    np.savez(feat, Xf=Xf, yf=yf, lens=lens, qsrc_tr=qsrc_tr, qt_tr=qt_tr,
-             qorig_tr=qorig_tr, cands_concat=cands_concat, num_entity=np.array([num_entity]))
+    started = sc.utc_now()
+    # Atomic publication. The arrays and their values are exactly as before; what
+    # changes is that the final name appears only once a complete, closed NPZ
+    # exists, and only after it has been reopened and structurally validated.
+    with sc.atomic_output(feat) as staged:
+        # np.savez appends .npz unless the name already ends in it, which the
+        # .part suffix would otherwise defeat.
+        with staged.open("wb") as handle:
+            np.savez(handle, Xf=Xf, yf=yf, lens=lens, qsrc_tr=qsrc_tr, qt_tr=qt_tr,
+                     qorig_tr=qorig_tr, cands_concat=cands_concat,
+                     num_entity=np.array([num_entity]))
+    built = cache_spec(feat, tag, max_queries, num_entity, geometry={
+        "queries": int(len(lens)), "feature_width": int(Xf.shape[1])})
+    sc.complete_stage(built, repo=REPO, exit_code=0, started_at=started,
+                      completed_at=sc.utc_now())
+    log(f"cache completion record -> {sc.record_path(feat).name}")
     cands_tr = [q[2] for q in train_q]
     return dict(df_raw=df_raw, split0=split0, num_entity=num_entity, warm_full=warm_full,
                 Xf=Xf, yf=yf, lens=lens, off=off, qsrc_tr=qsrc_tr, qt_tr=qt_tr,

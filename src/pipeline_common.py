@@ -36,7 +36,29 @@ assert DATASET in ("dataset1", "dataset2"), f"unknown dataset: {DATASET}"
 
 DATA_PACK = os.environ.get("DATA_PACK", "data_A")
 
-DATA_DIR = PROJECT_ROOT / "data" / DATA_PACK / DATASET
+
+def data_root() -> Path:
+    """Root holding the official data packs.
+
+    Defaults to ``<repo>/data``. ``DATA_ROOT`` overrides it, so the canonical
+    entrypoint can point a run at competition data that lives outside the
+    checkout without any module hard-coding a host path.
+    """
+    override = os.environ.get("DATA_ROOT")
+    return Path(override) if override else PROJECT_ROOT / "data"
+
+
+def data_dir(dataset: str, pack: str | None = None) -> Path:
+    """Directory holding one dataset's ``train.csv`` and ``test.csv``.
+
+    The single definition. The same expression was previously repeated in this
+    module, ``train_line_jt`` and ``train_bpr_jt``, so a producer and a consumer
+    could in principle be pointed at different data roots.
+    """
+    return data_root() / (pack or DATA_PACK) / dataset
+
+
+DATA_DIR = data_dir(DATASET)
 
 train_csv = DATA_DIR / "train.csv"
 
@@ -248,7 +270,17 @@ def build_sim_cache(emb_matrix, real_src_np):
 # read "<dataset>" -- and the gap had to be bridged by a hand-made symlink.
 
 def outputs_root(root: Path | None = None) -> Path:
-    """Repository-relative outputs directory."""
+    """Directory holding every run artifact.
+
+    Defaults to ``<repo>/outputs``. ``OUTPUTS_ROOT`` overrides it and takes
+    precedence over an explicit ``root`` argument, because the trainers pass
+    their own ``PROJECT_ROOT`` and would otherwise ignore the entrypoint's
+    ``--output-root``. Producer and consumer read the same variable, so they
+    cannot be separated by it.
+    """
+    override = os.environ.get("OUTPUTS_ROOT")
+    if override:
+        return Path(override)
     return (Path(root) if root is not None else PROJECT_ROOT) / "outputs"
 
 

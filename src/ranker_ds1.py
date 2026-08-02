@@ -35,6 +35,7 @@ import lightgbm as lgb
 
 import pipeline_common as tl   # framework-neutral shared components
 import ensemble_predict as ep
+import stage_contract as sc    # atomic publication helper (imports no framework)
 
 REPO = Path(__file__).resolve().parent.parent
 CUT = 115480000.0
@@ -238,7 +239,7 @@ def main():
     log(f"infer matrix {Xte.shape}; predicting")
 
     scores = mdl.predict(Xte)
-    out_dir = REPO / "outputs" / "dataset1-ensemble"
+    out_dir = tl.ranker_dir("dataset1")     # the shared path contract, not a literal
     os.makedirs(out_dir, exist_ok=True)
     save_path = out_dir / "result_ranker.csv"
     out_rows = []
@@ -248,7 +249,12 @@ def main():
         s = scores[pos:pos + m]
         pos += m
         out_rows.append(serialisation_normalise(s.astype(np.float64)).tolist())
-    pd.DataFrame(out_rows).to_csv(save_path, index=False, header=False, float_format="%.6f")
+    # Atomic publication. The formatter, the float format and therefore the bytes
+    # are unchanged; only the moment the final name starts existing moves, so an
+    # interrupted write can no longer leave a truncated matrix that a later stage
+    # would mistake for a finished one.
+    with sc.atomic_output(save_path) as staged:
+        pd.DataFrame(out_rows).to_csv(staged, index=False, header=False, float_format="%.6f")
     log(f"[OK] ds1 ranker submission -> {save_path}  ({len(out_rows)} rows)")
 
     # quick sanity: fraction of rows whose argmax is a history (repeat) candidate,
