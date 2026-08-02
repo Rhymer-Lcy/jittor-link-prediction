@@ -41,7 +41,8 @@ may read an interaction later than the query it scores.
 ### 2.2 The two scenarios
 
 The two datasets are structurally different, and the difference is measured rather than assumed —
-`python main.py --dataset <name> --stage preprocess` reports it from the raw files.
+`python main.py --dataset dataset1 --stage preprocess` (and the same with `dataset2`) reports it
+from the raw files.
 
 | Property | Dataset 1 | Dataset 2 |
 |---|---|---|
@@ -156,6 +157,7 @@ All paths below are relative to `code/` inside the archive.
 
 | Path | Responsibility |
 |---|---|
+| `run_all.py` | one-command reproduction; runs both dataset pipelines in the required order. Orchestration only — no model, feature, ranking, CRF or decoding logic, standard library only |
 | `main.py` | the entry point; executes the canonical graph for one dataset |
 | `src/canonical_pipeline.py` | the stage graph for both datasets, and the fail-closed runner |
 | `src/stage_contract.py` | completion records, atomic publication, artifact validators |
@@ -323,7 +325,38 @@ previously submitted member and no historical score matrix is an input to any st
 
 ## 7. Complete Run Procedure
 
-### 7.1 Order
+### 7.1 One command
+
+```bash
+python run_all.py --data-root /path/to/data --output-root /path/to/outputs
+```
+
+That is the whole reproduction. It runs both datasets, in the required order, and stops at the
+first failure.
+
+`run_all.py` is an **orchestration wrapper and nothing else**. It invokes the two canonical dataset
+pipelines as child processes and contains no model, feature, ranking, normalisation, CRF or
+decoding logic; it imports no training module and reads no configuration of its own. It uses only
+the Python standard library. Every scientific decision stays in `main.py` and the canonical stage
+graph, so the wrapper cannot change a result — it can only change whether and in what order the two
+pipelines run.
+
+Its behaviour:
+
+| Property | Behaviour |
+|---|---|
+| Order | Dataset 1, then Dataset 2 — required, see below |
+| Dataset-1 failure | Dataset 2 is **not started**; the child's exit code is propagated unchanged |
+| Reuse | validated resume by default, inherited from `main.py` — a stage is reused only when its completion record proves it |
+| `--fresh` | forwarded to both datasets; refuses all reuse |
+| `--plan` | prints both stage graphs and performs **no computation** |
+| Preflight | verifies that both datasets' `train.csv` and `test.csv` exist before starting anything |
+| Artifacts | nothing is deleted, repaired or adopted automatically |
+
+### 7.2 The transparent equivalent
+
+`run_all.py` is exactly these two commands, and running them directly is equivalent in every
+respect:
 
 ```bash
 python main.py --dataset dataset1
@@ -337,12 +370,15 @@ them from a Dataset-1 member produced under a valid completion record. If none e
 run stops with an explicit message; it does not fabricate a placeholder and does not substitute a
 frozen member. A validated member from elsewhere may be supplied with `--ds1-member <path>`.
 
-### 7.2 Commands
+### 7.3 Commands
 
 | Purpose | Command |
 |---|---|
-| Show the graph and each stage's state; execute nothing | `python main.py --dataset dataset1 --stage plan` |
-| Full run | `python main.py --dataset dataset1` |
+| **Full reproduction, both datasets** | `python run_all.py --data-root /path/to/data --output-root /path/to/outputs` |
+| Show both stage graphs; execute nothing | `python run_all.py --plan` |
+| Full reproduction, refusing all reuse | `python run_all.py --fresh` |
+| Show one graph and each stage's state; execute nothing | `python main.py --dataset dataset1 --stage plan` |
+| Run one dataset | `python main.py --dataset dataset1` |
 | Validated resume (the default) | `python main.py --dataset dataset1` — completed stages with a valid record are reused |
 | Refuse all reuse | `python main.py --dataset dataset1 --fresh` |
 | Raw-data root | `--data-root /path/to/data` |
@@ -351,7 +387,7 @@ frozen member. A validated member from elsewhere may be supplied with `--ds1-mem
 | Inspect the raw data | `python main.py --dataset dataset1 --stage preprocess` |
 | Describe the production chain | `python main.py --stage describe` |
 
-### 7.3 Outputs
+### 7.4 Outputs
 
 | Artifact | Path |
 |---|---|
@@ -366,7 +402,7 @@ The final A-board archive is these two members, `dataset1.csv` and `dataset2.csv
 ZIP. Note that the two accepted members carry different line endings — `dataset1.csv` CRLF and
 `dataset2.csv` LF — because each is in the exact form that was scored; neither may be normalised.
 
-### 7.4 Failure behaviour
+### 7.5 Failure behaviour
 
 The run stops at the first stage that fails and returns a non-zero exit code. Subprocess failures
 propagate. No completion record is written for a stage that exited non-zero, produced a partial
@@ -636,9 +672,8 @@ python main.py --dataset dataset1 --stage plan
 # 2. Confirm the raw data is read correctly and the graph type is as documented.
 python main.py --dataset dataset1 --stage preprocess
 
-# 3. Full reproduction.
-python main.py --dataset dataset1
-python main.py --dataset dataset2
+# 3. Full reproduction, one command.
+python run_all.py --data-root /path/to/data --output-root /path/to/outputs
 
 # 4. Inspect the provenance of any produced artifact.
 cat <output-root>/members/dataset1.csv.done.json
