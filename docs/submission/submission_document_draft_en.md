@@ -534,20 +534,57 @@ one that was adjudicated online.
 
 ## 10. Runtime and Resource Expectations
 
-Measured on the validation host (RTX 4090 24 GB, Xeon Gold 6430, 16 cores, 120 GiB), not estimated.
+Measured on the validation host (RTX 4090 24 GB, Xeon Gold 6430, 16 cores, 120 GiB). Only retained
+measurements are reported; no runtime below is estimated.
 
-| Stage | Device | Measured |
-|---|---|---|
-| Dataset-1 LINE, full history | GPU | 2,309 s |
-| Dataset-1 LINE, cut history | GPU | 1,802 s |
-| Dataset-1 BPR x 12 runs | GPU | included in the total below |
-| Dataset-1 ranker | CPU | included below |
-| **Dataset-1, raw data to member** | | **1 h 51 m 42 s** |
-| Dataset-2 train-feature cache | CPU | 10,115 s |
-| Dataset-2 MF basket pack | CPU | 8,837 s |
-| Dataset-2 CRF | CPU | 120 s |
-| Dataset-2 member decode | CPU | 9 s |
-| **Dataset-2, raw data to member** | | **approximately 11–13 h** |
+### 10.1 Dataset 1 — complete
+
+Every stage was timed by the run driver. The sixteen stage durations sum to 6,698 s; the driver's
+wall clock was 6,702 s, the 4 s difference being inter-stage orchestration.
+
+| Stage | Device | Jittor | Measured |
+|---|---|:--:|---:|
+| LINE, full history | GPU | yes | 2,309 s |
+| LINE, cut history | GPU | yes | 1,802 s |
+| BPR, 5 serve runs | GPU | yes | 72 / 58 / 58 / 58 / 57 s |
+| BPR, 5 cut runs | GPU | yes | 42 / 41 / 42 / 42 / 42 s |
+| BPR, 2 innovation-only runs | GPU | yes | 16 / 12 s |
+| Ranker (LightGBM) | CPU | no | 2,028 s |
+| Member build | CPU | no | 19 s |
+| **Raw data to member** | | | **1 h 51 m 42 s** |
+
+Device split: GPU 4,651 s (69.4%), CPU 2,047 s (30.6%), orchestration 4 s. The first BPR run is
+longer than the rest because it absorbs Jittor's first-call kernel compilation.
+
+### 10.2 Dataset 2 — partial
+
+Dataset 2 was produced across separate sessions rather than as one continuous run, and the driver
+log covering its training stages was not retained. Five stage measurements survive:
+
+| Stage | Device | Jittor | Measured | Status |
+|---|---|:--:|---:|---|
+| LINE, full history | GPU | yes | 15,467 s | exact |
+| LINE, cut history | GPU | yes | — | **not recorded** |
+| BPR, 5 serve + 5 cut runs | GPU | yes | — | **not recorded** |
+| Ranker (LightGBM) | CPU | no | — | **not recorded** |
+| Train-feature cache | CPU | no | 10,115 s | aggregate only |
+| MF basket pack (LightGBM) | CPU | no | 8,837 s | exact |
+| CRF | CPU | no | 120 s | exact |
+| Member decode | CPU | no | 9 s | exact |
+
+**At least 9 h 35 m 48 s (34,548 s) is directly accounted for by these five retained stage
+measurements. No complete end-to-end wall-clock measurement was retained, and twelve of the
+seventeen stages remain untimed; the total runtime is therefore not reported.**
+
+Among the retained measurements only, Jittor stages account for 15,467 s and non-Jittor CPU stages
+for 19,081 s. This is a **partial-measurement comparison and not a statement about the complete
+runtime**: eleven of the twelve untimed stages use Jittor and one is CPU, so both sides would grow
+by unknown amounts.
+
+**Only LINE and BPR use Jittor.** The train-feature cache, the MF basket pack, the CRF and both
+member builders are CPU stages built on NumPy, SciPy and LightGBM.
+
+### 10.3 Resources
 
 Peak disk: approximately 5 GB of artifacts per dataset, plus a 1.92 GiB Dataset-2 train-feature
 cache. Peak GPU memory is modest; the embedding tables dominate and fit comfortably in 24 GB.
