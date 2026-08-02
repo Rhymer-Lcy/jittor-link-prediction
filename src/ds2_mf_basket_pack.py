@@ -180,11 +180,12 @@ def main():
     CUTp = float(df_raw["time"].max())
     prod_q = [(int(test_srcs[i]), float(test_times[i]), cand_mat[i]) for i in range(len(test_df))]
     N = len(prod_q)
-    tdir = REPO / "outputs"
     log(f"serve featurize N={N} ...")
     Xall_list = bag.build_features(
         df_raw, CUTp, prod_q,
-        [tdir / ("dataset2-bpr" + (f"-s{s}" if s != 42 else "")) for s in SEEDS],
+        # Same contract as the LINE directory below: the BPR literals were the
+        # residue of the same defect and ignored OUTPUTS_ROOT.
+        [tl.bpr_run_dir("dataset2", seed=s) for s in SEEDS],
         # The LINE run directory is named by pipeline_common, not spelled out here.
         # The verbatim port carried "outputs/dataset2" from the original build host,
         # which predates the run-suffix contract; the trainer now writes the serve

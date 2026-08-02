@@ -215,7 +215,6 @@ for row in lab.itertuples(index=False):
         negs = RNG.choice(negs, ep.NEG_PER_SAMPLE, replace=False).tolist()
     train_q.append((src, t, np.array(negs + [dst], dtype=np.int64)))
 print(f"train queries {len(train_q)}", flush=True)
-tdir = tl.PROJECT_ROOT / "outputs"
 Xtr = build_features(split0, CUT, train_q,
                      [tl.bpr_run_dir("dataset2", seed=s, time_max=CUT) for s in SEEDS],
                      tl.line_run_dir("dataset2", time_max=CUT),

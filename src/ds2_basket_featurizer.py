@@ -410,10 +410,17 @@ def build_or_load_features(force, max_queries):
     qorig_tr = np.array(qorig_tr, np.int64)
     log(f"train queries {len(train_q)}")
 
-    tdir = REPO / "outputs"
+    # Run directories come from the shared path contract, never from a literal.
+    # These five expressions were the last consumers still spelling out
+    # "<repo>/outputs/...", so they ignored OUTPUTS_ROOT and a caller's
+    # --output-root reached the trainers but not this stage: it then either
+    # failed on a missing artifact or, worse, silently read whatever an earlier
+    # run had left in the default tree. The helpers resolve to byte-identical
+    # paths under the default root; the identity is pinned by
+    # tests/strategies/test_ds2_output_root_contract.py.
     Xtr = build_features(split0, CUT, train_q,
-                         [tdir / ("dataset2-bpr-tmax1.26196e+09" + (f"-s{s}" if s != 42 else "")) for s in SEEDS],
-                         tdir / "dataset2-novirt-tmax1.26196e+09",
+                         [tl.bpr_run_dir("dataset2", seed=s, time_max=CUT) for s in SEEDS],
+                         tl.line_run_dir("dataset2", time_max=CUT),
                          np.unique(np.array([s for s, _, _ in train_q], dtype=np.int64)),
                          num_entity, freq_cand, cfreq_log)
     lens = np.array([len(q[2]) for q in train_q])
