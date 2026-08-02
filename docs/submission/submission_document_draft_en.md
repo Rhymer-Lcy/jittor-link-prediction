@@ -526,7 +526,18 @@ roughly 2.8 h.
 ## 11. Reproducibility and Nondeterminism
 
 * Both raw-to-final lineages have been executed successfully from the official raw data on the target
-  environment.
+  environment (Dataset 1 and Dataset 2, each as a complete Jittor run on an RTX 4090). Those runs
+  are the scientific evidence for this submission.
+* The canonical entry point and the stage-completion contract were separately validated on the same
+  target environment against real Jittor training stages.
+* The released package additionally received targeted downstream and clean-package integration
+  validation: the archive was extracted into an empty directory and, from that extracted copy alone,
+  the real LightGBM ranker, the real matrix-factorisation geometry, the real feature-cache contract,
+  the real CRF and both real member builders were executed on bounded production-schema fixtures,
+  with the final output gates asserted on both produced members.
+* **A second complete dual-dataset re-execution was not performed**, by decision, because it would
+  have repeated training already evidenced without testing anything the validations above do not
+  already cover.
 * **GPU training is not guaranteed byte-deterministic across independent runs.** Jittor kernel
   scheduling on the GPU is not bit-reproducible, and the model state of the original A-board runs was
   not preserved.
@@ -567,6 +578,22 @@ roughly 2.8 h.
    `--stage package --verify` read hash anchors that refer to the accepted A-board archive, which is
    not redistributable and is not included. Reproduction does not use them; `--stage run` is
    self-contained.
+8. **Completion records produced from the extracted package report
+   `producing_commit: "UNKNOWN"`.** The package contains no `.git` directory, by design, so the
+   commit cannot be read. This is deliberate and fail-safe: `UNKNOWN` never compares equal to a real
+   commit, so a record written inside the package can never be mistaken for one written in a
+   checkout, and vice versa. Every other identity a record binds — input hashes, configuration
+   digest, relevant-code digest, output hash, epoch counts — is unaffected and still enforced.
+9. **`--output-root` is not honoured by the Dataset-2 feature-construction stage.**
+   `src/ds2_basket_featurizer.py` and `src/ds2_mf_basket_pack.py` resolve the Dataset-2 embedding
+   directories from a literal `<project>/outputs/...` rather than through the shared path contract,
+   so a run redirected with `--output-root` reads embeddings from the default location. **The
+   documented reproduction procedure in section 7 is unaffected**, because it does not pass
+   `--output-root` and the two locations then coincide. If the option is used, the stage either
+   fails with a missing-file error or, where a previous run left artifacts in the default tree,
+   silently reads those instead. Use the default output root for reproduction. Found by targeted
+   validation on 2026-08-02; the correction is a three-line path-contract change with identical
+   default behaviour and is held for review rather than applied without one.
 
 ---
 
