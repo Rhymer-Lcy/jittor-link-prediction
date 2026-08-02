@@ -27,8 +27,7 @@
         "note": "exact Round-23 XTE member that was itself online-observed, byte-for-byte"
       }
     },
-    "deterministic_double_build_byte_identical": true,
-    "provenance": "scratchpad/round-30-opus/"
+    "deterministic_double_build_byte_identical": true
   },
   "immutable_inputs": {
     "data/data_A/dataset1/train.csv": "b679e4fe458d16c22c1cb12c52b013a8363c2191e25d913b3c763e8376bfc53e",
@@ -192,7 +191,6 @@
       "implementation": "src/strategies/ds2/cross_time_exclusivity.py",
       "implementation_status": "GRADUATED",
       "graduated_utc": "2026-07-30",
-      "implementation_provenance": "scratchpad/round-23-opus/xte/scripts/build_xte_member.py",
       "build_command": "python src/build_ds2_member.py --verify",
       "reproduction_status": "BYTE_EXACT_REPRODUCTION: the tracked decoder regenerates member sha256 beb13345dc020f32283cea2d132efa072eb52c73d29806f86f60fbf24982f971 from the hash-pinned decoder_input above",
       "byte_preservation": "the rebuild swaps the two affected score TOKENS in the base member's own bytes; no score is re-serialised from a float, so the surviving 15,326,370 cells are the exact bytes that were scored online"
