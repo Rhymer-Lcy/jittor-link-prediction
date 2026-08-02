@@ -106,11 +106,11 @@ CODE_MEMBERS: list[tuple[str, str, str]] = [
 #: Copied to the archive root, beside code/.
 ROOT_MEMBERS = ["requirements.txt", "environment.yaml"]
 
-#: The reviewer document. Staged under its DRAFT name: the official filename
-#: 提交说明文档.pdf is only taken once the owner has filled in the team
-#: information and reviewed the content, which has not happened.
-DRAFT_DOCUMENT = ("docs/submission/submission_document_draft_en.pdf",
-                  "submission_document_draft_en.pdf")
+#: The reviewer document. Staged under its English working name: the official
+#: filename 提交说明文档.pdf is only taken once the Chinese rendering exists and
+#: the owner has approved it, which has not happened.
+REVIEW_DOCUMENT = ("docs/submission/submission_document_en.pdf",
+                   "submission_document_en.pdf")
 
 #: Deliberately excluded, with the reason a reviewer would want.
 EXCLUSIONS: list[tuple[str, str]] = [
@@ -241,15 +241,17 @@ def build(root: Path) -> list[dict]:
             "sha256": sha256_file(source), "classification": "environment",
             "rationale": "dependency specification required at the archive root"})
 
-    source = REPO / DRAFT_DOCUMENT[0]
+    source = REPO / REVIEW_DOCUMENT[0]
     if source.is_file():
-        shutil.copy2(source, root / DRAFT_DOCUMENT[1])
+        shutil.copy2(source, root / REVIEW_DOCUMENT[1])
         manifest.append({
-            "package_path": DRAFT_DOCUMENT[1], "source_path": DRAFT_DOCUMENT[0],
+            "package_path": REVIEW_DOCUMENT[1], "source_path": REVIEW_DOCUMENT[0],
             "source_commit": commit, "size": source.stat().st_size,
-            "sha256": sha256_file(source), "classification": "documentation (DRAFT)",
-            "rationale": "reviewer document, staged under its draft name; the official "
-                         "filename is taken only after owner review"})
+            "sha256": sha256_file(source),
+            "classification": "documentation (ENGLISH REVIEW)",
+            "rationale": "reviewer document, staged under its English working name; the "
+                         "official filename is taken only after the Chinese rendering "
+                         "exists and the owner has approved it"})
     return manifest
 
 

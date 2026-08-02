@@ -6,16 +6,23 @@ file, command or validation result. No requirement is left unclassified.
 Verdicts: **SATISFIED** / **OPEN_REVIEWER_DECISION** /
 **BLOCKED_BY_LATER_TRANSLATION** / **NOT_APPLICABLE_WITH_REASON** / **DEFECT**.
 
-State at `7f3da15`. **Section numbers refer to the rebuilt English document**,
+State at the documentation-reconciliation commit that follows the static
+cross-version audit. **Section numbers refer to the English document**,
 which follows the structure of the reviewer-revised `提交说明文档.docx`
 (SHA256 `1ef5712f9e890b7a91797697440596eeb8a63065052a9ba3d03b82423ef1248b`):
 1 Team Information, 2 Project Overview, 3 Code Structure, 4 Environment Setup,
 5 Run Procedure, 6 Runtime and Resource Requirements. The previous 14-section
 numbering is superseded.
 
-**OPEN_REVIEWER_DECISION** marks a requirement that the previous English draft
-satisfied and that the reviewer's revision removed. None is a defect in the
-code; each needs an explicit keep-or-restore decision from the owner.
+**OPEN_REVIEWER_DECISION** marked a requirement that the previous English draft
+satisfied and that the reviewer's revision removed. All four such items
+(2.12, 4.23, 4.24, 5.4) were closed in the reconciliation pass: the reviewer's
+structure was kept and the missing substance was restored inside it, in
+§2.6 *Evidence boundary*, §3.5 *Reproduction boundary* and §6.3 *Known issues*.
+No open reviewer decision remains.
+
+The English source is now `docs/submission/submission_document_en.md`; the
+earlier `..._draft_en.md` name is retired.
 
 ## 1. Archive
 
@@ -42,7 +49,7 @@ code; each needs an explicit keep-or-restore decision from the owner.
 | 2.9 | Produces both final members | SATISFIED | `outputs/members/dataset1.csv` (61,051 x 100), `outputs/members/dataset2.csv` (153,420 x 100); §3.8 |
 | 2.10 | No test labels used | SATISFIED | §3.6 step 5 (cut-split replay), §3.9 — "Test ground-truth labels are never used" with the candidate-identity distinction stated explicitly |
 | 2.11 | No frozen prediction as a shortcut | SATISFIED | §3.7 step 14: the Dataset-1 passthrough bytes are never read as scores; enforced by the staging exclusions and the passthrough contract. *Note: the reviewer's revision dropped the previous draft's explicit standalone sentence; the substance is retained in §3.7* |
-| 2.12 | Consistent with the frozen A-board algorithm | **OPEN_REVIEWER_DECISION** | the previous draft carried this in §13, which the revision removed. The algorithm is unchanged and the claim remains true; it is simply no longer stated in the document |
+| 2.12 | Consistent with the frozen A-board algorithm | SATISFIED | §2.6 states lineage at four separate levels, and §3.5 *Reproduction boundary* names the four verified embedding-training differences. The downstream algorithm — features, LambdaRank parameters, CRF, both Dataset-1 postprocessors, the Dataset-2 decoder — is unchanged, which the static cross-version audit verified file by file. Exact producer identity and byte identity are explicitly **not** claimed |
 | 2.13 | B-board adaptation disclosed | NOT_APPLICABLE_WITH_REASON | no B-board adaptation has been made or authorised |
 | 2.14 | Code manually inspectable and reproducible | SATISFIED | §3 in full, plus `CODE_REVIEW_MAP.md`, `PACKAGED_CODE_INVENTORY.csv` and `CANONICAL_STAGE_TRACEABILITY.csv` in the review bundle |
 | **2.15** | **Detailed code-file listing and per-file function** | **SATISFIED** | **§3.11** lists all **26** packaged files with category, function, reachability and whether each runs during a full reproduction; `PACKAGED_CODE_INVENTORY.csv` adds principal caller, input and output. Machine coverage audit: **26/26 documented**, zero undocumented |
@@ -95,10 +102,10 @@ item is traced to the English section that will supply it.
 | 4.20 | Output paths | SATISFIED | §3.8 outputs and logs table; also §3.10 per stage |
 | 4.21 | Important hyperparameters | SATISFIED | §5.2.1–5.2.5 |
 | 4.22 | How final submission-format files are generated | SATISFIED | §3.8 "How the two submission files are produced", six numbered steps |
-| 4.23 | Known issues | **OPEN_REVIEWER_DECISION** | the previous draft carried a nine-item list in §12; the revision removed it. Nothing replaced it |
-| 4.24 | Reproduction notes | **OPEN_REVIEWER_DECISION** | §3.12 covers failure, interruption and validated resume, and §6 covers resumability. **Not** covered: that a fresh reproduction may not be byte-identical to the historical accepted member, and that no claim of score equivalence is made. Both were in the previous §11 and are recommended for restoration |
+| 4.23 | Known issues | SATISFIED | **§6.3**: target environment, the two required runtime settings, the cuDNN component-probe limitation and the validated response, the Dataset-2 resource envelope, stage-level resume, the absent Dataset-2 end-to-end measurement, and the byte-identity caveat |
+| 4.24 | Reproduction notes | SATISFIED | §3.12 failure and resume; §6.2 resumability; **§2.6** score ownership, no rescoring, no score interval, no byte-identity guarantee and the four-level lineage table; **§3.5** the four verified reasons a reproduction need not match; **§6.3** the same caveat restated where an operator will meet it |
 | 4.25 | JittorGeometric installation and usage status | SATISFIED | §4.1 gives the pinned commit and install step; §3.5 states that **neither trainer imports JittorGeometric** and that no import was added merely to claim usage |
-| 4.26 | Rendered as `提交说明文档.pdf` | **BLOCKED_BY_LATER_TRANSLATION** | the English preview exists as `Submission_Document_English_Review.pdf`; the reserved Chinese filename is deliberately unused |
+| 4.26 | Rendered as `提交说明文档.pdf` | **BLOCKED_BY_LATER_TRANSLATION** | the English rendering exists as `docs/submission/submission_document_en.pdf`; the reserved Chinese filename is deliberately unused |
 
 ## 5. Compliance
 
@@ -107,7 +114,7 @@ item is traced to the English section that will supply it.
 | 5.1 | No credentials or private material | SATISFIED | secret scan over every staged file, by filename pattern and content |
 | 5.2 | Archive not damaged, extractable, complete | SATISFIED | see 1.5 |
 | 5.3 | Manual inspection and reproduction feasible | SATISFIED | §3 plus the review-bundle reading map and inventories |
-| 5.4 | Consistency between A-board and B-board | **OPEN_REVIEWER_DECISION** | previously §13; removed by the revision. See 2.12 |
+| 5.4 | Consistency between A-board and B-board | SATISFIED | §2.6 lineage table; see 2.12 |
 
 ## 6. Higher standards applied beyond the requirements
 
@@ -124,15 +131,23 @@ item is traced to the English section that will supply it.
 
 | Verdict | Count |
 |---|---:|
-| SATISFIED | 51 |
-| OPEN_REVIEWER_DECISION | 4 |
+| SATISFIED | 55 |
+| OPEN_REVIEWER_DECISION | 0 |
 | BLOCKED_BY_LATER_TRANSLATION | 2 |
 | NOT_APPLICABLE_WITH_REASON | 1 |
 | **DEFECT** | **0** |
 
-The four open items (2.12, 4.23, 4.24, 5.4) are all consequences of the same
-editorial decision: the reviewer's revision dropped the previous draft's
-closing sections. None is a code defect and none blocks reproduction, but 4.24
-in particular carries the honest framing of what a reproduction produces, and
-restoring a short section 7 is recommended. The two translation-blocked items
-await the Chinese PDF.
+All four previously open items are closed. The reviewer's six-section structure
+was kept intact; the substance the revision had dropped was restored **inside**
+it rather than by re-adding the old closing sections, as §2.6, §3.5 and §6.3.
+The two translation-blocked items await the Chinese PDF, which is a separate
+task and is deliberately not started here.
+
+**One correction the reconciliation forced.** The previous statement of 2.12 —
+"the algorithm is unchanged and the claim remains true" — was too strong for the
+embedding trainers. The static cross-version audit established four verified
+differences in LINE training that can change learned embeddings and therefore
+rankings, including that the historical serve-time runs used virtual-edge
+feedback while the current trainer implements none. The document now separates
+lineage consistency and downstream algorithm consistency, which hold, from exact
+producer identity, byte identity and score equivalence, which are not claimed.

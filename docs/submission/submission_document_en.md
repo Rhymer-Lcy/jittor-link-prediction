@@ -27,12 +27,24 @@ The two datasets differ markedly in structure. The difference is not a prior
 assumption; it is measured directly from the raw files.
 
 1. **Dataset 1**: not bipartite — source and destination roles interchange, and
-   21,253 nodes appear on both sides. 72.56% of training interactions repeat a
-   `(source, destination)` pair that the source has already interacted with at
-   an earlier timestamp (501,281 of 690,848), and only 3.49% of test candidate
-   slots are cold. Historical interaction features are therefore extremely
-   valuable, and the problem falls within conventional temporal graph
-   prediction.
+   over the full training history 21,253 nodes appear on both sides. Historical
+   interaction features are therefore extremely valuable, and the problem falls
+   within conventional temporal graph prediction. Two distinct structural
+   statistics support this, and they are **not** interchangeable:
+
+   | Scope | Unit of analysis | Statistic | Value |
+   |---|---|---|---|
+   | Dataset-1 `split0` (pre-cut training subset) | distinct directed `(source, destination)` pairs | the reverse-direction pair also occurs | **63.31%** (89,814 of 141,867) |
+   | Dataset-1 full deduplicated history | chronological interaction rows | the same directed pair occurred earlier for that source | **72.56%** (500,700 of 690,007) |
+
+   In words: in the pre-cut training subset, 63.31% of distinct directed
+   interaction pairs have a reciprocal reverse-direction pair — of the 21,534
+   nodes present in that subset, 18,019 occupy both roles. Separately, after
+   exact duplicate interaction triples are removed by the production data loader,
+   500,700 of 690,007 Dataset-1 interactions, or 72.56%, repeat a directed
+   `(source, destination)` pair previously observed for that source. The first is
+   a reciprocity measure over pairs; the second is a recurrence measure over
+   rows. Only 3.49% of test candidate slots are cold.
 2. **Dataset 2**: strictly bipartite — the source and destination node sets are
    disjoint, and no historical pair is ever repeated (0 of 2,211,275 distinct
    pairs recurs at a second timestamp). 53.59% of candidate slots are cold. The
@@ -181,6 +193,51 @@ peculiar to each dataset, and the data is regularised before output.
 3. Noise in the collaborative-filtering matrix is effectively reduced by means
    such as SVD matrix factorisation, substantially improving the accuracy of the
    model.
+
+### 2.6 Evidence boundary: score, lineage and reproduction
+
+This subsection states precisely what the recorded score refers to and what is
+and is not claimed about the submitted code. Five statements that are often
+collapsed into one are kept separate.
+
+**Score ownership.** The total 1.576996059163449 (Dataset 1: 0.8963013747474597;
+Dataset 2: 0.6806946844159895) was measured online and belongs to the
+historically accepted A-board prediction artifact. It belongs to that artifact
+and to nothing else.
+
+**No rescoring.** After the A board closed, the pipeline in this package was
+re-executed independently and produced its own prediction files. Those files
+were **not uploaded and were not rescored**. They therefore carry no score of
+their own.
+
+**No score interval.** No numeric score range is reported for the independently
+reproduced outputs. Their similarity to the accepted files has been measured, but
+prediction agreement, cross-top-2 coverage and rank correlation do not
+mathematically determine MRR: the metric depends on where the correct answer
+falls, and the test labels are held by the organiser. The reproduced rankings are
+structurally close to the historically accepted rankings — for context, the
+leading candidate agrees on 95.6% of Dataset-1 rows and 87.4% of Dataset-2 rows —
+but their leaderboard score is not identifiable from the retained evidence,
+because they were not rescored and no valid calibration is available.
+
+**No byte-identity guarantee.** A fresh independent reproduction is not
+guaranteed to be byte-identical to the historically accepted files. The reasons
+are documented in 3.5 under *Reproduction boundary relative to the historical
+A-board artifact*.
+
+**Lineage, stated at four separate levels.**
+
+| Level | Claim |
+|---|---|
+| Lineage consistency | The submitted pipeline follows the historical A-board production lineage: the same stage sequence, the same data cut, the same model families. |
+| Downstream algorithm consistency | The feature sets, the LambdaRank parameters, the equality CRF, the two Dataset-1 postprocessors and the Dataset-2 decoder are retained without scientific change. |
+| Exact producer identity | **Not claimed.** The submitted embedding trainers are a reconstruction, with the documented training differences in 3.5. |
+| Byte identity and score equivalence | **Not claimed**, for either dataset. |
+
+No test ground-truth label is used anywhere. No historical prediction file is
+substituted for a reproduced member: every member this package produces is
+computed by the packaged code from the raw competition data. The official
+execution path is Jittor-only.
 
 ## 3. Code Structure
 
@@ -470,12 +527,14 @@ Principal objects: `class LINE`, `gen_neg_epoch()`, `build_pos_keys()`,
    `node_id` plus the concatenation of `emb_first` and `emb_node`, rounded to 6
    decimals, through a temporary file and `os.replace`.
 
-400 epochs, seed 42, uniform negatives. Virtual-edge self-training is omitted, a
-measured no-op that the `-novirt` marker in the run-directory name records.
-Dataset 1 and Dataset 2 differ **only** in `DATASET` and the cutoff timestamp;
-the architecture and all other parameters are identical. `validate_embedding_csv`
-then checks the header, the field count and the row count against the measured
-entity count before any completion record is written.
+400 epochs, seed 42, uniform negatives. The current Jittor reproduction trains
+LINE **only** from the retained training graph: it performs no
+prediction-to-edge feedback and no virtual-edge retraining, and there is no
+switch that would enable either. The `-novirt` marker in the run-directory name
+records exactly that. Dataset 1 and Dataset 2 differ **only** in `DATASET` and
+the cutoff timestamp; the architecture and all other parameters are identical.
+`validate_embedding_csv` then checks the header, the field count and the row
+count against the measured entity count before any completion record is written.
 
 #### `src/train_bpr_jt.py` — BPR-MF embeddings
 
@@ -505,6 +564,51 @@ The entity table is again sized before the cutoff. The output is a single
 `conv_opt=1` and `use_mkl=0` are **runtime compatibility settings for this
 image, not scientific parameters** (see 4.2). They select which Jittor kernels
 load; they change no model, no hyperparameter and no result.
+
+#### Reproduction boundary relative to the historical A-board artifact
+
+A static comparison was made between the historical A-board trainer and the
+current Jittor trainer. It found four differences in embedding training that can
+change learned embeddings and therefore candidate rankings. They are recorded
+here because a reader comparing a fresh reproduction against the historically
+accepted files should know why the two need not match.
+
+1. **Random-number-stream ownership and consumption differ.** The current trainer
+   draws initialisation, epoch shuffling and negatives from one seeded NumPy
+   generator; the historical A-board trainer drew them from its framework's own
+   generator on the GPU. The same seed therefore yields a different sequence:
+   different initial weights, a different edge order in every epoch and different
+   negatives throughout.
+2. **Optimiser state is handled differently.** The historical A-board trainer
+   reset the Adam moment buffers at each 10-epoch export boundary — roughly
+   thirty-nine resets across 400 epochs. The current trainer keeps optimiser
+   state continuously for the whole run.
+3. **Virtual-edge feedback.** The historical A-board serve-time LINE runs used
+   virtual-edge feedback, in which high-confidence predicted pairs were merged
+   back into the training graph and retrained; the retained Dataset-2 serve run
+   holds a harvested set of 120,129 such edges. The historical cutoff runs did
+   not use it, and the current Jittor reproduction does not implement it at all.
+   This is one verified reason why independently reproduced embeddings and
+   prediction rankings need not match the historically accepted artifact exactly.
+4. **GPU kernels and floating-point reduction order may differ.** The historical
+   hardware, driver and framework build were not retained, so no comparison of
+   execution environments is possible and none is asserted.
+
+What the same comparison found to be **unchanged**:
+
+* the negative-sampling distribution, the rejection bound against observed pairs
+  and the 30-attempt retry limit are aligned between the two versions;
+* every downstream feature definition, count and order is unchanged;
+* the LightGBM ranker hyperparameters and group construction are unchanged;
+* `crf_promote.py`, the source-slate recurrence postprocessor and the test-graph
+  reciprocity postprocessor have **no executable scientific difference**;
+* every other difference identified outside embedding training is an engineering
+  contract, orchestration, validation or serialisation difference — not a new or
+  altered ranking algorithm.
+
+Which of the four factors above contributes most is **not determined**. The
+intermediate artifacts needed to separate them were not retained, so no dominant
+cause is claimed.
 
 ### 3.6 Dataset-1 training and inference chain
 
@@ -569,6 +673,20 @@ negative; `serialisation_normalise()` maps each row by **per-row min-max** into
 order-preserving — it cannot change MRR — but it is load-bearing, because both
 postprocessors and the output gate assume the unit interval. The result is
 written atomically to `outputs/dataset1-ensemble/result_ranker.csv` at `%.6f`.
+
+This transform is a **restoration of behaviour demonstrated by the accepted
+artifact**, not an unverified change. The historically accepted Dataset-1
+artifact carries a per-row min-max fingerprint on all 61,051 rows — row minimum
+exactly 0 and row maximum exactly 1 on every row — which no other candidate
+transform reproduces. The tracked historical ranker source at the tagged snapshot
+instead divides each row by its maximum, and that snapshot is therefore **not
+proven to be the literal producer of the accepted write site**; the producing
+script's write site was not retained. An exhaustive static comparison over all
+302,202,450 within-row candidate pairs found **zero** ranking changes
+attributable to the difference between the two transforms. The consequence is
+stated narrowly: the choice of transform changes numeric values and file hashes,
+and it **cannot** explain a top-1 difference or any within-row ranking
+difference.
 
 **11–13. Deterministic post-processing.** `src/build_ds1_member.py` reads that
 matrix and applies `registry.DS1_POSTPROCESSOR_CHAIN` in order. Neither stage
@@ -913,9 +1031,9 @@ beginning.
 conda env create -f environment.yaml
 conda activate jittor-link-prediction-inspect
 
-# JittorGeometric is not published on PyPI and upstream publishes no formal
-# release tag, so the version is pinned by commit hash and installed as a
-# separate step.
+# JittorGeometric is not on PyPI and upstream publishes
+# no formal release tag, so the version is pinned by
+# commit hash and installed as a separate step.
 pip install --no-build-isolation --no-deps \
   git+https://github.com/AlgRUC/JittorGeometric.git@ff7d8ffac7bf3d95cc1962e091c52dc5737492d4
 ```
@@ -1034,6 +1152,8 @@ submission files in the `output-root` directory. A single-command wrapper,
 
 ## 6. Runtime and Resource Requirements
 
+### 6.1 Measured runtimes
+
 The validation host is configured with an RTX 4090 24 GB, a Xeon Gold 6430, 16
 CPU cores and 120 GiB of memory.
 
@@ -1062,6 +1182,8 @@ retained stage measurements above account for **at least 9 h 35 m 48 s
 end-to-end wall-clock measurement was retained. A total runtime for Dataset 2 is
 therefore **not** stated here rather than estimated.
 
+### 6.2 Resources and resumability
+
 Peak disk usage is approximately 5 GB of artifacts per dataset, plus roughly
 1.92 GiB for the Dataset-2 training feature cache. Peak GPU memory is
 comparatively low, dominated by the embedding tables, and runs comfortably
@@ -1072,3 +1194,41 @@ stage-completion contract. No resume point is offered inside a single stage: if
 a trainer or a feature-build stage is interrupted, it must be re-executed from
 the beginning of that stage. The longest stage that cannot be resumed part-way
 is the Dataset-2 feature build, at approximately 2.8 h.
+
+### 6.3 Known issues and reproduction constraints
+
+Everything below is relevant to reproducing this submission. Nothing here is a
+defect in the model.
+
+**Target environment.** Ubuntu 22.04, Python 3.10, CUDA 12.4, Jittor 1.3.10 and
+JittorGeometric 2.0.0, on an NVIDIA GPU of compute capability 8.9 or compatible.
+Other combinations were not validated.
+
+**Required runtime settings.** `conv_opt=1` and `use_mkl=0` must be exported
+before any stage runs (see 4.2). They are compatibility settings for this image,
+not tuning options.
+
+**cuDNN component probe on the target image.** Jittor 1.3.10 resolves the cuDNN 8
+component libraries by name, and cuDNN 9 has merged those components into a
+single shared object, so the component probe does not succeed on this image. The
+validated response is the runtime configuration above, under which every stage
+completes and every validation gate passes. This is a statement about the probe
+and the validated configuration only — no claim is made that cuDNN is healthy in
+general on this image, and no other configuration was tested.
+
+**Dataset-2 resource envelope.** Dataset 2 dominates the run. Its training
+feature cache alone is roughly 1.92 GiB, its longest non-resumable stage is about
+2.8 h, and its stages are substantially more demanding than Dataset 1's in disk,
+memory and time. Plan the run accordingly.
+
+**Stage-level resume is validated; sub-stage resume is not offered.** See 6.2.
+
+**Dataset-2 end-to-end wall clock was not measured.** Five retained stage
+measurements account for at least 9 h 35 m 48 s (34,548 s); twelve of the
+seventeen Dataset-2 stages have no retained timing, and no complete end-to-end
+measurement exists. A total is therefore not stated rather than estimated.
+
+**Independent outputs may not be byte-identical to the historically accepted
+artifact.** The reasons are set out in 2.6 and 3.5. This is expected behaviour
+for a re-execution of stochastic embedding training, not an error condition, and
+every validation gate in the pipeline still applies.

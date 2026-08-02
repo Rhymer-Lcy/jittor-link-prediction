@@ -1,5 +1,18 @@
 # Submission package — draft audit
 
+> **Editor's note, 2026-08-02.** This is a dated record of the staging state as it stood when the
+> audit ran, and its measurements are left verbatim rather than restated. Two names have since
+> changed, and every occurrence below should be read through this map:
+>
+> | Name used below | Current name |
+> |---|---|
+> | `docs/submission/submission_document_draft_en.{md,docx,pdf}` | `docs/submission/submission_document_en.{md,docx,pdf}` |
+> | `stage_package.DRAFT_DOCUMENT` | `stage_package.REVIEW_DOCUMENT` |
+>
+> The page count, character count and placeholder count recorded in section 6 describe the earlier
+> rendering and were not updated. The current renderings are described in
+> `docs/submission/submission_document_en.md` and in the consolidated review package.
+
 **This audits a DRAFT.** No archive has been built, nothing has been uploaded, and no file carries
 the official name `提交说明文档.pdf`. Final package readiness is **NOT** claimed anywhere in this
 document.
