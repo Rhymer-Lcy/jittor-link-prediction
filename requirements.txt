@@ -5,8 +5,12 @@
 # inspection and additionally pins the interpreter itself. The two files pin
 # IDENTICAL versions; change both together or neither.
 #
-# JittorGeometric is not on PyPI. Install it after this file:
-#   pip install --no-build-isolation git+https://github.com/AlgRUC/JittorGeometric.git
+# JittorGeometric is not on PyPI, and upstream publishes no release tag, so it
+# is pinned by commit and installed after this file:
+#   pip install --no-build-isolation --no-deps \
+#     git+https://github.com/AlgRUC/JittorGeometric.git@ff7d8ffac7bf3d95cc1962e091c52dc5737492d4
+# The competition requires it to be available and it is; the maintained
+# production chain does not import it. See environment.yaml for the full note.
 
 # --- numerical core -------------------------------------------------------
 # numpy is held below 2.0: the frozen postprocessors depend on exact float64

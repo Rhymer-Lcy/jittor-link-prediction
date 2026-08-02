@@ -7,11 +7,26 @@
 # Create it with:
 #   conda env create -f environment.yaml
 #   conda activate jittor-link-prediction-inspect
-#   pip install --no-build-isolation git+https://github.com/AlgRUC/JittorGeometric.git
+#   pip install --no-build-isolation --no-deps \
+#     git+https://github.com/AlgRUC/JittorGeometric.git@ff7d8ffac7bf3d95cc1962e091c52dc5737492d4
 #
 # JittorGeometric is NOT on PyPI, so it is installed from the official
-# repository as the documented final step rather than pinned here; see
-# docs/competition/ab_algorithm_consistency_contract.md.
+# repository as the documented final step rather than through the pip: block.
+# It is nonetheless PINNED: upstream publishes no release tag, so the commit
+# hash is the authoritative identifier. That commit is dated 2026-06-03; its
+# setup.py and installed distribution metadata both report 2.0.0 while the
+# package's own __version__ attribute says 0.0.1 -- an upstream inconsistency,
+# which is exactly why a commit and not a version string is what is pinned.
+# --no-deps stops a transitive requirement from silently upgrading the pinned
+# numerical stack; upstream declares no install_requires, so nothing is
+# suppressed by it. See docs/competition/ab_algorithm_consistency_contract.md.
+#
+# The competition requires JittorGeometric to be available in the environment,
+# and it is. The maintained production chain does NOT import it: link prediction
+# here is a LINE / BPR-MF embedding pair plus LambdaRank over hand-built
+# features, and no stage of that needs a graph-neural-network library. No import
+# is added merely to claim usage. Pinned by
+# tests/integration/test_official_package_inventory.py.
 #
 # Every version below was installed and imported in a clean environment on
 # Ubuntu 22.04 with Python 3.10. Two properties are deliberate:

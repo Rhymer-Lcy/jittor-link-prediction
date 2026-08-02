@@ -1,33 +1,37 @@
 # -*- coding: utf-8 -*-
-"""Unified entry point for the Jittor link-prediction submission.
+"""Canonical entry point for the Jittor link-prediction submission.
 
-One command surface for both scenarios. Dataset selection is configuration
-driven: the same code path serves ``dataset1`` (non-bipartite) and ``dataset2``
-(bipartite), and the per-dataset differences are read from
-``configs/production.json`` rather than branched on in code.
+One command executes the whole production graph for one scenario, from the
+official raw competition data to the submission member:
 
-    python main.py --dataset dataset1 --stage postprocess --verify
-    python main.py --dataset dataset2 --stage postprocess --verify
-    python main.py --dataset dataset2 --stage train --dry-run
-    python main.py --stage package --verify
-    python main.py --stage describe
+    python main.py --dataset dataset1
+    python main.py --dataset dataset2
+
+Both are pure Jittor. There is no backend argument and no environment-variable
+switch: the graph in ``src/canonical_pipeline.py`` names the Jittor trainers and
+nothing else, so the import closure of a canonical run contains no PyTorch. The
+historical PyTorch trainers remain in the repository for provenance and are
+reachable only from ``tools/diagnostics/compare_backends.py``, which is a local
+diagnostic and is not part of the official package.
+
+Every stage is gated by a completion record (``<output>.done.json``), not by its
+output file existing. A stage is reused only when a record proves it ran to
+completion, under this commit, from these inputs, with this configuration, and
+produced exactly this artifact. Anything else stops the run with a diagnostic;
+see ``docs/architecture/stage-completion-contract.md``.
 
 Stages
 ------
-``describe``      print the resolved pipeline for a dataset: every stage, its
-                  implementation, its inputs and how it is verified. Runs
-                  anywhere, needs no data.
+``run``           execute the canonical graph and write the submission member.
+                  The default.
+``plan``          print the graph and each stage's current disposition, and
+                  execute nothing.
+``describe``      print the resolved strategy chain for a dataset from
+                  ``configs/production.json``. Runs anywhere, needs no data.
 ``preprocess``    validate the raw competition data and report graph type.
-``train``         train the embedding models for the dataset.
-``rank``          build the base score matrix from the trained embeddings.
-``postprocess``   apply the frozen postprocessor chain and write the submission
-                  member. This is the stage that is proven byte-exact.
-``package``       assemble and verify the submission archive.
-
-Every stage prints the exact command it runs. Where a stage is not runnable from
-a clean checkout, it says so and names the blocker instead of failing obscurely;
-see ``docs/CURRENT_PRODUCTION.md`` and
-``docs/maintenance/repository-reorganisation-ambiguities.md``.
+``postprocess``   re-run only the frozen postprocessor chain over an existing
+                  score matrix. This is the stage proven byte-exact.
+``package``       verify a submission archive.
 """
 
 from __future__ import annotations
@@ -41,28 +45,54 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO / "src"))
 
-PRODUCTION_CONFIG = REPO / "configs" / "production.json"
 DATASETS = ("dataset1", "dataset2")
+STAGES = ("run", "plan", "describe", "preprocess", "postprocess", "package")
+DEFAULT_CONFIG = REPO / "configs" / "production.json"
 
 
-def load_production() -> dict:
-    with PRODUCTION_CONFIG.open(encoding="utf-8") as handle:
+def load_production(path: Path) -> dict:
+    with Path(path).open(encoding="utf-8") as handle:
         return json.load(handle)
 
 
-def data_dir(dataset: str) -> Path:
-    return REPO / "data" / "data_A" / dataset
-
-
-def run(command: list[str], dry_run: bool) -> int:
+def run(command: list[str]) -> int:
     """Echo a command and run it with the current interpreter."""
-    printable = " ".join(command)
-    print(f"\n$ {printable}")
-    if dry_run:
-        print("  (dry run: not executed)")
-        return 0
+    print(f"\n$ {' '.join(command)}")
     return subprocess.call([sys.executable, *command[1:]] if command[0] == "python"
                            else command, cwd=REPO)
+
+
+# --------------------------------------------------------------------------
+# run / plan -- the canonical graph
+# --------------------------------------------------------------------------
+
+def contexts(args: argparse.Namespace, datasets: tuple[str, ...]) -> list:
+    from canonical_pipeline import RunContext
+
+    return [RunContext(dataset=dataset, data_root=args.data_root,
+                       outputs_root=args.output_root, log_dir=args.log_dir,
+                       data_pack=args.data_pack, resume=not args.fresh,
+                       ds1_member=args.ds1_member, repo=REPO)
+            for dataset in datasets]
+
+
+def stage_run(args: argparse.Namespace, datasets: tuple[str, ...]) -> int:
+    from canonical_pipeline import execute
+
+    for ctx in contexts(args, datasets):
+        code = execute(ctx, echo=not args.quiet)
+        if code != 0:
+            return code
+    return 0
+
+
+def stage_plan(args: argparse.Namespace, datasets: tuple[str, ...]) -> int:
+    from canonical_pipeline import plan
+
+    for ctx in contexts(args, datasets):
+        print(plan(ctx))
+        print()
+    return 0
 
 
 # --------------------------------------------------------------------------
@@ -102,6 +132,9 @@ def stage_describe(config: dict, datasets: tuple[str, ...]) -> int:
                   f"shortfall {decoder['shortfall_from_original_gate']})")
         print(f"  member sha256    : {block['member_sha256']}")
         print(f"  build            : {block['build_command']}")
+    print("\nrebuild the whole chain from official raw data with:")
+    for dataset in datasets:
+        print(f"  python main.py --dataset {dataset}")
     return 0
 
 
@@ -109,22 +142,19 @@ def stage_describe(config: dict, datasets: tuple[str, ...]) -> int:
 # preprocess
 # --------------------------------------------------------------------------
 
-def stage_preprocess(config: dict, datasets: tuple[str, ...], dry_run: bool) -> int:
+def stage_preprocess(args: argparse.Namespace, datasets: tuple[str, ...]) -> int:
     import numpy as np
     import pandas as pd
 
     failures = 0
     for dataset in datasets:
-        directory = data_dir(dataset)
+        directory = Path(args.data_root) / args.data_pack / dataset
         train_path, test_path = directory / "train.csv", directory / "test.csv"
         print(f"\n=== {dataset} ===")
         if not (train_path.exists() and test_path.exists()):
             print(f"  BLOCKED: raw competition data not present under {directory}")
             print("  the competition data is not redistributable and is not tracked")
             failures += 1
-            continue
-        if dry_run:
-            print("  (dry run: not executed)")
             continue
         train = pd.read_csv(train_path)
         test = pd.read_csv(test_path)
@@ -152,71 +182,15 @@ def stage_preprocess(config: dict, datasets: tuple[str, ...], dry_run: bool) -> 
 
 
 # --------------------------------------------------------------------------
-# train / rank
-# --------------------------------------------------------------------------
-
-TRAIN_NOTE = """\
-  Embedding training is the long stage. The accepted A-board artifacts were
-  produced by the PyTorch trainers named in configs/production.json; the Jittor
-  ports (src/train_line_jt.py, src/train_bpr_jt.py) implement the same models,
-  objectives and knobs and are the framework-compliant path. Seeded numpy owns
-  sampling in both, so the two agree statistically, not byte for byte.
-  See docs/competition/ab_algorithm_consistency_contract.md."""
-
-
-def stage_train(config: dict, datasets: tuple[str, ...], dry_run: bool,
-                framework: str) -> int:
-    print(TRAIN_NOTE)
-    line = "src/train_line_jt.py" if framework == "jittor" else "src/train_line.py"
-    bpr = "src/train_bpr_jt.py" if framework == "jittor" else "src/train_bpr.py"
-    status = 0
-    for dataset in datasets:
-        print(f"\n=== {dataset} embeddings ({framework}) ===")
-        for script in (line, bpr):
-            print(f"  DATASET={dataset} python {script}")
-        if not dry_run:
-            print("  NOT EXECUTED by main.py: each trainer is a multi-hour GPU job "
-                  "configured through environment variables (SEED, EMB_DIM, EPOCHS, ...).")
-            print("  Run the printed commands directly so the run directory and seed "
-                  "are explicit; see docs/architecture/pipeline-overview.md.")
-            status = max(status, 0)
-    return status
-
-
-def stage_rank(config: dict, datasets: tuple[str, ...], dry_run: bool) -> int:
-    for dataset in datasets:
-        block = config[dataset]
-        base = block["strategy_chain"][0]
-        print(f"\n=== {dataset} base score matrix ===")
-        print(f"  strategy       : {base['strategy_id']}")
-        print(f"  implementation : {base['implementation']}")
-        print(f"  command        : DATASET={dataset} python {base['implementation']}")
-        if dataset == "dataset1":
-            target = block["chain_input"]
-            print(f"  output         : {target['path']}")
-            print(f"                   sha256 {target['sha256']}")
-        else:
-            target = block["decoder_input"]
-            print(f"  output         : the base matrix hash-pinned at "
-                  f"sha256 {target['sha256']}")
-            print("  BLOCKED for byte-exact rebuild: ambiguity A1 -- the dataset2 base "
-                  "needs cached train features and a multi-hour LightGBM job, and has "
-                  "not been re-executed since 2026-07-28.")
-        if not dry_run:
-            print("  NOT EXECUTED by main.py: run the printed command directly.")
-    return 0
-
-
-# --------------------------------------------------------------------------
 # postprocess -- the stage that is proven byte-exact
 # --------------------------------------------------------------------------
 
-def stage_postprocess(datasets: tuple[str, ...], dry_run: bool, verify: bool) -> int:
+def stage_postprocess(datasets: tuple[str, ...], verify: bool) -> int:
     status = 0
     builders = {"dataset1": "src/build_ds1_member.py", "dataset2": "src/build_ds2_member.py"}
     for dataset in datasets:
         command = ["python", builders[dataset]] + (["--verify"] if verify else [])
-        code = run(command, dry_run)
+        code = run(command)
         if code != 0:
             print(f"  {dataset}: postprocess stage FAILED with exit code {code}")
             status = code
@@ -227,55 +201,71 @@ def stage_postprocess(datasets: tuple[str, ...], dry_run: bool, verify: bool) ->
 # package
 # --------------------------------------------------------------------------
 
-def stage_package(config: dict, dry_run: bool, verify: bool) -> int:
+def stage_package(config: dict, verify: bool) -> int:
     archive = config["accepted_archive"]["path"]
     if not verify:
         print("packaging a NEW archive is a submission action and is deliberately not "
               "wired into main.py; see docs/SUBMISSION_PROTOCOL.md")
         return 0
     return run(["python", "tools/submission/package_component.py", "verify",
-                "--zip", archive], dry_run)
+                "--zip", archive])
 
 
 # --------------------------------------------------------------------------
 
-STAGES = ("describe", "preprocess", "train", "rank", "postprocess", "package")
-
-
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description=__doc__.split("\n")[0],
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Stages: " + ", ".join(STAGES))
+        epilog="Stages: " + ", ".join(STAGES)
+               + "\nBackend: Jittor, fixed. This entrypoint cannot select another.")
     ap.add_argument("--dataset", choices=(*DATASETS, "all"), default="all",
-                    help="scenario to operate on (default: all)")
-    ap.add_argument("--stage", choices=STAGES, default="describe")
-    ap.add_argument("--framework", choices=("jittor", "torch"), default="jittor",
-                    help="embedding trainer implementation for the train stage")
+                    help="scenario to operate on (default: all, dataset1 first)")
+    ap.add_argument("--stage", choices=STAGES, default="run",
+                    help="what to do (default: run the canonical graph)")
+    ap.add_argument("--data-root", type=Path, default=REPO / "data",
+                    help="root holding the official data packs (default: <repo>/data)")
+    ap.add_argument("--data-pack", default="data_A",
+                    help="data pack under --data-root (default: data_A)")
+    ap.add_argument("--output-root", type=Path, default=REPO / "outputs",
+                    help="root for every run artifact (default: <repo>/outputs)")
+    ap.add_argument("--log-dir", type=Path, default=None,
+                    help="stage logs (default: <output-root>/_logs)")
+    ap.add_argument("--config", type=Path, default=DEFAULT_CONFIG,
+                    help="production configuration to describe and verify against")
+    ap.add_argument("--fresh", action="store_true",
+                    help="refuse to reuse any completed stage; every stage must be "
+                         "absent, so an existing run has to be quarantined deliberately")
+    ap.add_argument("--ds1-member", type=Path, default=None,
+                    help="dataset1 member whose bytes crf_promote carries through; "
+                         "must carry a valid completion record")
     ap.add_argument("--verify", action="store_true",
-                    help="assert artifact hashes against configs/production.json")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="print every command without executing it")
-    args = ap.parse_args()
+                    help="assert artifact hashes against the production configuration")
+    ap.add_argument("--quiet", action="store_true",
+                    help="do not echo stage output to the console (logs are still written)")
+    return ap
 
-    config = load_production()
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
     datasets = DATASETS if args.dataset == "all" else (args.dataset,)
     print(f"repository : {REPO.name}")
     print(f"stage      : {args.stage}")
     print(f"datasets   : {', '.join(datasets)}")
+    print("backend    : jittor (fixed)")
 
+    if args.stage == "run":
+        return stage_run(args, datasets)
+    if args.stage == "plan":
+        return stage_plan(args, datasets)
     if args.stage == "describe":
-        return stage_describe(config, datasets)
+        return stage_describe(load_production(args.config), datasets)
     if args.stage == "preprocess":
-        return stage_preprocess(config, datasets, args.dry_run)
-    if args.stage == "train":
-        return stage_train(config, datasets, args.dry_run, args.framework)
-    if args.stage == "rank":
-        return stage_rank(config, datasets, args.dry_run)
+        return stage_preprocess(args, datasets)
     if args.stage == "postprocess":
-        return stage_postprocess(datasets, args.dry_run, args.verify)
+        return stage_postprocess(datasets, args.verify)
     if args.stage == "package":
-        return stage_package(config, args.dry_run, args.verify)
+        return stage_package(load_production(args.config), args.verify)
     raise AssertionError(f"unhandled stage {args.stage!r}")
 
 
