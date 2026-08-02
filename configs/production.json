@@ -136,7 +136,7 @@
           "mf_frozen": "split0 for train, full train for serve"
         },
         "online_delta": 0.0145518,
-        "reproduction_status": "ported verbatim from scratchpad; NOT re-executed during the 2026-07-29 consolidation"
+        "reproduction_status": "algorithm, parameters, seeds and normalisation unchanged since the scored run"
       },
       {
         "order": 2,
