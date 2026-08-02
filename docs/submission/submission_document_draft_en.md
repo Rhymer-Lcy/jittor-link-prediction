@@ -531,22 +531,35 @@ roughly 2.8 h.
 * The canonical entry point and the stage-completion contract were separately validated on the same
   target environment against real Jittor training stages.
 * The released package additionally received targeted downstream and clean-package integration
-  validation: the archive was extracted into an empty directory and, from that extracted copy alone,
-  the real LightGBM ranker, the real matrix-factorisation geometry, the real feature-cache contract,
-  the real CRF and both real member builders were executed on bounded production-schema fixtures,
-  with the final output gates asserted on both produced members.
+  validation covering **all 33 canonical stages** (16 for Dataset 1, 17 for Dataset 2): the archive
+  was extracted into an empty directory and, from that extracted copy alone, every stage command was
+  resolved and contract-checked, and the real LightGBM ranker, the real matrix-factorisation
+  geometry, the real feature-cache contract, the real CRF and both real member builders were
+  executed on bounded production-schema fixtures, with the final output gates asserted on both
+  produced members.
+* A defect in which a non-default `--output-root` was ignored by two Dataset-2 consumers was found
+  by that validation, corrected, and revalidated from a fresh extraction (see section 12, item 9).
 * **A second complete dual-dataset re-execution was not performed**, by decision, because it would
   have repeated training already evidenced without testing anything the validations above do not
   already cover.
 * **GPU training is not guaranteed byte-deterministic across independent runs.** Jittor kernel
   scheduling on the GPU is not bit-reproducible, and the model state of the original A-board runs was
   not preserved.
+* **The historical accepted archive is the artifact associated with the recorded A-board score.**
+  A reproduction produced by this code is a distinct artifact and carries no score of its own until
+  it is itself scored.
 * Consequently, **a fresh reproduction may not be byte-identical to the historical A-board member**.
   A measured comparison of one clean Dataset-1 reconstruction against the historical member gave
-  95.60% top-1 agreement and mean per-row Spearman 0.873. This is the expected behaviour of a
-  retrained pipeline, not a defect.
+  **95.603676%** top-1 agreement and mean per-row Spearman **0.872865**. Quantifying how far the
+  difference reaches: the historical rank-1 candidate appears within the reproduction's top two in
+  **98.348921%** of rows, and the reproduction's rank-1 candidate within the historical top two in
+  **98.352197%** — so of the 2,684 rows that disagree at rank 1, about a fifth differ beyond the
+  first two positions. This is the expected behaviour of a retrained pipeline, not a defect.
 * **No claim of hidden-score equivalence is made.** Test labels are unavailable, so no offline
-  statement about the score of a reconstruction is possible, and none is made here.
+  statement about the score of a reconstruction is possible, and none is made here. In particular,
+  the ranking-overlap figures above do not imply an MRR relationship: under reciprocal-rank scoring
+  a rank-1 and a rank-2 placement contribute 1 and 0.5 respectively, so they are materially
+  different outcomes.
 * Sampling, shuffling and negative rejection run in seeded NumPy and are reproducible independently
   of the framework.
 * Completion records prevent the opposite failure — silently reusing a stale artifact from a
