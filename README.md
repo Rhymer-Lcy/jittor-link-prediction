@@ -129,35 +129,39 @@ from the PyTorch trainers rather than the Jittor ports. See
 ```bash
 # Canonical pinned environment for the A-board code inspection
 conda env create -f environment.yaml && conda activate jittor-link-prediction-inspect
-pip install --no-build-isolation git+https://github.com/AlgRUC/JittorGeometric.git
+pip install --no-build-isolation --no-deps \
+  git+https://github.com/AlgRUC/JittorGeometric.git@ff7d8ffac7bf3d95cc1962e091c52dc5737492d4
 
 # Or, into an existing Python 3.10 interpreter
 pip install -r requirements.txt
 
-# Train the LINE embedding (resumes from outputs/<dataset>/checkpoints/line_last.pt)
-DATASET=dataset1 python src/train_line.py                 # or DATASET=dataset2 (default)
+# What will run, and why each stage is in that state. Executes nothing.
+python main.py --dataset dataset1 --stage plan
 
-# Train the BPR embedding used by the default blend (fast: minutes, not hours)
-DATASET=dataset1 python src/train_bpr.py                  # -> outputs/<dataset>-bpr/bpr_emb.npy
-
-# Score a submission from the trained embedding(s)
-DATASET=dataset1 python src/ensemble_predict.py           # -> outputs/<dataset>-ensemble/result_ensemble.csv
-DATASET=dataset2 python src/ensemble_predict.py --eval    # real-candidate offline MRR instead of a submission
+# Official raw data -> submission member. Pure Jittor; there is no backend option.
+python main.py --dataset dataset1        # -> outputs/members/dataset1.csv
+python main.py --dataset dataset2        # -> outputs/members/dataset2.csv
 ```
 
-- All paths are relative to the project root; checkpoints, virtual edges and
-  submission files go to `outputs/<dataset>/`.
-- Training resumes automatically when
-  `outputs/<dataset>/checkpoints/line_last.pt` exists.
-- A submission file `outputs/<dataset>/result_epoch_<N>.csv` is written every
-  `TRAIN_CYCLE=10` epochs.
-- Optional training knobs (env vars): `EMB_DIM` (default 400), `NEG_RATIO`
-  (default 5), `NEG_DIST` (`uniform` | `pop075` for degree^0.75 sampling),
-  `EPOCHS`, `SEED`, `STAGED`, `VIRT_MODE` (`normal` | `freeze` | `off`; `off`
-  skips virtual-edge self-training, a proven no-op — see below), `EVAL_HOLDOUT`
-  (drop per-src tail rows to train the leak-free offline embedding). A
-  non-default `SEED`/`STAGED`/`NEG_DIST`/`EMB_DIM` writes to a suffixed
-  `outputs/<dataset>-<...>/` dir so runs never clobber.
+- `main.py` executes the graph in [`src/canonical_pipeline.py`](src/canonical_pipeline.py): both
+  Jittor trainers, the ranker, and for dataset2 the MF pack, the CRF and the decoder.
+- Every stage is gated by a completion record (`<output>.done.json`), **not** by its output file
+  existing. A stage is reused only when a record proves it ran to completion under this commit, from
+  these inputs, with this configuration, producing exactly this artifact. Anything else stops the
+  run with a diagnostic; see
+  [docs/architecture/stage-completion-contract.md](docs/architecture/stage-completion-contract.md).
+- Controls: `--data-root`, `--data-pack`, `--output-root`, `--log-dir`, `--config`, `--fresh`,
+  `--ds1-member`, `--quiet`. Stage logs land in `<output-root>/_logs/`.
+- The Jittor runtime settings `conv_opt=1 use_mkl=0` are applied and recorded by the driver; a
+  conflicting value already in the environment stops the run rather than being overridden.
+- `src/train_line.py` and `src/train_bpr.py` are the historical PyTorch trainers. They are not on
+  the canonical path and are reachable only from
+  [`tools/diagnostics/compare_backends.py`](tools/diagnostics/compare_backends.py), which is a local
+  diagnostic excluded from the official package.
+- Individual trainer knobs (env vars) are unchanged: `EMB_DIM` (default 400), `NEG_RATIO`
+  (default 5), `NEG_DIST` (`uniform` | `pop075`), `EPOCHS`, `SEED`, `LINE_TIME_MAX`,
+  `BPR_TAU_FRAC`, `BPR_TIME_MAX`, `BPR_INNOV`, `EVAL_HOLDOUT`. A non-default value writes to a
+  suffixed `outputs/<dataset>-<...>/` directory so runs never clobber.
 
 ## Algorithm
 
@@ -858,6 +862,24 @@ resume).
   `ranker_ds1.py` writes a **platform-dependent line terminator** (CRLF/LF, one byte per row) which
   does not affect the member because `write_score_matrix` pins CRLF. Evidence under
   `artifacts_durable/ds1_cleanrun_20260802/`.
+- 2026-08-02 (submission engineering phase 1 — no submission, **no new competition score, no
+  scientific change**): the **stage-completion contract** left open by the P1 closure is now
+  implemented, and `main.py` **executes** the canonical graph instead of printing it. A stage is
+  reusable only when an atomically published `<output>.done.json` proves it ran to completion under
+  this commit, from these inputs, with this configuration, producing exactly this artifact — output
+  existence alone is no longer evidence of anything, and every mismatch stops the run with a
+  diagnostic instead of skipping, deleting or repairing. `python main.py --dataset dataset1` and
+  `--dataset dataset2` run all 16 and 17 stages respectively from official raw data on **Jittor
+  only**: `--framework torch` is gone, the historical PyTorch trainers are reachable only from
+  `tools/diagnostics/compare_backends.py`, and an AST closure walk proves no torch is reachable from
+  the entrypoint. The dataset2 feature cache is now written atomically and bound to input hashes,
+  configuration, code identity and a full internal-array validation, with **feature values
+  unchanged**. JittorGeometric is pinned by commit `ff7d8ff…` and documented accurately as installed
+  but **not imported** by the production chain. Two assumptions in the brief were false and are
+  recorded: `canonical_run.sh` was never tracked (it lived in gitignored `scratchpad/` and stopped
+  four stages short), and `--framework torch` never executed anything. Local suite **341 tests, 0
+  failures**. Not yet run on a GPU — the remote-validation plan is in
+  `docs/architecture/stage-completion-contract.md` §10.
 
 **Logging convention.** Every submission milestone is recorded above; every
 tested-and-refuted card is recorded under **Closed axes** / **Refuted
