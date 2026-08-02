@@ -8,21 +8,18 @@ that description. ``main.py`` is a thin command-line surface over it.
 Two properties are deliberate.
 
 **Jittor only.** The graph names ``src/train_line_jt.py`` and
-``src/train_bpr_jt.py`` and nothing else can be substituted. There is no
-backend argument, no environment-variable switch and no fallback: the historical
-PyTorch trainers are unreachable from here, which is what makes the import
-closure of a canonical run torch-free. The dual-backend comparison that used to
-live behind ``main.py --framework torch`` now lives in
-``tools/diagnostics/compare_backends.py``, outside the official package.
+``src/train_bpr_jt.py`` and nothing else can be substituted. There is no backend
+argument, no environment-variable switch and no fallback. No alternative backend
+is included or required.
 
 **A stage is complete only when its completion record says so.** Every stage is
-gated by :mod:`stage_contract`. The historical driver skipped a stage whenever
-its output file existed, which during the dataset-1 clean reexecution would have
-declared sixteen stale artifacts a successful run in a few seconds. Here an
-output without a record, a record that does not match the current inputs, code,
-configuration or output, a short epoch count or a leftover partial file all stop
-the run with a diagnostic. Nothing is skipped on file existence and nothing is
-deleted to make room.
+gated by :mod:`stage_contract`. An output file existing is not evidence that the
+stage which should have produced it ever finished: the trainers export
+periodically, so an interrupted run leaves a structurally valid but incomplete
+artifact. An output without a record, a record that does not match the current
+inputs, code, configuration or output, a short epoch count or a leftover partial
+file all stop the run with a diagnostic. Nothing is skipped on file existence and
+nothing is deleted to make room.
 """
 
 from __future__ import annotations

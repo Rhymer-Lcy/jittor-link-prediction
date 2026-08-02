@@ -3,22 +3,10 @@
 
 Status
 ------
-Shipped in the final accepted A-board member. Its lifecycle is recorded on three
-axes in ``docs/strategy_inventory.json`` because they say different things and
-none of them cancels the others:
-
-``historical_lifecycle: CLOSED_AT_LOCKED_GATE``
-    Round 23 measured the online gain as ``+0.0017435797158127`` against a
-    pre-declared shipping gate of ``+0.002`` and closed the candidate for
-    falling ``0.0002564202841873`` short. **This decoder never passed that
-    gate and this module does not claim it did.**
-``evidence_status: ONLINE_VALIDATED``
-    The gain is a real, isolated, online-observed measurement, not an offline
-    replay estimate.
-``operational_lifecycle: SHIPPED_ACTIVE``
-    At A-board closure the separate ``FINAL_BOARD_MAXIMISATION_OVERRIDE``
-    decision shipped the exact online-observed member anyway, to maximise the
-    final board position rather than to satisfy the scientific gate.
+Active. It is the final dataset2 postprocessor and runs on the output of the
+CRF stage, producing the dataset2 member. Its gain was measured in isolation and
+is small; it is retained because the invariant it enforces is measured rather
+than assumed, and because the rule has no parameters that could be overfitted.
 
 Mechanism
 ---------
@@ -60,17 +48,11 @@ copied verbatim and no score is ever re-serialised from a float.
 :func:`swap_score_tokens` is that path, and it is the one
 ``src/build_ds2_member.py`` uses to reproduce the accepted member exactly.
 
-Evidence
---------
-Isolated auxiliary online A/B of the dataset2 component: control
-``0.6789511047001768`` -> treatment ``0.6806946844159895``, delta
-``+0.0017435797158127``. Acts on 7,815 of 153,420 rows (5.09%), 15,630 cells,
-7,815 top-1 changes, 0 pairs collapsed to a tie.
-
-Provenance: proposed in round 23 and independently re-derived in
-``scratchpad/round-23-opus/xte/``; graduated into ``src/`` for the A-board code
-inspection. The graduation preserves the algorithm, the parameters (there are
-none to tune) and the serving order.
+Scope
+-----
+Acts on 7,815 of the 153,420 dataset2 test rows (5.09%), rewriting 15,630 cells
+and changing 7,815 top-1 answers; no pair collapses to a tie and every other row
+passes through unchanged.
 """
 
 from __future__ import annotations

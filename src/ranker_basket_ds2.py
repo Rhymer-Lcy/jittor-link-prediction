@@ -29,14 +29,14 @@ demoted to row minimum, per-row [0, 1] normalization, %.6f headerless CSV.
 Prerequisites (embedding dirs under outputs/):
   train-side (split0-frozen, CUT = 1261958400):
     dataset2-novirt-tmax1.26196e+09   VIRT_MODE=off LINE_TIME_MAX=1261958400
-                                      DATASET=dataset2 python src/train_line.py
+                                      DATASET=dataset2 python src/train_line_jt.py
     dataset2-bpr-tmax1.26196e+09[-s{123,777,2024,31337}]
                                       BPR_TIME_MAX=1261958400 [SEED=...]
-                                      DATASET=dataset2 python src/train_bpr.py
+                                      DATASET=dataset2 python src/train_bpr_jt.py
   serve-side (full train):
-    dataset2                          the production LINE run
+    dataset2-novirt                   the production LINE run
     dataset2-bpr[-s{123,777,2024,31337}]  DATASET=dataset2 [SEED=...]
-                                      python src/train_bpr.py
+                                      python src/train_bpr_jt.py
 
 Run: DATASET=dataset2 python src/ranker_basket_ds2.py
 Outputs (outputs/dataset2-ranker/): ranker_pass{1,2,3}.txt boosters and

@@ -3,9 +3,10 @@
 
 Status
 ------
-SHIPPED_ACTIVE. First shipped 2026-07-29 in ``submission_r2_main_d9.zip``
-(accepted main total 1.567242782636773, rank #2); still active underneath
-:mod:`src.strategies.ds1.test_graph_reciprocity` in the current accepted member.
+Active. It is the FIRST of the two frozen dataset1 postprocessors and runs
+underneath :mod:`src.strategies.ds1.test_graph_reciprocity`, which reads the
+matrix this module produces. The order is load-bearing; see
+:mod:`src.strategies.registry`.
 
 Mechanism
 ---------
@@ -36,15 +37,11 @@ threshold, relaxing the uniqueness requirement, changing the row gate or the
 history definition, altering the score transform, using candidate column
 position, retraining, blending or sweeping.
 
-Evidence
---------
-Offline dataset1 replay +0.021366 (non-repeat +0.042897, rotation null -0.036393).
-Isolated auxiliary online A/B, adjudicated BEFORE shipping: control
-0.9136871602584966 -> treatment 0.9400134058656336, delta +0.0263262456071370.
-Acts on 3,653 of 61,051 rows (5.98%).
-
-Provenance: proposed by Codex round 21; executed and validated in
-``scratchpad/round-21a-opus/r2/``.
+Scope
+-----
+Acts on 3,653 of the 61,051 dataset1 test rows (5.98%); every other row passes
+through unchanged. The rule was validated in isolation before being adopted, and
+its parameters are frozen rather than fitted.
 """
 
 from __future__ import annotations

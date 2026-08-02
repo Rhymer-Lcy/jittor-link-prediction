@@ -12,9 +12,11 @@ location-based):
 ``CLOSED``              refuted offline or online; do not reopen in the same formulation
 ``PROBE``               exploratory, no promotion decision
 
-The full evidence-bearing inventory for every strategy lives in
-``docs/strategy_inventory.json``; this module carries only what production code
-needs -- the callables and their execution order.
+This module carries only what production code needs -- the callables and their
+execution order. The lifecycle-inventory helpers below read
+``docs/strategy_inventory.json``, which is a development record and is NOT part
+of the submission package; they are lazy and are never called on the
+reproduction path.
 
 The dataset1 postprocessor chain is ORDER-SENSITIVE: reciprocity reads the rank-2
 candidate of the recurrence-adjusted matrix, so swapping the two changes the

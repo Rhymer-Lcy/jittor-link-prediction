@@ -3,9 +3,9 @@
 
 Status
 ------
-SHIPPED_ACTIVE. Shipped 2026-07-29 in ``r22_rgr_main_d9.zip`` (accepted main
-total 1.5752524794476366, rank #3 on a board that had moved). Applied on top of
-:mod:`src.strategies.ds1.source_slate_recurrence`.
+Active. It is the SECOND of the two frozen dataset1 postprocessors and reads the
+matrix produced by :mod:`src.strategies.ds1.source_slate_recurrence`, so the two
+are order-sensitive; see :mod:`src.strategies.registry`.
 
 Mechanism
 ---------
@@ -31,22 +31,17 @@ matrix, act iff all four conditions hold:
 Then promote ``c2`` to strict top-1 via the frozen score transform and row
 max-normalise.
 
-Prohibited variants (frozen out by the online adjudication): inspecting ranks
-below 2, reverse-edge *counts* or thresholds instead of existence, widening the
+Prohibited variants (deliberately frozen out): inspecting ranks below 2,
+reverse-edge *counts* or thresholds instead of existence, widening the
 eligibility population, adding recurrence / source-peak / source-role
-conditions, or combining with other candidate mechanisms before re-adjudication.
+conditions, or combining with other candidate mechanisms without revalidating.
 
-Evidence
---------
-Offline replay +0.0026108377841567065 over 142,483 queries (4,464 replay
-actions, 1,604 repaired vs 860 damaged, both folds positive). Isolated auxiliary
-online A/B against the frozen dataset1 baseline 0.8882916779365962: observed
-0.8963013747474597, delta +0.0080096968108635 against a locked +0.0010 gate --
-4.3x the naive per-action transfer projection. Acts on 1,365 of 61,051 rows
-(2.24%), each contributing exactly one strict pair inversion.
-
-Provenance: proposed by Codex round 22; executed and validated in
-``scratchpad/round-22-opus/rgr/``.
+Scope
+-----
+Acts on 1,365 of the 61,051 dataset1 test rows (2.24%), each action contributing
+exactly one strict pair inversion; every other row passes through unchanged. The
+rule was validated in isolation before being adopted, and its parameters are
+frozen rather than fitted.
 """
 
 from __future__ import annotations

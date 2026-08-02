@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
-"""dataset1 learned ranker -- replaces the hand-tuned linear blend.
+"""dataset1 learned ranker: LightGBM LambdaRank over 21 hand-built features.
 
-Until now ds1's entire score came from ensemble_predict.blend_scores, a FIXED
-global-weight linear combination (collab/item-CF/BPR/iBPR/HIST_BOOST). A 2-fold
-src-disjoint OOF probe (scratchpad/ds1_ranker_probe.py + ds1_ranker_ibpr.py)
-showed a LambdaRank on the same evidence beats the real shipped mechanism
-(blend + 12*iBPR) by +0.0187 MRR on a production-matched cut-split replay:
-  prod(blend+iBPR)=0.6442  opt-linear+iBPR=0.6340  RANK+iBPR=0.6629
-The gain is dominated by nonlinear per-row conditioning (+0.029 vs the strongest
-fixed-linear fit), robust to seed (noise 0.00013), does NOT sign-flip on the
-latest horizon quartile (+0.032), and survives dropping every time feature
-(+0.026) -- so it is not a recency/training-boundary artifact.
+This is the scoring stage of the dataset1 chain. It replaces a fixed
+global-weight linear blend of the same evidence (collaborative filtering,
+item-CF over embedding similarity, BPR and innovation-BPR dot products, history
+strength) with a learned per-row ranking model, so that the relative weight of
+each signal can depend on the row rather than being one global constant.
+
+Labels come from a cut-split replay of the training data, never from test
+labels: interactions at or before CUT supply the features and history,
+interactions after CUT supply the positives, and up to 99 negatives per query
+are drawn from that source's own test candidate pool so a training query has the
+same shape as a test query.
 
 Protocol (train-cut / infer-full, identical to the ds2 ranker):
   TRAIN  features frozen at CUT (split0) predict split1 labels, cut embeddings.
@@ -20,7 +21,8 @@ Protocol (train-cut / infer-full, identical to the ds2 ranker):
          out-of-support value.
 
 Output: outputs/dataset1-ensemble/result_ranker.csv  (one row per test query,
-100 rownormed scores, %.6f -- same format as result_ensemble.csv).
+100 per-row min-max normalised scores, %.6f). This is an intermediate, not a
+submission file: src/build_ds1_member.py turns it into the member.
 
 Run: DATASET=dataset1 python src/ranker_ds1.py
 """

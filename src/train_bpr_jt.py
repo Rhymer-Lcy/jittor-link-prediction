@@ -1,22 +1,26 @@
 # -*- coding: utf-8 -*-
-"""Jittor port of the BPR-MF embedding trainer (see train_bpr.py).
+"""BPR-MF embedding trainer (Jittor). The second of the two neural stages.
 
-Same objective, knobs and output format as the PyTorch trainer: a single
-node-embedding table trained with -log sigmoid(e_src.e_dst - e_src.e_neg),
-negatives ~ dst-degree^0.75, optional recency-weighted positive sampling
-(BPR_TAU_FRAC), hard time cutoff (BPR_TIME_MAX), innovation-only filtering
-(BPR_INNOV) and leak-free holdout mode (EVAL_HOLDOUT). Sampling and shuffling
-run in seeded numpy (framework-free); Jittor owns only the embedding table,
-the loss and Adam — so the port surface is minimal and version-robust.
+A single node-embedding table -- source and destination share it -- trained with
+the Bayesian personalised-ranking objective
+-log sigmoid(e_src.e_dst - e_src.e_neg), with negatives drawn from the
+destination-degree^0.75 distribution.
 
-Outputs bpr_emb.npy with the identical directory naming convention, plus a
-JT_OUT_SUFFIX (default "-jt") so verification runs never clobber the PyTorch
-artifacts; set JT_OUT_SUFFIX= (empty) for the final Jittor-only release.
+Four switches distinguish the production runs, all applied in numpy before
+training: SEED (the five production seeds), BPR_TIME_MAX (hard time cutoff),
+BPR_TAU_FRAC (recency-weighted positive sampling, dataset1 only) and BPR_INNOV
+(innovation-only filtering, keeping the first occurrence of each pair, dataset1
+only). EVAL_HOLDOUT provides a leak-free holdout mode for evaluation.
+
+Division of labour: sampling and shuffling run in seeded numpy; Jittor owns only
+the embedding table, the loss and Adam, so the framework-dependent surface is
+minimal and version-robust.
+
+Outputs bpr_emb.npy into the run directory derived from those parameters.
+JT_OUT_SUFFIX (empty in the production release) can suffix the output directory
+so a verification run cannot clobber a production artifact.
 
 Usage: DATASET=dataset1 BPR_TAU_FRAC=0.25 python src/train_bpr_jt.py
-Seeds are honored per-run but the numpy RNG stream differs from torch's, so
-embeddings match the PyTorch ones statistically (downstream blend MRR), not
-byte-for-byte.
 """
 import os
 import time

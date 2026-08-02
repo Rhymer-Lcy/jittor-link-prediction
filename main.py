@@ -7,12 +7,10 @@ official raw competition data to the submission member:
     python main.py --dataset dataset1
     python main.py --dataset dataset2
 
-Both are pure Jittor. There is no backend argument and no environment-variable
-switch: the graph in ``src/canonical_pipeline.py`` names the Jittor trainers and
-nothing else, so the import closure of a canonical run contains no PyTorch. The
-historical PyTorch trainers remain in the repository for provenance and are
-reachable only from ``tools/diagnostics/compare_backends.py``, which is a local
-diagnostic and is not part of the official package.
+The official pipeline is Jittor-only. There is no backend argument and no
+environment-variable switch: the graph in ``src/canonical_pipeline.py`` names
+the Jittor trainers and nothing else can be substituted. No alternative backend
+is included or required.
 
 Every stage is gated by a completion record (``<output>.done.json``), not by its
 output file existing. A stage is reused only when a record proves it ran to

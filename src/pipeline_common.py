@@ -2,20 +2,16 @@
 """Framework-neutral shared components of the canonical pipeline.
 
 This module is the SINGLE SOURCE OF TRUTH for two things the canonical stages
-need and that previously lived inside the PyTorch trainer:
+need:
 
 1. run-directory naming, so a producer and its consumer can never disagree;
 2. the framework-neutral data utilities (history indexing, co-occurrence,
    similarity caching, row normalisation, paths and constants).
 
-It imports NEITHER PyTorch NOR Jittor. That is the point: the canonical ranking
-stages import this module, so nothing on the canonical path pulls in a deep
-learning framework merely to obtain a helper. Neural training lives in the
+It imports no deep-learning framework at all. That is the point: the canonical
+ranking stages import this module, so nothing on the canonical path pulls in a
+training framework merely to obtain a helper. Neural training lives in the
 explicit Jittor entry points src/train_line_jt.py and src/train_bpr_jt.py.
-
-Extracted verbatim from src/train_line.py; the algorithm, constants and
-numerical behaviour are unchanged. Equivalence is asserted by
-tests/strategies/test_pipeline_common_equivalence.py.
 """
 
 from __future__ import annotations
@@ -203,13 +199,10 @@ def build_sim_cache(emb_matrix, real_src_np):
     # Two-band decayed similar-user cache: chunked cosine top-k.
     #
     # NumPy implementation. This function is on the CANONICAL ranking path
-    # (both rankers call it), so it must not depend on PyTorch. The previous
-    # implementation used torch.from_numpy/.to(device) + torch.topk, which made
-    # torch a hard dependency of the whole canonical pipeline. The mathematics
-    # is unchanged: L2-normalise, chunked matmul, zero the self-similarity,
-    # take the k largest per row in descending order, pad, then apply the
-    # two-band decay. Equivalence with the torch version is asserted by
-    # tests/strategies/test_sim_cache_equivalence.py.
+    # (both rankers call it), so it deliberately depends on no deep-learning
+    # framework. The steps are: L2-normalise, chunked matmul, zero the
+    # self-similarity, take the k largest per row in descending order, pad,
+    # then apply the two-band decay.
     global sim_neigh_arr, sim_weight_arr  # src2row is only mutated, not rebound
     src2row.clear()
     max_emb_id = emb_matrix.shape[0] - 1

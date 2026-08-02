@@ -1,26 +1,32 @@
-# GRADUATED 2026-07-29 from scratchpad/round-16-opus/build_mf_aux_pack.py
-# (source sha256 d9c6204b92239b8871463988bc9bd76a1b4acc4b6f07b1e6bf251c65e6609ac4).
-# Body is VERBATIM apart from two path-only changes: REPO is derived from __file__
-# instead of a hard-coded absolute path on the original build host, and the featurizer is imported as
-# src/ds2_basket_featurizer.py. Algorithm, parameters, seeds and normalisation untouched.
-# NOT re-executed during the 2026-07-29 consolidation -- see configs/production.json.
 # -*- coding: utf-8 -*-
-"""Build the ds2 base CSV for the aux A/B: single-variable basket-geometry swap.
+"""dataset2 production base score matrix: three-pass basket ranking over MF geometry.
 
---geom P  : item_profiles (sparse, production geometry) + production fb_features (entangled).
-            MUST reproduce outputs/dataset2-ranker/ranker_basket3_label_dataset2.csv (the live
-            control) -> proves the pipeline is faithful, so --geom MF is a clean single variable.
---geom MF : plain-MF (SVD of src x dst, d128 unit) as the basket message geometry, entangled fb
-            (self-sim included -> in a unit geometry the exact-hit self-sim is 1 regardless, so the
-            ONLY change vs control is the off-diagonal geometry). MF frozen: split0 for train,
-            full train for serve; no split1/test truth, no structural labels; rank fixed d128.
+This is the stage that produces the dataset2 base matrix consumed by
+``src/crf_promote.py``. It reuses ``src/ds2_basket_featurizer.py`` for the
+18-column feature matrix and its contract-governed cache, and adds the sibling
+message geometry.
 
-Everything else identical to ranker_basket_ab_ds2.py (label variant): 18 base features, LambdaRank
-PARAMS, seeds, 2-fold rng-7 crossfit for train-side stand-in scores, structural-label stand-in,
-row-minmax + history-mask serve normalisation. Reuses the cached train features and bag's verbatim
-featurizer. Does NOT touch ensemble_predict scoring or any other production feature/param.
+``--geom`` selects how sibling messages are carried between the rows of one
+basket event -- the rows sharing a ``(source, time)`` pair:
 
-Run: DATASET=dataset2 python .../build_mf_aux_pack.py --geom MF --out <base.csv>
+--geom MF : the production setting. A rank-128 truncated SVD of the split-0
+            source x destination interaction matrix, L2-normalised by row, is
+            used as a dense geometry. The factorisation is frozen: split0 for
+            the training replay, the full training history for serving. It reads
+            no split1 or test truth and no structural labels.
+--geom P  : sparse ``item_profiles`` as the geometry. Retained as the control
+            against which the MF geometry was introduced as a single variable.
+
+NOTE ON THE NAME "MF": the geometry here is an UNTRAINED SVD factorisation used
+only to carry messages between sibling rows. It is unrelated to the BPR-MF
+embedding model trained in ``src/train_bpr_jt.py``.
+
+Everything else matches the dataset1 ranking conventions: 18 base features, the
+same LambdaRank parameters and seeds, a 2-fold source-disjoint cross-fit for
+train-side stand-in scores, and row-min-max plus history-mask serve
+normalisation.
+
+Run: DATASET=dataset2 python src/ds2_mf_basket_pack.py --geom MF --out <base.csv>
 """
 import argparse
 import os
@@ -111,7 +117,7 @@ def main():
     args = ap.parse_args()
     is_mf = args.geom == "MF"
 
-    # ---- shared train features (cache = verbatim ranker_basket_ab_ds2 train replay) ----
+    # ---- shared train features (the contract-governed cut-split replay cache) ----
     D = bag.build_or_load_features(force=False, max_queries=0)
     Xf, lens, off = D["Xf"], D["lens"], D["off"]
     qsrc_tr, qt_tr, qorig_tr, cands_tr = D["qsrc_tr"], D["qt_tr"], D["qorig_tr"], D["cands_tr"]
@@ -183,15 +189,14 @@ def main():
     log(f"serve featurize N={N} ...")
     Xall_list = bag.build_features(
         df_raw, CUTp, prod_q,
-        # Same contract as the LINE directory below: the BPR literals were the
-        # residue of the same defect and ignored OUTPUTS_ROOT.
+        # Same contract as the LINE directory below: a literal path here would
+        # ignore OUTPUTS_ROOT and silently read from the wrong root.
         [tl.bpr_run_dir("dataset2", seed=s) for s in SEEDS],
-        # The LINE run directory is named by pipeline_common, not spelled out here.
-        # The verbatim port carried "outputs/dataset2" from the original build host,
-        # which predates the run-suffix contract; the trainer now writes the serve
-        # embedding to outputs/dataset2-novirt, so the literal resolved to a stale
-        # directory and the stage failed on the missing export. line_run_dir is the
-        # same call the producer (train_line_jt) and the order-0 ranker already use.
+        # The LINE run directory is named by pipeline_common, not spelled out
+        # here. The trainer writes the serve embedding to a run directory derived
+        # from its scientific parameters, so a literal would resolve to a stale
+        # directory and the stage would fail on the missing export. line_run_dir
+        # is the same call the producer (train_line_jt) makes.
         tl.line_run_dir("dataset2"),
         np.unique(test_srcs), num_entity, freq_cand, cfreq_log)
     Xall = np.vstack(Xall_list).astype(np.float32); del Xall_list

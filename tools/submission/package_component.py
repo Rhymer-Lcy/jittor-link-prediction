@@ -14,12 +14,11 @@ Modes
   score  append an observed leaderboard score to a manifest, closing the delta
   verify re-validate any ZIP this tool produced
 
-Graduated 2026-07-29 from ``scratchpad/round-22-opus/harness/scripts/package_component.py``
-(source sha256 7794237611f5587a34d6718be423855672039e4c0a31ad6ec8343fd20c02c49d),
-which was verified there by 35 self-tests and three dry runs. Behaviour is
-preserved; the changes are that the accepted-state constants now come from
-``configs/production.json`` instead of being hard-coded, and that the
-archive-size messages were corrected (see ``size_policy``).
+This tool is offered so that a reviewer can validate a produced member
+independently, without trusting the pipeline that produced it. It is NOT part of
+the reproduction path: no canonical stage invokes it. The accepted-state
+constants it compares against are read from ``configs/production.json`` rather
+than hard-coded.
 
 Why the accepted state is read live from the gold archive
 ---------------------------------------------------------

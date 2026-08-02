@@ -79,17 +79,14 @@ else:
 
 NEG_PER_SAMPLE = 99
 
-# BPR direct-score blend term (src/train_bpr.py), on by default since it was
-# validated online 2026-07-20: single seed took ds2 0.5607 -> 0.5712 (w=0.7)
-# and ds1 0.8285 -> 0.8508 (w=6.0); the 5-seed score average took ds2 to
-# 0.5766 and ds1 to 0.8526 (w=9.0), total 1.4292. Disable with W_BPR=0.
+# BPR direct-score blend term, computed from the embeddings produced by
+# src/train_bpr_jt.py. Averaging several seeds is worth more than any single
+# seed. Disable with W_BPR=0.
 W_BPR = float(os.environ.get("W_BPR", BPR_W_DEFAULT))
 # BPR_RUNS: comma-separated run dirs. With several runs (multi-seed ensemble)
-# each run's rownormed direct score is computed independently and averaged —
-# embeddings from different seeds are not alignable, scores are.
-# Ten seeds on dataset1 since 2026-07-23: the 5 -> 10 expansion read only
-# +0.00027 offline (inside the 0.0004 noise floor) but scored ds1 0.8595 ->
-# 0.86000 online as an isolated submission. dataset2 has five seeds trained.
+# each run's rownormed direct score is computed independently and averaged.
+# This is load-bearing: embeddings from different seeds are not alignable and
+# must never be averaged directly, whereas their per-row scores are.
 _SEEDS = ((42, 123, 777, 2024, 31337, 7, 99, 555, 1234, 9999)
           if tl.DATASET == "dataset1" else (42, 123, 777, 2024, 31337))
 _BPR_DEFAULT_RUNS = ",".join(
@@ -99,17 +96,15 @@ _BPR_DEFAULT_RUNS = ",".join(
 BPR_RUNS = [r for r in os.environ.get("BPR_RUNS", _BPR_DEFAULT_RUNS).split(",") if r]
 bpr_embs = []
 
-# Innovation-only BPR term (train_bpr.py with BPR_INNOV=1): an embedding
-# trained only on first-time (src, dst) links, scored ONLY on candidates
-# outside the src's history (its per-seed row is zeroed on history candidates
-# BEFORE rownorm) — repeats are owned by hist_boost, this term reranks the
-# non-repeat block. Both calibers agreed 2026-07-23 (honest +0.0033 at w12
-# entirely on non-repeat queries, leaky +0.0056 same direction); w12 is one
-# step inside the cliff (w15 starts bleeding repeats, w18 collapses).
-# Confirmed online 2026-07-23: 1.50890 -> 1.51309 (+0.00419 = iBPR ~+0.0039
-# + ds1 lineage swap +0.00027, transfer ~1.18x of the honest offline delta).
-# Default 12 for dataset1 (the validated production config); dataset2 has no
-# innovation-BPR runs, so the term stays off there.
+# Innovation-only BPR term (train_bpr_jt.py with BPR_INNOV=1): an embedding
+# trained only on first-time (src, dst) links, scored ONLY on candidates outside
+# the src's history. Its per-seed row is zeroed on history candidates BEFORE
+# rownorm, which is what confines it to the non-repeat block: repeat candidates
+# are already owned by the history terms, and letting this term touch them
+# degrades them. The weight sits deliberately below the point at which the term
+# starts displacing repeat candidates.
+# Default 12 for dataset1; dataset2 has no innovation-BPR runs (it has no
+# repeated pairs at all), so the term stays off there.
 _W_IBPR_DEFAULT = "12" if tl.DATASET == "dataset1" else "0"
 W_IBPR = float(os.environ.get("W_IBPR", _W_IBPR_DEFAULT))
 _IBPR_DEFAULT_RUNS = ",".join(

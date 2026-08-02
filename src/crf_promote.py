@@ -243,8 +243,9 @@ def equality_crf(Sn, FWD, BWD, tau, B, p, BF=None):
 
     W = 1 is a chain and the two sweeps are exact. W > 1 is loopy, so this is
     one synchronous approximation: each row multiplies the messages from all
-    W predecessors (then all W successors) with no further iteration, which
-    keeps the double-counting that killed chain round-2 out of the estimate.
+    W predecessors (then all W successors) with no further iteration. Iterating
+    further would double-count the same evidence around the loop, so the single
+    synchronous pass is deliberate.
 
     BF, when given, is an (R, 100) per-candidate multiplier on B (the
     reliability factor); None keeps the constant-B potential unchanged.

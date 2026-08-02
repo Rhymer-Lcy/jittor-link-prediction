@@ -1,53 +1,35 @@
-# GRADUATED 2026-07-29 from scratchpad/archive/ds2_closed_veins/bagging_ensemble_ds2.py
-# (source sha256 bc6f7fd889915f2ec86c23e8fc0af8e135c5cdd797e14d0d215adf99c0133fc1).
-# Body is VERBATIM apart from the stale run-hint path in the docstring; REPO resolves
-# correctly from src/. Only the featurizer helpers are on the production path:
-# build_or_load_features, build_features, item_profiles, fb_features, structural_labels.
-# The bagging CLI below is a CLOSED experiment, retained verbatim and never run.
 # -*- coding: utf-8 -*-
-"""Query-bootstrap bagging ensemble PILOT for the ds2 basket ranker.
+"""dataset2 feature construction and the contract-governed feature cache.
 
-Strict, additive probe: it does NOT modify any live source file. It replicates
-the train-side replay of src/ranker_basket_ab_ds2.py (the "label" variant that
-produced the shipped ds2 base) function-for-function, then wraps a bagging
-ensemble around it exactly as specified:
+On the production path this module is a LIBRARY, imported by
+``src/ds2_mf_basket_pack.py``. Five helpers are the production surface:
 
-  * bootstrap unit = a COMPLETE ranking query (all candidates), never a single
-    candidate row -- Poisson(1) group weights;
-  * each member: distinct seed, feature_fraction=0.8, every other LightGBM
-    parameter identical to production;
-  * MRR is measured out-of-fold on the same 2-fold src-disjoint split
-    (default_rng(7)) the project's gate uses; truth = slate column -1.
+  ``build_features``        the 18-column base feature matrix, built identically
+                            for the training replay and for inference;
+  ``build_or_load_features`` the cached train-side matrix, governed by a stage
+                            completion record (see :mod:`stage_contract`);
+  ``item_profiles``         sparse candidate profiles used to carry sibling
+                            messages within a basket event;
+  ``fb_features``           converts sibling scores into the two basket-feedback
+                            columns (max and mean over the other rows of the
+                            same event);
+  ``structural_labels``     the train-side label construction of the cut-split
+                            replay.
 
-Two gate levels:
-  --pass1-only  (FAST pilot, GPT's original base-18 gate level): bag the pass-1
-                base ranker. Queries are independent at pass-1, so this is a
-                clean, cheap direction call and the arm deltas are exact.
-  (default)     full 3-pass: each pass trained per member, then a CONSENSUS
-                (row-min-max per query, averaged over members) builds the next
-                pass's basket feedback (fb_max/fb_mean). Faithful to production;
-                heavy (244k queries x 3 passes x members x 2 folds).
+The cut-split replay is what supplies ranker labels without test labels:
+interactions at or before ``CUT`` form the feature history, interactions after
+it supply the positives, and the negatives are drawn from the source's own test
+candidate pool so that a training query has the same shape as a test query.
 
-Four arms, one shared OOF protocol, pre-CRF base ranker score:
-  base       single production model (no bootstrap, full features) -- the anchor
-  identical  M copies of the base model averaged -- MUST equal base ranking
-  seedonly   M members, distinct seeds + feature_fraction=0.8, NO bootstrap
-  bootstrap  M members, distinct seeds + feature_fraction=0.8 + Poisson(1) query
-             bootstrap -- the candidate
+The cache is not trusted because the file exists. ``build_or_load_features``
+binds it to the SHA256 of both official input files, the cut, the negatives per
+sample, both sampling seeds, the entity count and the expected array names, and
+revalidates it array-by-array on every reuse.
 
-Kill criteria (GPT round-13 spec), judged on this pre-CRF gate:
-  * bootstrap must beat seedonly by >= +0.002, else the query bootstrap is inert;
-  * bootstrap must beat base by >= +0.006 to justify expanding to 8 members;
-  * >= +0.010 to justify building a ds2-only aux-account A/B pack.
-
-The absolute MRR is NOT expected to equal the old base-18 gate anchor (0.6123):
-that gate ran on a CUT-frozen 60k population, this runs on the test-pool split1
-tail (244k). Only the RELATIVE arm deltas are load-bearing, and all arms share
-one protocol, so the comparison is exact.
-
-Run (fast pilot):
-  DATASET=dataset2 python \
-      src/ds2_basket_featurizer.py --members 4 --pass1-only
+This module also carries a self-contained bagging-ensemble command line, used
+during development to test whether query-level bootstrapping helped. It is NOT
+invoked by any of the 33 canonical stages and takes no part in a reproduction;
+it remains here because the five production helpers above live in the same file.
 """
 import argparse
 import json
@@ -59,7 +41,7 @@ from pathlib import Path
 
 os.environ.setdefault("DATASET", "dataset2")
 if os.environ["DATASET"] != "dataset2":
-    raise RuntimeError("this pilot is dataset2-only")
+    raise RuntimeError("this module is dataset2-only")
 os.environ.setdefault("DATA_PACK", "data_A")
 
 HERE = Path(__file__).resolve().parent
@@ -111,7 +93,7 @@ def log(m):
     print(f"[{time.time() - T0:7.1f}s] {m}", flush=True)
 
 
-# ---- feature/label machinery copied verbatim from ranker_basket_ab_ds2.py ----
+# ---- feature and label machinery (the production surface of this module) ----
 def popwin(dvals, tvals, hi, lo, frac, num_entity):
     m = tvals >= (hi - frac * (hi - lo))
     return np.log1p(np.bincount(dvals[m], minlength=num_entity).astype(np.float64))
@@ -246,7 +228,7 @@ def build_features(struct_df, freeze_t, queries, bpr_dirs, line_dir, need_srcs, 
     return X
 
 
-# ---- pilot helpers ----
+# ---- helpers used only by the bagging command line below ----
 def reciprocal_ranks(score_list):
     rr = np.empty(len(score_list))
     for i, s in enumerate(score_list):
@@ -457,7 +439,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--members", type=int, default=4)
     ap.add_argument("--pass1-only", action="store_true",
-                    help="fast base-ranker gate (GPT's base-18 level); no 3-pass basket feedback")
+                    help="fast base-ranker gate (18 base features); no 3-pass basket feedback")
     ap.add_argument("--max-queries", type=int, default=0,
                     help="subsample train queries (pass1-only ONLY; corrupts basket structure otherwise)")
     ap.add_argument("--force", action="store_true", help="rebuild cached features")

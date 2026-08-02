@@ -1,26 +1,31 @@
 # -*- coding: utf-8 -*-
-"""Jittor port of the LINE embedding trainer (production path of train_line.py).
+"""LINE embedding trainer (Jittor). One of the two neural stages of the pipeline.
 
-Trains the same LINE model (three embedding tables: first-order pair +
-second-order node/context, joint BCE loss `loss1 + 0.5 * loss2`) on the
-bidirectional real edges and exports `line_latest_emb.csv` in the exact format
-`ensemble_predict.load_embedding` reads (node_id + concat(emb_first, emb_node),
-rounded to 6 decimals). Everything downstream (similar-user cache, item-CF,
-blending, ranker, CRF) is framework-free numpy/LightGBM and needs no port.
+Trains a LINE model on the bidirectional training edges and exports
+`line_latest_emb.csv` in the exact format `ensemble_predict.load_embedding`
+reads (node_id + concat(emb_first, emb_node), rounded to 6 decimals). Three
+embedding tables are held: a first-order pair table and a second-order
+node/context pair, optimised jointly under `loss1 + 0.5 * loss2`.
 
-Deliberately omitted relative to train_line.py, per the validated production
-config: virtual-edge self-training (VIRT_MODE=off is a proven no-op — holdout
-verdict 2026-07-21), mixed precision, checkpoint resume, and the in-training
-predict/MRR cycle (run `ensemble_predict.py --eval` instead). Sampling,
-shuffling and negative rejection run in seeded numpy; Jittor owns the model,
-loss and Adam only.
+Everything downstream of this stage (similar-user cache, item-CF, blending,
+ranker, CRF) is numpy/LightGBM and uses no training framework.
 
-Knobs (same names as train_line.py): DATASET, DATA_PACK, EMB_DIM (400 total,
-split into two sub_dim halves), NEG_RATIO (5), NEG_DIST (uniform | pop075),
-EPOCHS (400), SEED (42), LINE_TIME_MAX (0), LINE_TAU_FRAC (0), EVAL_HOLDOUT.
-Output dir naming matches train_line.py plus JT_OUT_SUFFIX (default "-jt") so
-verification runs never clobber PyTorch artifacts; set JT_OUT_SUFFIX= (empty)
-for the final Jittor-only release.
+Division of labour: sampling, shuffling and negative rejection run in seeded
+numpy; Jittor owns the embedding tables, the loss and Adam only. This keeps the
+framework-dependent surface small and makes the sampling stream reproducible
+independently of the framework.
+
+Virtual-edge self-training is deliberately omitted (VIRT_MODE=off), a measured
+no-op; the `-novirt` marker in the run-directory name records that choice. The
+in-training predict/MRR cycle is likewise omitted; run `ensemble_predict.py
+--eval` separately if an evaluation is wanted.
+
+Knobs: DATASET, DATA_PACK, EMB_DIM (400 total, split into two sub_dim halves),
+NEG_RATIO (5), NEG_DIST (uniform | pop075), EPOCHS (400), SEED (42),
+LINE_TIME_MAX (0 = full history; set to the cut for a cutoff run),
+LINE_TAU_FRAC (0), EVAL_HOLDOUT. JT_OUT_SUFFIX (empty in the production
+release) can suffix the output directory so a verification run cannot clobber a
+production artifact.
 
 Usage: DATASET=dataset1 python src/train_line_jt.py
 """
@@ -79,8 +84,8 @@ class LINE(nn.Module):
         self.emb_first = nn.Embedding(n_node, d_sub)
         self.emb_node = nn.Embedding(n_node, d_sub)
         self.emb_ctx = nn.Embedding(n_node, d_sub)
-        # Xavier-uniform from one numpy stream: one seed for all three tables
-        # (reseeding per table made them identical at init, see train_line.py)
+        # Xavier-uniform from one numpy stream: one seed for all three tables.
+        # Reseeding per table would make the three identical at initialisation.
         bound = float(np.sqrt(6.0 / (n_node + d_sub)))
         for e in (self.emb_first, self.emb_node, self.emb_ctx):
             e.weight.assign(jt.array(
@@ -111,8 +116,8 @@ def build_pos_keys(pos_set, n_node):
 
 
 def gen_neg_epoch(s_pos_np, pos_keys, n_node, neg_cdf, rng):
-    """Numpy rejection sampling for the whole epoch (same distribution as the
-    PyTorch version's GPU pass)."""
+    """Numpy rejection sampling of the epoch's negatives, drawn against the
+    observed-pair key set."""
     s_rep = np.repeat(s_pos_np.astype(np.int64), neg_ratio)
     base = s_rep * n_node
 
@@ -158,9 +163,8 @@ def main():
         df_raw, _ = split_train_val_by_tail(df_raw)
         print(f"[EVAL_HOLDOUT] Dropped {n_before - len(df_raw)} per-src tail rows")
     # The entity table is sized from the UNFILTERED frame, before any time
-    # cutoff, so node ids stay aligned with full-data artifacts. This mirrors
-    # train_line.py, which computes full_num_entity before applying
-    # LINE_TIME_MAX, and train_bpr_jt.py, which already does the same.
+    # cutoff, so node ids stay aligned with full-data artifacts. train_bpr_jt.py
+    # sizes its table the same way, for the same reason.
     #
     # Sizing it after the cutoff instead shrinks the embedding table to only the
     # nodes seen before the cut (dataset1: 42,361 instead of 43,215), which
@@ -173,7 +177,7 @@ def main():
         df_raw = df_raw[df_raw["time"] <= LINE_TIME_MAX].reset_index(drop=True)
         print(f"[LINE_TIME_MAX] Kept {len(df_raw)}/{n_before} edges with time <= {LINE_TIME_MAX:g}")
 
-    # Bidirectional real edges, interleaved [u,v],[v,u] as in train_line.py
+    # Bidirectional real edges, interleaved [u,v],[v,u]
     uv = df_raw[["src", "dst"]].values.astype(np.int64)
     edges = np.empty((2 * len(uv), 2), dtype=np.int64)
     edges[0::2] = uv
