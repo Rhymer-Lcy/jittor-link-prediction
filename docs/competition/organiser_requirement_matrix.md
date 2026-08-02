@@ -6,7 +6,7 @@ file, command or validation result. No requirement is left unclassified.
 Verdicts: **SATISFIED** / **OPEN_REVIEWER_DECISION** /
 **BLOCKED_BY_LATER_TRANSLATION** / **NOT_APPLICABLE_WITH_REASON** / **DEFECT**.
 
-State at `7a663fb`. **Section numbers refer to the rebuilt English document**,
+State at `7f3da15`. **Section numbers refer to the rebuilt English document**,
 which follows the structure of the reviewer-revised `提交说明文档.docx`
 (SHA256 `1ef5712f9e890b7a91797697440596eeb8a63065052a9ba3d03b82423ef1248b`):
 1 Team Information, 2 Project Overview, 3 Code Structure, 4 Environment Setup,
@@ -48,7 +48,7 @@ code; each needs an explicit keep-or-restore decision from the owner.
 | **2.15** | **Detailed code-file listing and per-file function** | **SATISFIED** | **§3.11** lists all **26** packaged files with category, function, reachability and whether each runs during a full reproduction; `PACKAGED_CODE_INVENTORY.csv` adds principal caller, input and output. Machine coverage audit: **26/26 documented**, zero undocumented |
 | **2.16** | **Key-module logic explained** | **SATISFIED** | §3.1 layout and call chain; §3.2 orchestration; §3.3 the completion contract; §3.4 shared utilities; §3.5 both Jittor trainers; §3.6 and §3.7 the two complete chains; §3.8 validation and serialisation; §3.12 failure and resume. Each module answers: why it exists, who invokes it, what it reads, what it computes, what it writes |
 | **2.17** | **Stage traceability** | **SATISFIED** | **§3.10** maps all **33** canonical stages (16 + 17, every BPR seed explicit) to module, stage type, input, output, device and Jittor use; `CANONICAL_STAGE_TRACEABILITY.csv` is the machine-readable form. Coverage audit: **33/33 documented** |
-| **2.18** | **Packaged source free of development residue** | **SATISFIED** | source-comment cleanup at `81b9eb8` and `7a663fb`; staging hygiene audit reports **0 advisories**; executable-token equivalence proved across all 17 modified modules |
+| **2.18** | **Packaged source free of development residue** | **SATISFIED** | source-comment cleanup at `81b9eb8`, `7a663fb` and `7f3da15`; staging hygiene audit reports **0 advisories**; a scan of the extracted package finds no reference to an alternative backend, an AI tool or a scratch path; executable-token equivalence proved across all 17 modified modules |
 
 ## 3. Environment
 
