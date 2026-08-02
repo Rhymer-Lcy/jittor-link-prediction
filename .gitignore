@@ -24,3 +24,11 @@ artifacts_durable/
 # Audit-evidence export packages staged for manual off-disk backup. Not canonical
 # production inputs and not part of the deliverable.
 audit_exports/
+
+# Draft submission staging trees. Generated deterministically by
+# tools/submission/stage_package.py from tracked sources; never a release source.
+submission_staging/
+
+# Rendered forms of docs/submission/*.md. The markdown is the tracked source.
+docs/submission/*.pdf
+docs/submission/*.docx
