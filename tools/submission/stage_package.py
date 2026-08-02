@@ -265,6 +265,10 @@ def audit_fidelity(root: Path, manifest: list[dict]) -> list[str]:
             problems.append(f"{entry['package_path']}: differs from its tracked source")
     staged_files = {p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()}
     declared = {e["package_path"] for e in manifest}
+    # The manifest cannot list itself. During a build it does not exist yet, so
+    # this only mattered in --audit mode, where its absence from `declared`
+    # produced a false failure.
+    declared.add("STAGING_MANIFEST.json")
     for extra in sorted(staged_files - declared):
         problems.append(f"{extra}: present in the tree but not declared in the manifest")
     return problems
