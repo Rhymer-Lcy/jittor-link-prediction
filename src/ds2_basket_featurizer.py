@@ -302,7 +302,11 @@ def cache_spec(feat: Path, tag: str, max_queries: int, num_entity: int,
         stage_id=f"ds2_train_features_{tag}",
         dataset="dataset2",
         artifact_kind="train_feature_cache_npz",
-        command=[sys.executable, "src/ds2_basket_featurizer.py"],
+        # The cache has no command line of its own: it is built in-process by
+        # build_or_load_features, whose only production caller is the MF pack.
+        # The record names that caller rather than inventing an entry point.
+        command=["<in-process>", "ds2_basket_featurizer.build_or_load_features",
+                 f"via {sys.executable} src/ds2_mf_basket_pack.py --geom MF"],
         env={"DATASET": "dataset2", "DATA_PACK": os.environ.get("DATA_PACK", "data_A")},
         output=feat,
         inputs=[tl.train_csv, tl.test_csv],
