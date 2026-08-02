@@ -19,10 +19,11 @@ python tools/submission/stage_package.py --audit  # audit an existing tree
 |---|---|
 | Staging root | `submission_staging/contest1_TEAM_NAME_PLACEHOLDER_003/` (git-ignored) |
 | Intended archive name | `contest1_<TEAM_NAME>_003.zip` |
-| Source commit | `4aca559a54004bd236a2a2688e471af497f3d4ef` |
+| Source commit | `c6322346c09641430aaaea2fa4fd7ecdb9257f9b` |
 | Files | 28 (25 under `code/`) |
-| Total size | 461,580 bytes |
-| Archive built | **no** |
+| Total size | 466,062 bytes |
+| Final archive built | **no** |
+| Draft validation snapshot | built, extracted and discarded twice (remote 128,424 B; local 249,166 B — the local snapshot also carries the rendered PDF) |
 
 ```
 contest1_<TEAM_NAME>_003/
@@ -164,9 +165,10 @@ All versions were verified installed on the target host during Phase A.
 | A/B algorithm consistency | SATISFIED | document section 13 |
 | Package size reasonable | SATISFIED | 461,580 bytes |
 | No credentials or private material | SATISFIED | secret scan PASS |
-| Archive extraction integrity | NOT_YET_VALIDATED | no archive exists |
+| Archive extraction integrity | SATISFIED | deterministic snapshot extracted into an empty directory on the target host and locally: exit 0, no path traversal, no corrupt entry, **0 manifest hash mismatches**, root layout correct |
+| Package independence | SATISFIED | all 10 canonical modules resolve inside the extracted copy; no repository, worktree or scratchpad path; torch unimportable |
 | Final PDF ready | NOT_SATISFIED | seven placeholders open; owner review not done |
-| Real-GPU validation | PARTIALLY_SATISFIED | **Phase A PASS**; Phase B not run |
+| Real-GPU validation | SATISFIED_FOR_SCOPE | **Phase A PASS** (real Jittor stages, contract mechanics); **targeted release-candidate validation PASS** (real LightGBM, MF geometry, feature cache, CRF, both member builders, both output gates, from the extracted package). A second full dual-dataset run was **not** performed, by owner decision |
 
 ## 6. The reviewer document
 
@@ -185,15 +187,33 @@ seven placeholders present, and no occurrence of `autodl-tmp`, `seetacloud`, a W
 `<TEAM_NAME>`, `<A_BOARD_RANK>`, `<A_BOARD_BEST_TOTAL_SCORE>`, `<CONTACT_NAME>`, `<WECHAT_ID>`,
 `<PHONE_NUMBER>`, `<SUBMISSION_DATE>`.
 
-## 7. Blockers to a final package
+## 7. Open production defect
+
+**`--output-root` is not honoured by the Dataset-2 feature-construction stage.**
+`src/ds2_basket_featurizer.py:413-416` and `src/ds2_mf_basket_pack.py:183-187` resolve the Dataset-2
+embedding directories from a literal `<project>/outputs/...` instead of the shared path contract, so
+`OUTPUTS_ROOT` does not reach them. The **documented reproduction procedure is unaffected** (it uses
+the default output root, where the two locations coincide); with `--output-root` set the stage either
+fails visibly on a missing file or silently reads artifacts left in the default tree by an earlier
+run. Found by targeted validation on 2026-08-02. The fix is three lines and provably
+default-identical; it is **held for review**, not applied. Disclosed in the submission document,
+section 12 item 9, and analysed in `artifacts_durable/rc_validation_20260802/RC_VALIDATION_AUDIT.md`
+section 8.
+
+## 8. Blockers to a final package
 
 1. **Owner input** for the seven placeholders.
 2. **Owner review** of the document content.
-3. **Phase B**: a full raw-to-final run through the packaged entry point (14–16 h). The organiser
-   will reproduce this; it has never been executed end to end through `main.py`.
+3. **Decision on the `--output-root` defect above**: ship as documented, or apply the three-line fix
+   and re-validate.
 4. **Rename** the reviewed PDF to `提交说明文档.pdf`.
-5. **Build and verify the archive**: deterministic ZIP, extraction dry run, SHA256 freeze.
-6. **Optional, owner decision**: record torch's absence in completion records
-   (`ENVIRONMENT_PACKAGES`). One line, no semantics — but it changes `stage_contract.py` and
-   therefore invalidates every existing completion record, so it must be decided **before** Phase B,
-   not after.
+5. **Build and verify the final archive**: deterministic ZIP, extraction dry run, SHA256 freeze.
+
+Closed since the previous audit:
+
+* **A second full dual-dataset raw-to-final run** — replaced, by owner decision, with the targeted
+  release-candidate validation recorded above.
+* **The `ENVIRONMENT_PACKAGES` negative-dependency extension** —
+  `DEFERRED_AS_NONESSENTIAL` by owner decision; `stage_contract.py` was not modified. Torch absence
+  is already evidenced by the environment audit, the import closure, the runtime import guard, the
+  zero Torch files in `code/`, and both environment specifications.
