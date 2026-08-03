@@ -1,45 +1,51 @@
-# Data and run artifacts
-data/
-outputs/
-*.log
+# Official data and generated run artifacts. Keep the policy files visible.
+data/*
+!data/README.md
+outputs/*
+!outputs/README.md
 
-# Local working notes (consultation briefs, scratch analyses) -- not part of the deliverable
-docs_local/
-
-# Python
-__pycache__/
-*.pyc
-.venv/
-venv/
-
-# IDE
-.idea/
-.vscode/
-scratchpad/
-
-# Durable evidence copies pulled off a rented instance. Large binary members and
-# reconstruction intermediates; provenance lives in artifacts_durable/FINAL_MANIFEST.md.
-artifacts_durable/
-
-# Audit-evidence export packages staged for manual off-disk backup. Not canonical
-# production inputs and not part of the deliverable.
-audit_exports/
-
-# Draft submission staging trees. Generated deterministically by
-# tools/submission/stage_package.py from tracked sources; never a release source.
+# Generated submission and review packages.
 submission_staging/
-
-# Rendered forms of docs/submission/*.md. The markdown is the tracked source.
+submission_code_handoff_*/
+submission_review_bundle_*/
 docs/submission/*.pdf
 docs/submission/*.docx
 
-# Generated friend-review bundles. Built by tools from tracked sources; never a release source.
-submission_review_bundle_*/
-
-# Tool caches. Regenerated on demand; never part of a deliverable.
+# Test output, coverage, and build artifacts. Runtime logs belong below the
+# configured output root; a stray log elsewhere must remain visible for review.
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+dist/
+build/
+*.egg-info/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-.coverage
-htmlcov/
-dist/
+.tox/
+.nox/
+.tmp_*/
+
+# Python environments and bytecode.
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.venv-*/
+venv/
+env/
+
+# Local configuration and credentials.
+.env
+.env.*
+!.env.example
+
+# Editor and operating-system metadata.
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini

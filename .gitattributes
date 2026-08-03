@@ -1,19 +1,6 @@
-# Line endings.
-#
-# The repository is developed on Windows with core.autocrlf=true, which left the
-# working tree with a LF/CRLF mixture: 11 of the 28 packaged files were LF on disk
-# and 17 were CRLF, purely depending on whether git or an editor last wrote each
-# one. The stored blobs have always been LF. Declaring it here makes the working
-# tree agree with the blobs instead of depending on a global user setting.
-#
-# Note for anyone comparing a release archive against this repository: the code
-# handoff archives are built from `git cat-file blob`, so they are byte-identical
-# to HEAD and uniformly LF. Comparing one against a CRLF working tree will show
-# spurious differences.
-
+# Store source and documentation with LF line endings on every platform.
 * text=auto eol=lf
 
-# Explicitly text, LF.
 *.py     text eol=lf
 *.md     text eol=lf
 *.txt    text eol=lf
@@ -25,20 +12,19 @@
 *.ini    text eol=lf
 *.sh     text eol=lf
 
-# Binary, never converted or diffed as text.
+# Binary formats must never undergo text conversion.
 *.zip    binary
 *.pdf    binary
 *.docx   binary
 *.npy    binary
 *.npz    binary
 *.pt     binary
+*.pth    binary
 *.png    binary
 *.jpg    binary
+*.jpeg   binary
 *.bundle binary
 
-# Score matrices and submission members are byte-pinned artifacts. Their line
-# endings are part of the accepted result -- dataset1.csv is CRLF and dataset2.csv
-# is LF, each in the exact form that was scored online -- so they must never be
-# normalised. They are gitignored today; this rule is a guard in case one is ever
-# added deliberately.
+# Prediction matrices are byte-sensitive artifacts. Their original line
+# endings must be preserved if a file is deliberately added to Git.
 *.csv    -text
