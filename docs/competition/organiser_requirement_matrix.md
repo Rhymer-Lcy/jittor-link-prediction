@@ -1,13 +1,15 @@
 # Organiser requirement traceability matrix
 
-Every official requirement traced to a specific English-document section, staged
-file, command or validation result. No requirement is left unclassified.
+Every official requirement is traced to a specific English-document section,
+source declaration, command, archived validation result or final-freeze check.
+No requirement is left unclassified.
 
-Verdicts: **SATISFIED** / **OPEN_REVIEWER_DECISION** /
-**BLOCKED_BY_LATER_TRANSLATION** / **NOT_APPLICABLE_WITH_REASON** / **DEFECT**.
+Verdicts: **SATISFIED** / **PARTIALLY_SATISFIED** /
+**OPEN_REVIEWER_DECISION** / **BLOCKED_BY_LATER_TRANSLATION** /
+**NOT_APPLICABLE_WITH_REASON** / **DEFECT**.
 
-State at the documentation-reconciliation commit that follows the static
-cross-version audit. **Section numbers refer to the English document**,
+State after the 2026-08-03 documentation reconciliation and repository cleanup.
+**Section numbers refer to the English document**,
 which follows the structure of the reviewer-revised `提交说明文档.docx`
 (SHA256 `1ef5712f9e890b7a91797697440596eeb8a63065052a9ba3d03b82423ef1248b`):
 1 Team Information, 2 Project Overview, 3 Code Structure, 4 Environment Setup,
@@ -24,15 +26,21 @@ No open reviewer decision remains.
 The English source is now `docs/submission/submission_document_en.md`; the
 earlier `..._draft_en.md` name is retired.
 
+Artifact locations below reflect the 2026-08-03 repository cleanup. The loose
+final Chinese PDF and the draft staging tree are no longer kept in the
+repository. The PDF remains hash-verified in the cold archive; the final
+organiser archive has not yet been assembled or frozen. Dated audit records
+retain their historical paths and wording.
+
 ## 1. Archive
 
 | # | Requirement | Verdict | Evidence |
 |---|---|---|---|
-| 1.1 | Archive named `contest1_<TEAM_NAME>_003.zip` | SATISFIED | the team name is now supplied: the archive will be `contest1_皮卡丘_003.zip`. The draft staging directory still carries `TEAM_NAME_PLACEHOLDER`; it is renamed when the archive is built at freeze |
-| 1.2 | Root contains `code/` | SATISFIED | staging root holds exactly one `code/` directory, 26 files |
-| 1.3 | Root contains `requirements.txt` or `environment.yaml` | SATISFIED | **both** are staged (stricter than required) |
-| 1.4 | Root contains `提交说明文档.pdf` | **BLOCKED_BY_LATER_TRANSLATION** | the final Chinese PDF is produced after this task from the approved English source; no placeholder or substitute PDF has been inserted |
-| 1.5 | Archive extracts cleanly, not damaged or incomplete | SATISFIED | deterministic snapshot; `testzip` clean, no path traversal, 0 manifest hash mismatches |
+| 1.1 | Archive named `contest1_<TEAM_NAME>_003.zip` | **PARTIALLY_SATISFIED** | the team name and required final name, `contest1_皮卡丘_003.zip`, are known. No current staging tree or final organiser archive exists; the draft builder still uses `TEAM_NAME_PLACEHOLDER`, which must be replaced at freeze |
+| 1.2 | Root contains `code/` | **PARTIALLY_SATISFIED** | the last audited draft contained exactly one `code/` directory with 26 files, and the current builder still declares the same 26 members. The final tree must be regenerated and re-audited at freeze |
+| 1.3 | Root contains `requirements.txt` or `environment.yaml` | **PARTIALLY_SATISFIED** | the deterministic builder declares **both** files (stricter than required), but no current final archive exists; their final placement is verified at freeze |
+| 1.4 | Root contains `提交说明文档.pdf` | **PARTIALLY_SATISFIED** | the final 24-page Chinese PDF is complete and hash-verified (`0cd48507…`) under the cold archive's `DOCUMENTS_OF_RECORD/提交说明文档.pdf`. The repository keeps no duplicate; it must be copied to the final archive root at freeze |
+| 1.5 | Archive extracts cleanly, not damaged or incomplete | **PARTIALLY_SATISFIED** | the last draft passed `testzip`, path-traversal and manifest-hash checks. The final organiser archive does not yet exist, so the same checks remain mandatory after final assembly |
 
 ## 2. Code package
 
@@ -75,8 +83,9 @@ earlier `..._draft_en.md` name is retired.
 
 ## 4. Required PDF content
 
-The final PDF is produced from the English source by later translation. Each
-item is traced to the English section that will supply it.
+The final Chinese PDF has been rendered and archived. Each content item remains
+traced to the English source section from which it was produced; row 4.26
+separately records the state of final-package assembly.
 
 | # | Item | Verdict | English section |
 |---|---|---|---|
@@ -105,14 +114,14 @@ item is traced to the English section that will supply it.
 | 4.23 | Known issues | SATISFIED | **§6.3**: target environment, the two required runtime settings, the cuDNN component-probe limitation and the validated response, the Dataset-2 resource envelope, stage-level resume, the absent Dataset-2 end-to-end measurement, and the byte-identity caveat |
 | 4.24 | Reproduction notes | SATISFIED | §3.12 failure and resume; §6.2 resumability; **§2.6** score ownership, no rescoring, no score interval, no byte-identity guarantee and the four-level lineage table; **§3.5** the four verified reasons a reproduction need not match; **§6.3** the same caveat restated where an operator will meet it |
 | 4.25 | JittorGeometric installation and usage status | SATISFIED | §4.1 gives the pinned commit and install step; §3.5 states that **neither trainer imports JittorGeometric** and that no import was added merely to claim usage |
-| 4.26 | Rendered as `提交说明文档.pdf` | **PARTIALLY_SATISFIED** | the final Chinese PDF **exists** at the repository root (`0cd48507…`, 24 pages) and is the document of record. Two things remain: `submission_staging/` still carries the English PDF under a `TEAM_NAME_PLACEHOLDER` directory, and the organiser archive has not been re-staged or frozen against it. Ready as an input; not yet assembled into the final deliverable |
+| 4.26 | Rendered as `提交说明文档.pdf` | **PARTIALLY_SATISFIED** | the final Chinese PDF is complete and hash-verified (`0cd48507…`, 24 pages) in the cold archive; no repository-side duplicate remains. `submission_staging/` has been cleared. The current `stage_package.py` still builds an English-document placeholder draft, so final freeze must stage this Chinese PDF under its official name and then build and audit the organiser archive |
 
 ## 5. Compliance
 
 | # | Requirement | Verdict | Evidence |
 |---|---|---|---|
-| 5.1 | No credentials or private material | SATISFIED | secret scan over every staged file, by filename pattern and content |
-| 5.2 | Archive not damaged, extractable, complete | SATISFIED | see 1.5 |
+| 5.1 | No credentials or private material | **PARTIALLY_SATISFIED** | the last draft passed filename and content secret scans. Because the final tree has not been assembled, the scan must be rerun over every final staged file at freeze |
+| 5.2 | Archive not damaged, extractable, complete | **PARTIALLY_SATISFIED** | see 1.5; the prior draft passed, but the final organiser archive has not yet been built or tested |
 | 5.3 | Manual inspection and reproduction feasible | SATISFIED | §3 plus the review-bundle reading map and inventories |
 | 5.4 | Consistency between A-board and B-board | SATISFIED | §2.6 lineage table; see 2.12 |
 
@@ -120,8 +129,8 @@ item is traced to the English section that will supply it.
 
 | Item | Rationale |
 |---|---|
-| Both `requirements.txt` and `environment.yaml` shipped | the organiser asks for either; shipping both removes an installation choice from the reviewer |
-| Machine-readable `STAGING_MANIFEST.json` inside the tree, `STAGING_REPORT.json` outside it | per-file SHA256 lets a reviewer verify any file independently |
+| Both `requirements.txt` and `environment.yaml` included at freeze | the prior audited draft contained both; the organiser asks for either, and retaining both removes an installation choice from the reviewer |
+| Machine-readable `STAGING_MANIFEST.json` inside the tree, `STAGING_REPORT.json` outside it | required by the deterministic staging workflow at final freeze; per-file SHA256 lets a reviewer verify any file independently |
 | `PACKAGED_CODE_INVENTORY.csv` and `CANONICAL_STAGE_TRACEABILITY.csv` | generated from the staging manifest and the packaged stage graph, so neither can drift from the package |
 | Every command verified from an extracted copy, never from the repository | proves package independence rather than asserting it |
 | Source-comment hygiene with proved token equivalence | the packaged code reads as production documentation, and the cleanup is provably behaviour-preserving |
@@ -132,16 +141,22 @@ item is traced to the English section that will supply it.
 | Verdict | Count |
 |---|---:|
 | SATISFIED | 55 |
+| PARTIALLY_SATISFIED | 8 |
 | OPEN_REVIEWER_DECISION | 0 |
-| BLOCKED_BY_LATER_TRANSLATION | 2 |
+| BLOCKED_BY_LATER_TRANSLATION | 0 |
 | NOT_APPLICABLE_WITH_REASON | 1 |
 | **DEFECT** | **0** |
 
 All four previously open items are closed. The reviewer's six-section structure
 was kept intact; the substance the revision had dropped was restored **inside**
 it rather than by re-adding the old closing sections, as §2.6, §3.5 and §6.3.
-The two translation-blocked items await the Chinese PDF, which is a separate
-task and is deliberately not started here.
+No item remains blocked by translation: the final Chinese PDF is complete and
+hash-verified in the cold archive. The eight partially satisfied items are all
+freeze-gated. There is no current staging tree or final organiser archive, and
+the current `stage_package.py` still builds the earlier English-document,
+placeholder-named draft. Final freeze must select the approved Chinese PDF and
+team name, assemble the archive, generate its manifest, and rerun the package
+integrity and secret checks.
 
 **One correction the reconciliation forced.** The previous statement of 2.12 —
 "the algorithm is unchanged and the claim remains true" — was too strong for the
