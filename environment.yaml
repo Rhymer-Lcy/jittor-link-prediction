@@ -19,23 +19,19 @@
 # which is exactly why a commit and not a version string is what is pinned.
 # --no-deps stops a transitive requirement from silently upgrading the pinned
 # numerical stack; upstream declares no install_requires, so nothing is
-# suppressed by it. See docs/competition/ab_algorithm_consistency_contract.md.
+# suppressed by it.
 #
 # The competition requires JittorGeometric to be available in the environment,
 # and it is. The maintained production chain does NOT import it: link prediction
 # here is a LINE / BPR-MF embedding pair plus LambdaRank over hand-built
 # features, and no stage of that needs a graph-neural-network library. No import
-# is added merely to claim usage. Pinned by
-# tests/integration/test_official_package_inventory.py.
+# is added merely to claim usage.
 #
 # Every version below was installed and imported in a clean environment on
 # Ubuntu 22.04 with Python 3.10. Two properties are deliberate:
 #
 #   * The pins are the newest versions that support Python 3.10, which the
-#     official notice requires. They are NOT identical to the stack that
-#     produced the accepted artifacts (Windows, Python 3.11, PyTorch); that
-#     deviation is forced by the required interpreter and is recorded in
-#     docs/CURRENT_PRODUCTION.md.
+#     official notice requires.
 #   * numpy is held below 2.0. The frozen postprocessors depend on exact
 #     float64 comparison and stable argsort semantics, and the accepted member
 #     hashes were produced under the 1.x behaviour.
@@ -66,7 +62,3 @@ dependencies:
       # Jittor compiles its own kernels on first import and needs g++ >= 5.4
       # (Ubuntu 22.04 ships 11.4) plus, for the GPU path, a CUDA toolkit.
       - jittor==1.3.10
-      # PyTorch is deliberately NOT declared. The canonical path is torch-free:
-      # neural training runs on Jittor and src/train_line.py guards its torch
-      # import. Install torch (CPU wheel) only to re-run the historical PyTorch
-      # trainer. Enforced by tests/integration/test_framework_boundary.py.

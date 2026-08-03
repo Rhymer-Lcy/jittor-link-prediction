@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
 import unittest
 import zipfile
@@ -27,6 +28,53 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def packaged_code_members() -> list[tuple[str, str, str]]:
+    """The authoritative submission file set, read from the packaging tool.
+
+    ``tools/submission/stage_package.py`` owns ``CODE_MEMBERS``: the explicit
+    list that builds the archive. Reading it here means a dependency audit and
+    the package can never disagree about what "the submission" is. The literal is
+    parsed rather than imported, so no packaging side effect runs during tests.
+    """
+    import ast
+
+    source = (REPO / "tools" / "submission" / "stage_package.py").read_text(encoding="utf-8")
+    for node in ast.parse(source).body:
+        target = None
+        if isinstance(node, ast.AnnAssign):
+            target = getattr(node.target, "id", None)
+        elif isinstance(node, ast.Assign) and node.targets:
+            target = getattr(node.targets[0], "id", None)
+        if target == "CODE_MEMBERS":
+            return [tuple(entry) for entry in ast.literal_eval(node.value)]
+    raise AssertionError("stage_package.CODE_MEMBERS not found")
+
+
+def packaged_python_sources() -> list[Path]:
+    """Absolute paths of every packaged ``.py`` file, sorted."""
+    return sorted(REPO / rel for rel, _, _ in packaged_code_members()
+                  if rel.endswith(".py"))
+
+
+def declared_dependencies() -> str:
+    """The functional lines of both specifications, with comments removed.
+
+    Comments are stripped deliberately: a dependency mentioned only in prose is
+    not installed, so it must not satisfy the import audit.
+    """
+    lines: list[str] = []
+    for name in ("environment.yaml", "requirements.txt"):
+        path = REPO / name
+        if not path.exists():
+            continue
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            stripped = raw.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            lines.append(stripped)
+    return "\n".join(lines)
 
 
 class ProductionManifestTest(unittest.TestCase):
@@ -295,24 +343,33 @@ class EntryPointTest(unittest.TestCase):
         for package in ("python", "jittor", "numpy", "pandas", "scikit-learn", "lightgbm"):
             self.assertIn(package, text, f"{package} is not pinned in environment.yaml")
 
-    def test_third_party_imports_of_maintained_modules_are_declared(self):
-        """Every third-party module the maintained sources import must be declared.
+    def test_third_party_imports_of_packaged_modules_are_declared(self):
+        """Every third-party module the PACKAGED sources import must be declared.
 
-        This guards a defect found on the target environment: `src/train_line.py`
-        is both the historical PyTorch trainer and the shared utility module that
-        `ensemble_predict`, `ranker_ds1`, `ranker_basket_ds2` and
-        `ds2_mf_basket_pack` import. With torch absent from the environment
-        specification, all four failed at import with ModuleNotFoundError, so no
-        ranking stage could run and no submission member could be produced.
+        This guards a real defect: a canonical module importing a distribution
+        that the environment specification does not install fails at import on
+        the target host, so the stage cannot run and no member is produced.
+
+        The audited set is the submission package itself, taken from
+        ``stage_package.CODE_MEMBERS`` -- the same list that builds the archive,
+        so the test cannot drift from what ships. The repository also carries two
+        historical trainers, ``src/train_line.py`` and ``src/train_bpr.py``, which
+        import torch and are deliberately NOT packaged; they are reference-only
+        and unreachable from the canonical stage graph, and
+        ``PackagedSetBoundaryTest`` below pins that separation. Auditing them here
+        would demand a torch declaration for a dependency the submission does not
+        have.
         """
         import ast
 
         stdlib = set(getattr(sys, "stdlib_module_names", ()))
+        packaged = packaged_python_sources()
+        self.assertTrue(packaged, "the packaged source list is empty")
         local = {p.stem for p in (REPO / "src").rglob("*.py")}
         local |= {"strategies", "tools"}
 
         imported: set[str] = set()
-        for path in sorted((REPO / "src").rglob("*.py")):
+        for path in packaged:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
@@ -322,12 +379,11 @@ class EntryPointTest(unittest.TestCase):
                     if node.level == 0 and node.module:
                         imported.add(node.module.split(".")[0])
         third_party = {m for m in imported if m not in stdlib and m not in local}
+        self.assertIn("jittor", third_party,
+                      "the scan found no jittor import in the packaged sources, so "
+                      "its negatives prove nothing")
 
-        declared = " ".join(
-            (REPO / name).read_text(encoding="utf-8")
-            for name in ("environment.yaml", "requirements.txt")
-            if (REPO / name).exists()
-        )
+        declared = declared_dependencies()
         # Import name to distribution name where they differ.
         distribution = {"sklearn": "scikit-learn", "yaml": "pyyaml"}
         missing = sorted(
@@ -335,6 +391,83 @@ class EntryPointTest(unittest.TestCase):
             if distribution.get(m, m) not in declared
         )
         self.assertEqual(missing, [], f"imported but not declared as a dependency: {missing}")
+
+    def test_the_declaration_scan_rejects_an_undeclared_import(self):
+        """Anti-vacuity: the same comparison must reject a module nobody declares."""
+        declared = declared_dependencies()
+        self.assertNotIn("tensorflow", declared)
+        self.assertIn("jittor", declared)
+
+    def test_a_declaration_in_a_comment_does_not_count(self):
+        """A dependency named only in prose must not satisfy the audit.
+
+        The declaration text is the functional lines of the two specifications,
+        with comments stripped, so re-adding an explanatory mention of a
+        framework cannot silently re-satisfy the import audit.
+        """
+        for name in ("requirements.txt", "environment.yaml"):
+            raw = (REPO / name).read_text(encoding="utf-8")
+            commented = [ln for ln in raw.splitlines()
+                         if ln.strip().startswith("#")]
+            self.assertTrue(commented, f"{name} has no comments to distinguish")
+            for line in commented:
+                self.assertNotIn(line.strip(), declared_dependencies().splitlines(),
+                                 f"{name}: a comment line reached the declaration text")
+
+
+class PackagedSetBoundaryTest(unittest.TestCase):
+    """The submission package boundary, and what deliberately sits outside it."""
+
+    #: Historical trainers kept for provenance. They import torch, are not on the
+    #: canonical path, and must never enter the package.
+    REFERENCE_ONLY = ("src/train_line.py", "src/train_bpr.py")
+
+    def test_the_package_declares_twenty_six_code_files(self):
+        self.assertEqual(len(packaged_code_members()), 26)
+
+    def test_reference_only_trainers_are_not_packaged(self):
+        packaged = {rel for rel, _, _ in packaged_code_members()}
+        for name in self.REFERENCE_ONLY:
+            self.assertTrue((REPO / name).exists(),
+                            f"{name} is expected to exist as a reference-only module")
+            self.assertNotIn(name, packaged, f"{name} must not be packaged")
+
+    def test_reference_only_trainers_are_unreachable_from_the_stage_graph(self):
+        graph = (REPO / "src" / "canonical_pipeline.py").read_text(encoding="utf-8")
+        for name in self.REFERENCE_ONLY:
+            self.assertNotIn(Path(name).name, graph,
+                             f"the canonical stage graph references {name}")
+
+    def test_only_the_jittor_trainers_are_used_for_embeddings(self):
+        graph = (REPO / "src" / "canonical_pipeline.py").read_text(encoding="utf-8")
+        self.assertIn("train_line_jt.py", graph)
+        self.assertIn("train_bpr_jt.py", graph)
+        self.assertEqual(set(re.findall(r"train_\w+\.py", graph)),
+                         {"train_line_jt.py", "train_bpr_jt.py"})
+
+    def test_no_packaged_module_imports_torch(self):
+        import ast
+
+        offenders = []
+        for path in packaged_python_sources():
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                names = []
+                if isinstance(node, ast.Import):
+                    names = [a.name for a in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    names = [node.module]
+                if any(n.split(".")[0] == "torch" for n in names):
+                    offenders.append(path.relative_to(REPO).as_posix())
+        self.assertEqual(sorted(set(offenders)), [],
+                         f"packaged modules importing torch: {sorted(set(offenders))}")
+
+    def test_the_dependency_specifications_never_name_torch(self):
+        for name in ("requirements.txt", "environment.yaml"):
+            text = (REPO / name).read_text(encoding="utf-8").lower()
+            self.assertNotIn("torch", text,
+                             f"{name} mentions torch; the submitted specification must "
+                             f"describe only what the packaged pipeline needs")
 
 
 if __name__ == "__main__":

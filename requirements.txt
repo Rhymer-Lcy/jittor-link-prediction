@@ -30,22 +30,5 @@ tqdm==4.67.1
 # --- mandatory competition framework --------------------------------------
 # Used by src/train_line_jt.py and src/train_bpr_jt.py. Compiles its own kernels
 # on first import and needs g++ >= 5.4; the GPU path additionally needs a CUDA
-# toolkit. See docs/competition/ab_algorithm_consistency_contract.md.
+# toolkit.
 jittor==1.3.10
-
-# --- NOT REQUIRED: PyTorch is reference-only --------------------------------
-# The canonical path does not need PyTorch and this specification deliberately
-# does not declare it. All neural model training runs on Jittor
-# (src/train_line_jt.py, src/train_bpr_jt.py), which import no torch.
-#
-# src/train_line.py is the historical PyTorch trainer AND the shared utility
-# module the ranking stages import. Its torch import is guarded, and the one
-# utility that used torch (build_sim_cache, a cosine top-k) is now NumPy, so the
-# canonical stages import it without torch. Enforced by
-# tests/integration/test_framework_boundary.py.
-#
-# Install torch ONLY to re-run the historical PyTorch trainer, and then use the
-# CPU wheel: a CUDA-enabled torch ships nvidia-* packages that shadow the CUDA
-# 12.4 libraries Jittor is built against and break it with
-# CURAND_STATUS_INITIALIZATION_FAILED.
-#   pip install torch --index-url https://download.pytorch.org/whl/cpu
