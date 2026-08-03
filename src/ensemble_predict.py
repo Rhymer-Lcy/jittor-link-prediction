@@ -25,6 +25,7 @@ Usage:
   DATASET=dataset2 python src/ensemble_predict.py
   DATASET=dataset2 python src/ensemble_predict.py --runs outputs/dataset2 outputs/dataset2-s123
 """
+
 import argparse
 import gc
 import os
@@ -34,7 +35,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-import pipeline_common as tl   # framework-neutral shared components
+import pipeline_common as tl  # framework-neutral shared components
 
 # Item-CF: cosine similarity between a candidate's embedding and the src's
 # historical dst embeddings (mean over all, plus mean of the top-3 closest).
@@ -87,11 +88,13 @@ W_BPR = float(os.environ.get("W_BPR", BPR_W_DEFAULT))
 # each run's rownormed direct score is computed independently and averaged.
 # This is load-bearing: embeddings from different seeds are not alignable and
 # must never be averaged directly, whereas their per-row scores are.
-_SEEDS = ((42, 123, 777, 2024, 31337, 7, 99, 555, 1234, 9999)
-          if tl.DATASET == "dataset1" else (42, 123, 777, 2024, 31337))
+_SEEDS = (
+    (42, 123, 777, 2024, 31337, 7, 99, 555, 1234, 9999)
+    if tl.DATASET == "dataset1"
+    else (42, 123, 777, 2024, 31337)
+)
 _BPR_DEFAULT_RUNS = ",".join(
-    f"outputs/{tl.DATASET}-bpr{BPR_TAG}" + (f"-s{s}" if s != 42 else "")
-    for s in _SEEDS
+    f"outputs/{tl.DATASET}-bpr{BPR_TAG}" + (f"-s{s}" if s != 42 else "") for s in _SEEDS
 )
 BPR_RUNS = [r for r in os.environ.get("BPR_RUNS", _BPR_DEFAULT_RUNS).split(",") if r]
 bpr_embs = []
@@ -108,8 +111,7 @@ bpr_embs = []
 _W_IBPR_DEFAULT = "12" if tl.DATASET == "dataset1" else "0"
 W_IBPR = float(os.environ.get("W_IBPR", _W_IBPR_DEFAULT))
 _IBPR_DEFAULT_RUNS = ",".join(
-    f"outputs/{tl.DATASET}-bpr-innov{BPR_TAG}" + (f"-s{s}" if s != 42 else "")
-    for s in _SEEDS
+    f"outputs/{tl.DATASET}-bpr-innov{BPR_TAG}" + (f"-s{s}" if s != 42 else "") for s in _SEEDS
 )
 IBPR_RUNS = [r for r in os.environ.get("IBPR_RUNS", _IBPR_DEFAULT_RUNS).split(",") if r]
 ibpr_embs = []
@@ -120,7 +122,8 @@ def load_embedding(run_dir: Path, expected_rows: int = 0) -> np.ndarray:
     emb = emb_df.drop(columns=["node_id"]).values.astype(np.float32)
     # Guard against truncated exports (has happened); dims may differ per run
     assert expected_rows == 0 or emb.shape[0] == expected_rows, (
-        f"{run_dir.name}: embedding has {emb.shape[0]} rows, expected {expected_rows}")
+        f"{run_dir.name}: embedding has {emb.shape[0]} rows, expected {expected_rows}"
+    )
     return emb
 
 
@@ -157,7 +160,7 @@ def grouped_collab(cache_mat, q_srcs, q_cands):
         pos = 0
         for r in rows:
             k = len(q_cands[r])
-            out[r] = flat_scores[pos:pos + k]
+            out[r] = flat_scores[pos : pos + k]
             pos += k
         i = j
     return out
@@ -170,9 +173,9 @@ def emb_rows_for_queries(emb, needed_srcs, cache_mat, q_srcs, q_times, q_cands):
     n_node = emb.shape[0]
     collab_rows = grouped_collab(cache_mat, q_srcs, q_cands)
     rows = []
-    for idx, (src, t, cands) in enumerate(tqdm(
-        list(zip(q_srcs, q_times, q_cands)), desc="Embedding scoring (user-CF + item-CF)"
-    )):
+    for idx, (src, t, cands) in enumerate(
+        tqdm(list(zip(q_srcs, q_times, q_cands)), desc="Embedding scoring (user-CF + item-CF)")
+    ):
         collab = collab_rows[idx]
         score = COLLAB_W * tl.rownorm(collab.astype(np.float64))
         if ITEMCF_MEAN_W > 0 or ITEMCF_TOP3_W > 0:
@@ -181,8 +184,7 @@ def emb_rows_for_queries(emb, needed_srcs, cache_mat, q_srcs, q_times, q_cands):
                 cc = np.clip(cands, 0, n_node - 1)
                 hvec = emb_norm[np.clip(hist_d, 0, n_node - 1)]
                 sim_all = emb_norm[cc] @ hvec.T
-                score = score + ITEMCF_MEAN_W * tl.rownorm(
-                    np.maximum(sim_all.mean(axis=1), 0.0))
+                score = score + ITEMCF_MEAN_W * tl.rownorm(np.maximum(sim_all.mean(axis=1), 0.0))
                 k = min(3, hvec.shape[0])
                 top3 = np.sort(sim_all, axis=1)[:, -k:].mean(axis=1)
                 score = score + ITEMCF_TOP3_W * tl.rownorm(np.maximum(top3, 0.0))
@@ -230,7 +232,9 @@ def blend_scores(src, curr_time, cands, emb_score):
 
 def run_eval(df_raw, test_df, run_dirs, args):
     train_split, val_split = tl.split_train_val_by_tail(df_raw)
-    print(f"Eval protocol: {len(train_split)} train rows (tails removed), {len(val_split)} tail rows")
+    print(
+        f"Eval protocol: {len(train_split)} train rows (tails removed), {len(val_split)} tail rows"
+    )
     tl.build_history_index(train_split)
     tl.build_cooc(train_split, args.num_entity)
     base_cache = build_base_cache(train_split)
@@ -256,8 +260,10 @@ def run_eval(df_raw, test_df, run_dirs, args):
             negs = rng.choice(negs, NEG_PER_SAMPLE, replace=False).tolist()
         samples.append((src, t, np.array(negs + [true_dst], dtype=np.int64)))
     pool_sizes = [len(c) - 1 for _, _, c in samples]
-    print(f"Eval samples: {len(samples)} (src in test), negatives per sample: "
-          f"min {min(pool_sizes)} / median {int(np.median(pool_sizes))} / max {max(pool_sizes)}")
+    print(
+        f"Eval samples: {len(samples)} (src in test), negatives per sample: "
+        f"min {min(pool_sizes)} / median {int(np.median(pool_sizes))} / max {max(pool_sizes)}"
+    )
 
     q_srcs = [s for s, _, _ in samples]
     q_times = [t for _, t, _ in samples]
@@ -343,24 +349,31 @@ def run_predict(df_raw, test_df, run_dirs, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        "--runs", nargs="+",
+        "--runs",
+        nargs="+",
         default=[f"outputs/{tl.DATASET}", f"outputs/{tl.DATASET}-s123"],
         help="run directories containing line_latest_emb.csv",
     )
-    parser.add_argument("--eval", action="store_true",
-                        help="real-candidate offline evaluation instead of writing a submission")
-    parser.add_argument("--seed", type=int, default=42,
-                        help="rng seed for negative sampling in --eval")
+    parser.add_argument(
+        "--eval",
+        action="store_true",
+        help="real-candidate offline evaluation instead of writing a submission",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=42, help="rng seed for negative sampling in --eval"
+    )
     args = parser.parse_args()
 
     run_dirs = [tl.PROJECT_ROOT / r for r in args.runs]
     for d in run_dirs:
         assert (d / "line_latest_emb.csv").exists(), f"missing embedding: {d}"
 
-    print(f"Dataset: {tl.DATASET} | runs: {[d.name for d in run_dirs]} | "
-          f"blend: collab={COLLAB_W} itemcf_mean={ITEMCF_MEAN_W} "
-          f"itemcf_top3={ITEMCF_TOP3_W} cooc={tl.COOC_GAMMA} rpop={tl.RPOP_DELTA} "
-          f"bpr={W_BPR} ibpr={W_IBPR} mask_history={tl.MASK_HISTORY} hist_boost={tl.HIST_BOOST}")
+    print(
+        f"Dataset: {tl.DATASET} | runs: {[d.name for d in run_dirs]} | "
+        f"blend: collab={COLLAB_W} itemcf_mean={ITEMCF_MEAN_W} "
+        f"itemcf_top3={ITEMCF_TOP3_W} cooc={tl.COOC_GAMMA} rpop={tl.RPOP_DELTA} "
+        f"bpr={W_BPR} ibpr={W_IBPR} mask_history={tl.MASK_HISTORY} hist_boost={tl.HIST_BOOST}"
+    )
 
     if W_BPR > 0:
         for r in BPR_RUNS:

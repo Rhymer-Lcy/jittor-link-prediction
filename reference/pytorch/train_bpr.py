@@ -9,8 +9,8 @@ complementary to the LINE blend on the leak-free holdout eval (dataset2
 honest +0.017 at blend weight 0.7, 2026-07-20).
 
 Usage:
-  DATASET=dataset2 python src/train_bpr.py                # -> outputs/dataset2-bpr/bpr_emb.npy
-  DATASET=dataset2 EVAL_HOLDOUT=1 python src/train_bpr.py # leak-free variant for offline eval
+  DATASET=dataset2 python reference/pytorch/train_bpr.py
+  DATASET=dataset2 EVAL_HOLDOUT=1 python reference/pytorch/train_bpr.py
 Knobs: BPR_DIM (256), BPR_EPOCHS (120), SEED (42), BPR_TAU_FRAC (0),
 BPR_TIME_MAX (0), BPR_INNOV (0), BPR_SAVE_EVERY (0, intermediate epoch
 snapshots).
@@ -28,13 +28,14 @@ mass). Blended via ensemble_predict's W_IBPR term, masked to non-history
 candidates. Validated 2026-07-23 on both calibers (honest +0.0033 at w12,
 leaky same direction), targeting dataset1's non-repeat loss block.
 """
+
 import os
+import re
 import time
 
 import numpy as np
 import pandas as pd
 import torch
-
 import train_line as tl
 
 SEED = int(os.environ.get("SEED", "42"))
@@ -50,28 +51,39 @@ INNOV = os.environ.get("BPR_INNOV", "0") == "1"
 # epochs. Lets a single run sweep the whole epoch axis for the under-training /
 # early-stopping transfer study without retraining once per epoch count.
 SAVE_EVERY = int(os.environ.get("BPR_SAVE_EVERY", "0"))
+PYTORCH_OUT_SUFFIX = os.environ.get("PYTORCH_OUT_SUFFIX", "-pytorch")
+if not re.fullmatch(r"-[a-z0-9][a-z0-9._-]*", PYTORCH_OUT_SUFFIX):
+    raise ValueError("PYTORCH_OUT_SUFFIX must be a safe, non-empty directory suffix")
 LR = 3e-3
 L2 = 1e-6
 BATCH = 8192
 
 # Non-default knobs write to a suffixed dir (same convention as train_line)
 # so multi-seed / time-weighted ensemble runs never clobber each other.
-OUT_DIR = tl.PROJECT_ROOT / "outputs" / (
-    tl.DATASET + "-bpr"
-    + ("-innov" if INNOV else "")
-    + (f"-t{TAU_FRAC:g}" if TAU_FRAC > 0 else "")
-    + (f"-d{DIM}" if DIM != 256 else "")
-    + (f"-tmax{TIME_MAX:g}" if TIME_MAX > 0 else "")
-    + (f"-s{SEED}" if SEED != 42 else "")
-    + ("-holdout" if tl.EVAL_HOLDOUT else "")
+OUT_DIR = (
+    tl.PROJECT_ROOT
+    / "outputs"
+    / (
+        tl.DATASET
+        + "-bpr"
+        + ("-innov" if INNOV else "")
+        + (f"-t{TAU_FRAC:g}" if TAU_FRAC > 0 else "")
+        + (f"-d{DIM}" if DIM != 256 else "")
+        + (f"-tmax{TIME_MAX:g}" if TIME_MAX > 0 else "")
+        + (f"-s{SEED}" if SEED != 42 else "")
+        + ("-holdout" if tl.EVAL_HOLDOUT else "")
+        + PYTORCH_OUT_SUFFIX
+    )
 )
 os.makedirs(OUT_DIR, exist_ok=True)
 
 
 def main():
     device = tl.device
-    print(f"Dataset: {tl.DATASET} | device: {device} | dim {DIM} | epochs {EPOCHS} | "
-          f"seed {SEED} | tau_frac {TAU_FRAC:g}")
+    print(
+        f"Dataset: {tl.DATASET} | device: {device} | dim {DIM} | epochs {EPOCHS} | "
+        f"seed {SEED} | tau_frac {TAU_FRAC:g}"
+    )
     df = pd.read_csv(tl.train_csv)
     df = df.drop_duplicates(subset=["src", "dst", "time"]).reset_index(drop=True)
     df["src"] = df["src"].astype(np.int64)
@@ -88,7 +100,11 @@ def main():
         print(f"[BPR_TIME_MAX] Kept {len(df)}/{n_before} edges with time <= {TIME_MAX:g}")
     if INNOV:
         n_before = len(df)
-        df = df.sort_values("time").drop_duplicates(["src", "dst"], keep="first").reset_index(drop=True)
+        df = (
+            df.sort_values("time")
+            .drop_duplicates(["src", "dst"], keep="first")
+            .reset_index(drop=True)
+        )
         print(f"[BPR_INNOV] Kept {len(df)}/{n_before} first-time (src, dst) links")
 
     torch.manual_seed(SEED)
@@ -98,7 +114,7 @@ def main():
 
     # degree^0.75 negative CDF (same convention as LINE's pop075 mode)
     pw = np.bincount(df["dst"].values, minlength=num_entity).astype(np.float64) + 1.0
-    cdf = torch.from_numpy(np.cumsum(pw ** 0.75 / (pw ** 0.75).sum())).to(device)
+    cdf = torch.from_numpy(np.cumsum(pw**0.75 / (pw**0.75).sum())).to(device)
     s_all = torch.from_numpy(df["src"].values).to(device)
     d_all = torch.from_numpy(df["dst"].values).to(device)
     n_pos = len(s_all)
@@ -125,7 +141,7 @@ def main():
                     torch.rand(min(BATCH, n_pos - beg), device=device, dtype=torch.float64),
                 ).clamp_(0, n_pos - 1)
             else:
-                idx = perm[beg:beg + BATCH]
+                idx = perm[beg : beg + BATCH]
             u, v = s_all[idx], d_all[idx]
             vneg = torch.searchsorted(
                 cdf, torch.rand(len(idx), device=device, dtype=torch.float64)
@@ -139,7 +155,9 @@ def main():
             total += loss.item()
             batches += 1
         if (ep_i + 1) % 20 == 0:
-            print(f"[BPR epoch {ep_i + 1}/{EPOCHS}] avg loss {total / batches:.4f} ({time.time() - t0:.0f}s)")
+            print(
+                f"[BPR epoch {ep_i + 1}/{EPOCHS}] avg loss {total / batches:.4f} ({time.time() - t0:.0f}s)"
+            )
         if SAVE_EVERY > 0 and (ep_i + 1) % SAVE_EVERY == 0 and (ep_i + 1) != EPOCHS:
             snap = OUT_DIR / f"bpr_emb_ep{ep_i + 1}.npy"
             np.save(str(snap), emb.weight.detach().cpu().numpy().astype(np.float32))

@@ -15,7 +15,6 @@ distinct, constructible condition rather than by one over-broad guard.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 import tempfile
@@ -66,15 +65,21 @@ class ContractHarness(unittest.TestCase):
         defaults.update(overrides)
         return sc.StageSpec(**defaults)
 
-    def finish(self, spec: sc.StageSpec | None = None, *, payload: str = "done\n",
-               log_text: str = "") -> dict:
+    def finish(
+        self, spec: sc.StageSpec | None = None, *, payload: str = "done\n", log_text: str = ""
+    ) -> dict:
         """Run the stage's effect and publish a real completion record."""
         spec = spec or self.spec()
         with sc.atomic_output(spec.output) as staged:
             staged.write_text(payload, encoding="utf-8")
-        return sc.complete_stage(spec, repo=self.root, exit_code=0,
-                                 started_at="2026-08-02T00:00:00Z",
-                                 completed_at="2026-08-02T00:00:01Z", log_text=log_text)
+        return sc.complete_stage(
+            spec,
+            repo=self.root,
+            exit_code=0,
+            started_at="2026-08-02T00:00:00Z",
+            completed_at="2026-08-02T00:00:01Z",
+            log_text=log_text,
+        )
 
     def record(self) -> dict:
         return json.loads(sc.record_path(self.output).read_text(encoding="utf-8"))
@@ -86,8 +91,9 @@ class ContractHarness(unittest.TestCase):
 
     def assert_stop(self, code: str, spec: sc.StageSpec | None = None) -> sc.Decision:
         decision = sc.evaluate(spec or self.spec(), repo=self.root)
-        self.assertEqual(decision.action, "STOP",
-                         f"expected a stop, got {decision.action} ({decision.code})")
+        self.assertEqual(
+            decision.action, "STOP", f"expected a stop, got {decision.action} ({decision.code})"
+        )
         self.assertEqual(decision.code, code, decision.detail)
         return decision
 
@@ -177,15 +183,17 @@ class IdentityMismatches(ContractHarness):
         self.finish()
         self.source.write_text("src,dst\n9,8\n", encoding="utf-8")
         decision = self.assert_stop("IDENTITY_MISMATCH")
-        self.assertTrue(any(m["property"].endswith("sha256") for m in decision.mismatches),
-                        decision.mismatches)
+        self.assertTrue(
+            any(m["property"].endswith("sha256") for m in decision.mismatches), decision.mismatches
+        )
 
     def test_an_input_that_grew_stops_on_size(self):
         self.finish()
         self.source.write_text("src,dst\n1,2\n3,4\n", encoding="utf-8")
         decision = self.assert_stop("IDENTITY_MISMATCH")
-        self.assertTrue(any(m["property"].endswith("size") for m in decision.mismatches),
-                        decision.mismatches)
+        self.assertTrue(
+            any(m["property"].endswith("size") for m in decision.mismatches), decision.mismatches
+        )
 
     def test_a_vanished_input_stops(self):
         self.finish()
@@ -210,15 +218,13 @@ class IdentityMismatches(ContractHarness):
         self.finish()
         self.code.write_text("VALUE = 2\n", encoding="utf-8")
         decision = self.assert_stop("IDENTITY_MISMATCH")
-        self.assertTrue(any(m["property"] == "code_identity.digest"
-                            for m in decision.mismatches))
+        self.assertTrue(any(m["property"] == "code_identity.digest" for m in decision.mismatches))
 
     def test_a_different_producing_commit_stops(self):
         self.finish()
         self.rewrite_record(producing_commit="0" * 40)
         decision = self.assert_stop("IDENTITY_MISMATCH")
-        self.assertTrue(any(m["property"] == "producing_commit"
-                            for m in decision.mismatches))
+        self.assertTrue(any(m["property"] == "producing_commit" for m in decision.mismatches))
 
     def test_a_changed_output_stops(self):
         self.finish()
@@ -253,8 +259,12 @@ class EpochAccounting(ContractHarness):
     """A trainer that exports periodically can leave a complete-looking artifact."""
 
     def spec_with_epochs(self, **overrides) -> sc.StageSpec:
-        return self.spec(requested_units=400, unit_name="epochs",
-                         achieved_units_from_log=sc.LINE_EPOCH_READER, **overrides)
+        return self.spec(
+            requested_units=400,
+            unit_name="epochs",
+            achieved_units_from_log=sc.LINE_EPOCH_READER,
+            **overrides,
+        )
 
     def test_a_full_epoch_count_completes(self):
         log = "".join(f"[LINE epoch {i}/400] avg loss 0.1\n" for i in range(1, 401))
@@ -282,9 +292,14 @@ class EpochAccounting(ContractHarness):
     def test_a_changed_requested_unit_count_stops(self):
         log = "".join(f"[LINE epoch {i}/400] x\n" for i in range(1, 401))
         self.finish(self.spec_with_epochs(), log_text=log)
-        self.assert_stop("IDENTITY_MISMATCH",
-                         self.spec(requested_units=600, unit_name="epochs",
-                                   achieved_units_from_log=sc.LINE_EPOCH_READER))
+        self.assert_stop(
+            "IDENTITY_MISMATCH",
+            self.spec(
+                requested_units=600,
+                unit_name="epochs",
+                achieved_units_from_log=sc.LINE_EPOCH_READER,
+            ),
+        )
 
     def test_the_bpr_reader_reads_its_own_format(self):
         self.assertEqual(sc.BPR_EPOCH_READER("[BPR epoch 120/120] avg loss 0.02\n"), 120)
@@ -296,14 +311,16 @@ class FailureNeverPublishes(ContractHarness):
         with sc.atomic_output(self.output) as staged:
             staged.write_text("partial\n", encoding="utf-8")
         with self.assertRaises(sc.StageContractError):
-            sc.complete_stage(self.spec(), repo=self.root, exit_code=3,
-                              started_at="a", completed_at="b")
+            sc.complete_stage(
+                self.spec(), repo=self.root, exit_code=3, started_at="a", completed_at="b"
+            )
         self.assertFalse(sc.record_path(self.output).exists())
 
     def test_a_missing_output_writes_no_record(self):
         with self.assertRaises(sc.StageContractError):
-            sc.complete_stage(self.spec(), repo=self.root, exit_code=0,
-                              started_at="a", completed_at="b")
+            sc.complete_stage(
+                self.spec(), repo=self.root, exit_code=0, started_at="a", completed_at="b"
+            )
         self.assertFalse(sc.record_path(self.output).exists())
 
     def test_a_leftover_part_writes_no_record(self):
@@ -311,8 +328,9 @@ class FailureNeverPublishes(ContractHarness):
         self.output.write_text("done\n", encoding="utf-8")
         sc.part_path(self.output).write_text("half\n", encoding="utf-8")
         with self.assertRaises(sc.StageContractError):
-            sc.complete_stage(self.spec(), repo=self.root, exit_code=0,
-                              started_at="a", completed_at="b")
+            sc.complete_stage(
+                self.spec(), repo=self.root, exit_code=0, started_at="a", completed_at="b"
+            )
         self.assertFalse(sc.record_path(self.output).exists())
 
     def test_a_failing_validator_writes_no_record(self):
@@ -322,8 +340,13 @@ class FailureNeverPublishes(ContractHarness):
         with sc.atomic_output(self.output) as staged:
             staged.write_text("done\n", encoding="utf-8")
         with self.assertRaises(sc.StageContractError):
-            sc.complete_stage(self.spec(validator=refuse), repo=self.root, exit_code=0,
-                              started_at="a", completed_at="b")
+            sc.complete_stage(
+                self.spec(validator=refuse),
+                repo=self.root,
+                exit_code=0,
+                started_at="a",
+                completed_at="b",
+            )
         self.assertFalse(sc.record_path(self.output).exists())
 
     def test_publish_record_refuses_a_failed_record(self):
@@ -373,8 +396,9 @@ class AtomicPublication(ContractHarness):
         """Anti-vacuity for the ordering claim, read off the real source."""
         source = (SRC / "stage_contract.py").read_text(encoding="utf-8")
         body = source.split("def complete_stage", 1)[1].split("\n# ---", 1)[0]
-        self.assertLess(body.index("spec.validator(spec, output)"),
-                        body.index("publish_record(spec, record)"))
+        self.assertLess(
+            body.index("spec.validator(spec, output)"), body.index("publish_record(spec, record)")
+        )
         self.assertLess(body.index("exit_code != 0"), body.index("spec.validator"))
 
 
@@ -382,8 +406,9 @@ class Quarantine(ContractHarness):
     def test_quarantine_moves_and_explains_but_never_deletes(self):
         self.finish()
         outputs = self.root / "outputs"
-        slot = sc.quarantine([self.output, sc.record_path(self.output)],
-                             outputs_root=outputs, reason="test")
+        slot = sc.quarantine(
+            [self.output, sc.record_path(self.output)], outputs_root=outputs, reason="test"
+        )
         self.assertFalse(self.output.exists())
         self.assertTrue((slot / self.output.name).exists())
         self.assertTrue((slot / sc.record_path(self.output).name).exists())
@@ -399,10 +424,12 @@ class Quarantine(ContractHarness):
 
     def test_the_contract_offers_no_way_to_wave_a_stage_through(self):
         """Checked against the code, not the prose, which does discuss the absence."""
-        code = "\n".join(line for line in
-                         (SRC / "stage_contract.py").read_text(encoding="utf-8").splitlines()
-                         if not line.strip().startswith("#"))
-        code = code.split('"""', 2)[-1]          # drop the module docstring
+        code = "\n".join(
+            line
+            for line in (SRC / "stage_contract.py").read_text(encoding="utf-8").splitlines()
+            if not line.strip().startswith("#")
+        )
+        code = code.split('"""', 2)[-1]  # drop the module docstring
         for forbidden in ("skip_checks", "SKIP_CHECKS", "force_reuse", "ignore_mismatch"):
             self.assertNotIn(forbidden, code)
 
@@ -417,8 +444,7 @@ class Quarantine(ContractHarness):
 class NpzCacheContract(unittest.TestCase):
     """The dataset2 train-feature cache: written atomically, validated internally."""
 
-    KEYS = ("Xf", "yf", "lens", "qsrc_tr", "qt_tr", "qorig_tr", "cands_concat",
-            "num_entity")
+    KEYS = ("Xf", "yf", "lens", "qsrc_tr", "qt_tr", "qorig_tr", "cands_concat", "num_entity")
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -449,12 +475,19 @@ class NpzCacheContract(unittest.TestCase):
             np.savez(handle, **arrays)
 
     def spec(self, **config) -> sc.StageSpec:
-        base = {"queries": 4, "feature_width": 18, "num_entity": 50,
-                "npz_keys": list(self.KEYS)}
+        base = {"queries": 4, "feature_width": 18, "num_entity": 50, "npz_keys": list(self.KEYS)}
         base.update(config)
-        return sc.StageSpec(stage_id="cache", dataset="dataset2", artifact_kind="npz",
-                            command=["x"], env={}, output=self.path, inputs=[],
-                            config=base, code_files=[])
+        return sc.StageSpec(
+            stage_id="cache",
+            dataset="dataset2",
+            artifact_kind="npz",
+            command=["x"],
+            env={},
+            output=self.path,
+            inputs=[],
+            config=base,
+            code_files=[],
+        )
 
     def test_a_well_formed_cache_validates(self):
         detail = sc.validate_npz_cache(self.spec(), self.path)
@@ -558,10 +591,18 @@ class StopReasonsAreDistinct(ContractHarness):
         sc.part_path(self.output).write_text("half", encoding="utf-8")
         reached.add(sc.evaluate(self.spec(), repo=self.root).code)
 
-        self.assertEqual(reached, {
-            "MISSING_COMPLETION_RECORD", "MISSING_OUTPUT", "MALFORMED_RECORD",
-            "UNSUPPORTED_SCHEMA", "INCOMPLETE_RECORD", "IDENTITY_MISMATCH",
-            "STALE_PART_FILE"})
+        self.assertEqual(
+            reached,
+            {
+                "MISSING_COMPLETION_RECORD",
+                "MISSING_OUTPUT",
+                "MALFORMED_RECORD",
+                "UNSUPPORTED_SCHEMA",
+                "INCOMPLETE_RECORD",
+                "IDENTITY_MISMATCH",
+                "STALE_PART_FILE",
+            },
+        )
 
 
 class DigestDeterminism(unittest.TestCase):
@@ -574,17 +615,35 @@ class DigestDeterminism(unittest.TestCase):
 
     def test_digest_keys_restrict_the_comparison(self):
         def build(**config):
-            return sc.StageSpec(stage_id="s", dataset="dataset1", artifact_kind="k",
-                                command=[], env={}, output=Path("o"), inputs=[],
-                                config=config, code_files=[], digest_keys=("a",))
+            return sc.StageSpec(
+                stage_id="s",
+                dataset="dataset1",
+                artifact_kind="k",
+                command=[],
+                env={},
+                output=Path("o"),
+                inputs=[],
+                config=config,
+                code_files=[],
+                digest_keys=("a",),
+            )
 
         self.assertEqual(build(a=1, b=2).config_digest(), build(a=1, b=99).config_digest())
         self.assertNotEqual(build(a=1, b=2).config_digest(), build(a=2, b=2).config_digest())
 
     def test_missing_digest_keys_are_an_error_not_a_silent_pass(self):
-        spec = sc.StageSpec(stage_id="s", dataset="dataset1", artifact_kind="k",
-                            command=[], env={}, output=Path("o"), inputs=[],
-                            config={"b": 1}, code_files=[], digest_keys=("a",))
+        spec = sc.StageSpec(
+            stage_id="s",
+            dataset="dataset1",
+            artifact_kind="k",
+            command=[],
+            env={},
+            output=Path("o"),
+            inputs=[],
+            config={"b": 1},
+            code_files=[],
+            digest_keys=("a",),
+        )
         with self.assertRaises(sc.StageContractError):
             spec.config_digest()
 
@@ -594,8 +653,9 @@ class DigestDeterminism(unittest.TestCase):
 
     def test_git_commit_reports_the_head_of_this_checkout(self):
         commit = sc.git_commit(REPO)
-        expected = subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"],
-                                  capture_output=True, text=True).stdout.strip()
+        expected = subprocess.run(
+            ["git", "-C", str(REPO), "rev-parse", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
         self.assertEqual(commit, expected)
 
 

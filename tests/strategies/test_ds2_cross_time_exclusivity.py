@@ -41,12 +41,11 @@ class SharedPrimitiveTest(unittest.TestCase):
     def test_dense_group_ids_are_lexicographic(self):
         # The keeper tie-break depends on this: ids ascend with the key tuple, so
         # the first cluster of a group is its smallest timestamp.
-        gid, count = frozen_ops.dense_group_ids(
-            np.array([2, 1, 2, 1]), np.array([50, 90, 10, 90]))
+        gid, count = frozen_ops.dense_group_ids(np.array([2, 1, 2, 1]), np.array([50, 90, 10, 90]))
         self.assertEqual(count, 3)
-        self.assertEqual(gid[1], gid[3])                  # (1, 90) twice
-        self.assertLess(gid[1], gid[2])                   # (1, 90) before (2, 10)
-        self.assertLess(gid[2], gid[0])                   # (2, 10) before (2, 50)
+        self.assertEqual(gid[1], gid[3])  # (1, 90) twice
+        self.assertLess(gid[1], gid[2])  # (1, 90) before (2, 10)
+        self.assertLess(gid[2], gid[0])  # (2, 10) before (2, 50)
 
     def test_csv_record_spans_locate_every_record(self):
         payload = b"1,2\n3,4\n5,6\n"
@@ -66,24 +65,22 @@ class RuleTest(unittest.TestCase):
     def test_acts_on_every_non_keeper_cluster_of_a_cross_time_group(self):
         # One source, one shared top-1 candidate (7), three distinct timestamps.
         # Row 0 has the largest margin, so it keeps; rows 1 and 2 are swapped.
-        test = make_frame([1, 1, 1], [10, 20, 30],
-                          [[7, 8, 9, 5], [7, 8, 9, 5], [7, 8, 9, 5]])
-        scores = scores_from([[0.90, 0.10, 0.05, 0.01],
-                             [0.60, 0.50, 0.05, 0.01],
-                             [0.55, 0.54, 0.05, 0.01]])
+        test = make_frame([1, 1, 1], [10, 20, 30], [[7, 8, 9, 5], [7, 8, 9, 5], [7, 8, 9, 5]])
+        scores = scores_from(
+            [[0.90, 0.10, 0.05, 0.01], [0.60, 0.50, 0.05, 0.01], [0.55, 0.54, 0.05, 0.01]]
+        )
         treatment, info = xte.apply(scores, test)
         self.assertEqual(info["actions"], 2)
         self.assertEqual(info["cells_changed"], 4)
         np.testing.assert_array_equal(info["action_rows"], [1, 2])
-        np.testing.assert_allclose(treatment[0], scores[0])       # keeper untouched
-        self.assertAlmostEqual(treatment[1, 0], 0.50)             # swapped
+        np.testing.assert_allclose(treatment[0], scores[0])  # keeper untouched
+        self.assertAlmostEqual(treatment[1, 0], 0.50)  # swapped
         self.assertAlmostEqual(treatment[1, 1], 0.60)
 
     def test_a_single_timestamp_group_is_never_eligible(self):
         # Same source, same top-1, but one timestamp: this is CRF territory and
         # the decode must leave it alone by construction.
-        test = make_frame([1, 1, 1], [10, 10, 10],
-                          [[7, 8, 9, 5], [7, 8, 9, 5], [7, 8, 9, 5]])
+        test = make_frame([1, 1, 1], [10, 10, 10], [[7, 8, 9, 5], [7, 8, 9, 5], [7, 8, 9, 5]])
         scores = scores_from([[0.9, 0.1, 0.05, 0.01]] * 3)
         treatment, info = xte.apply(scores, test)
         self.assertEqual(info["actions"], 0)
@@ -109,11 +106,10 @@ class RuleTest(unittest.TestCase):
         # Timestamp 20 has two rows; timestamp 10 has one row with a bigger
         # margin. The frozen rule keeps the BEST MARGIN cluster, so the two rows
         # at t=20 are acted on and the single row at t=10 survives.
-        test = make_frame([1, 1, 1], [10, 20, 20],
-                          [[7, 8, 9, 5]] * 3)
-        scores = scores_from([[0.95, 0.05, 0.02, 0.01],
-                              [0.60, 0.50, 0.02, 0.01],
-                              [0.58, 0.52, 0.02, 0.01]])
+        test = make_frame([1, 1, 1], [10, 20, 20], [[7, 8, 9, 5]] * 3)
+        scores = scores_from(
+            [[0.95, 0.05, 0.02, 0.01], [0.60, 0.50, 0.02, 0.01], [0.58, 0.52, 0.02, 0.01]]
+        )
         _, info = xte.apply(scores, test)
         np.testing.assert_array_equal(info["action_rows"], [1, 2])
         self.assertEqual(info["census"]["guaranteed_wrong_top1_lower_bound"], 1)
@@ -123,7 +119,7 @@ class RuleTest(unittest.TestCase):
         test = make_frame([1, 1], [30, 10], [[7, 8, 9, 5]] * 2)
         scores = scores_from([[0.9, 0.1, 0.05, 0.01], [0.9, 0.1, 0.05, 0.01]])
         _, info = xte.apply(scores, test)
-        np.testing.assert_array_equal(info["action_rows"], [0])   # t=30 acted, t=10 kept
+        np.testing.assert_array_equal(info["action_rows"], [0])  # t=30 acted, t=10 kept
 
     def test_rank_order_ties_break_by_column_index(self):
         # Two candidates tie for the row maximum. The stable order takes the
@@ -145,11 +141,10 @@ class RuleTest(unittest.TestCase):
 
     def test_a_row_never_acted_on_keeps_its_top1(self):
         # Invariant 1: the decode must not disturb a row outside the action set.
-        test = make_frame([1, 1, 2], [10, 20, 10],
-                          [[7, 8, 9, 5], [7, 8, 9, 5], [4, 3, 2, 1]])
-        scores = scores_from([[0.90, 0.10, 0.05, 0.01],
-                              [0.60, 0.50, 0.05, 0.01],
-                              [0.70, 0.20, 0.05, 0.01]])
+        test = make_frame([1, 1, 2], [10, 20, 10], [[7, 8, 9, 5], [7, 8, 9, 5], [4, 3, 2, 1]])
+        scores = scores_from(
+            [[0.90, 0.10, 0.05, 0.01], [0.60, 0.50, 0.05, 0.01], [0.70, 0.20, 0.05, 0.01]]
+        )
         treatment, info = xte.apply(scores, test)
         untouched = np.setdiff1d(np.arange(3), info["action_rows"])
         for row in untouched:
@@ -157,9 +152,9 @@ class RuleTest(unittest.TestCase):
 
     def test_row_and_candidate_counts_are_preserved(self):
         test = make_frame([1, 1, 1], [10, 20, 30], [[7, 8, 9, 5]] * 3)
-        scores = scores_from([[0.90, 0.10, 0.05, 0.01],
-                              [0.60, 0.50, 0.05, 0.01],
-                              [0.55, 0.54, 0.05, 0.01]])
+        scores = scores_from(
+            [[0.90, 0.10, 0.05, 0.01], [0.60, 0.50, 0.05, 0.01], [0.55, 0.54, 0.05, 0.01]]
+        )
         treatment, _ = xte.apply(scores, test)
         self.assertEqual(treatment.shape, scores.shape)
         # The decode permutes values inside a row; it never adds, drops or
@@ -175,9 +170,9 @@ class RuleTest(unittest.TestCase):
 
     def test_is_deterministic(self):
         test = make_frame([1, 1, 1], [10, 20, 30], [[7, 8, 9, 5]] * 3)
-        scores = scores_from([[0.90, 0.10, 0.05, 0.01],
-                              [0.60, 0.50, 0.05, 0.01],
-                              [0.55, 0.54, 0.05, 0.01]])
+        scores = scores_from(
+            [[0.90, 0.10, 0.05, 0.01], [0.60, 0.50, 0.05, 0.01], [0.55, 0.54, 0.05, 0.01]]
+        )
         first, info_a = xte.apply(scores, test)
         second, info_b = xte.apply(scores, test)
         np.testing.assert_array_equal(first, second)
@@ -190,7 +185,8 @@ class RuleTest(unittest.TestCase):
         scores = scores_from([[0.9, 0.1, 0.05, 0.01], [0.6, 0.5, 0.05, 0.01]])
         without, info_a = xte.apply(scores, test)
         with_train, info_b = xte.apply(
-            scores, test, pd.DataFrame({"src": [1], "dst": [7], "time": [1]}))
+            scores, test, pd.DataFrame({"src": [1], "dst": [7], "time": [1]})
+        )
         np.testing.assert_array_equal(without, with_train)
         self.assertEqual(info_a["actions"], info_b["actions"])
 
@@ -228,58 +224,65 @@ class RuleTest(unittest.TestCase):
 class ByteSwapTest(unittest.TestCase):
     def test_swaps_only_the_named_tokens(self):
         payload = b"0.100000,0.900000,0.010000\n0.500000,0.400000,0.020000\n"
-        out = xte.swap_score_tokens(payload, np.array([0]), np.array([1, 0]),
-                                    np.array([0, 1]), columns=3)
+        out = xte.swap_score_tokens(
+            payload, np.array([0]), np.array([1, 0]), np.array([0, 1]), columns=3
+        )
         self.assertEqual(out, b"0.900000,0.100000,0.010000\n0.500000,0.400000,0.020000\n")
 
     def test_byte_length_is_preserved_when_tokens_are_equal_width(self):
         payload = b"0.100000,0.900000,0.010000\n"
-        out = xte.swap_score_tokens(payload, np.array([0]), np.array([1]),
-                                    np.array([0]), columns=3)
+        out = xte.swap_score_tokens(payload, np.array([0]), np.array([1]), np.array([0]), columns=3)
         self.assertEqual(len(out), len(payload))
 
     def test_unacted_rows_are_copied_verbatim(self):
         payload = b"1,2,3\n4,5,6\n7,8,9\n"
-        out = xte.swap_score_tokens(payload, np.array([1]), np.array([0, 0, 0]),
-                                    np.array([0, 2, 0]), columns=3)
+        out = xte.swap_score_tokens(
+            payload, np.array([1]), np.array([0, 0, 0]), np.array([0, 2, 0]), columns=3
+        )
         self.assertEqual(out, b"1,2,3\n6,5,4\n7,8,9\n")
 
     def test_crlf_terminators_survive(self):
         payload = b"1,2,3\r\n4,5,6\r\n"
-        out = xte.swap_score_tokens(payload, np.array([0]), np.array([0]),
-                                    np.array([2]), columns=3)
+        out = xte.swap_score_tokens(payload, np.array([0]), np.array([0]), np.array([2]), columns=3)
         self.assertEqual(out, b"3,2,1\r\n4,5,6\r\n")
 
     def test_rejects_a_field_count_mismatch(self):
         with self.assertRaises(ValueError):
-            xte.swap_score_tokens(b"1,2\n", np.array([0]), np.array([0]),
-                                  np.array([1]), columns=3)
+            xte.swap_score_tokens(b"1,2\n", np.array([0]), np.array([0]), np.array([1]), columns=3)
 
     def test_token_swap_matches_the_float_path(self):
         test = make_frame([1, 1, 1], [10, 20, 30], [[7, 8, 9, 5]] * 3)
-        scores = scores_from([[0.900000, 0.100000, 0.050000, 0.010000],
-                              [0.600000, 0.500000, 0.050000, 0.010000],
-                              [0.550000, 0.540000, 0.050000, 0.010000]])
+        scores = scores_from(
+            [
+                [0.900000, 0.100000, 0.050000, 0.010000],
+                [0.600000, 0.500000, 0.050000, 0.010000],
+                [0.550000, 0.540000, 0.050000, 0.010000],
+            ]
+        )
         treatment, info = xte.apply(scores, test)
-        payload = "".join(",".join(f"{v:.6f}" for v in row) + "\n"
-                          for row in scores).encode("ascii")
-        swapped = xte.swap_score_tokens(payload, info["action_rows"], info["c1_col"],
-                                        info["c2_col"], COLUMNS)
-        expected = "".join(",".join(f"{v:.6f}" for v in row) + "\n"
-                           for row in treatment).encode("ascii")
+        payload = "".join(",".join(f"{v:.6f}" for v in row) + "\n" for row in scores).encode(
+            "ascii"
+        )
+        swapped = xte.swap_score_tokens(
+            payload, info["action_rows"], info["c1_col"], info["c2_col"], COLUMNS
+        )
+        expected = "".join(",".join(f"{v:.6f}" for v in row) + "\n" for row in treatment).encode(
+            "ascii"
+        )
         self.assertEqual(swapped, expected)
 
 
 class RegistryTest(unittest.TestCase):
     def test_registry_exposes_the_dataset2_stage(self):
-        from strategies.registry import (active_chain_ids, active_ds2_chain_ids,
-                                         POSTPROCESSOR_CHAINS)
+        from strategies.registry import POSTPROCESSOR_CHAINS, active_chain_ids, active_ds2_chain_ids
+
         self.assertEqual(active_ds2_chain_ids(), [xte.STRATEGY_ID])
         self.assertEqual(active_chain_ids("dataset2"), [xte.STRATEGY_ID])
         self.assertEqual(sorted(POSTPROCESSOR_CHAINS), ["dataset1", "dataset2"])
 
     def test_unknown_dataset_is_rejected(self):
         from strategies.registry import active_chain_ids
+
         with self.assertRaises(ValueError):
             active_chain_ids("dataset3")
 

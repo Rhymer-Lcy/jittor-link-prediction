@@ -44,7 +44,8 @@ CHAIN_CONSUMERS = ("ranker_ds1.py",)
 
 CONTRACT_SUFFIX = re.compile(
     r"^dataset[12]"
-    r"(-bpr|-innov|-novirt|-negpop|-holdout|-s\d+|-d\d+|-t[\d.]+|-tmax[\d.e+]+)*$")
+    r"(-bpr|-innov|-novirt|-negpop|-holdout|-s\d+|-d\d+|-t[\d.]+|-tmax[\d.e+]+)*$"
+)
 
 
 def source(name: str) -> str:
@@ -59,10 +60,13 @@ def literal_path_joins(name: str) -> list[tuple[int, str]]:
     """Every ``<expr> / "<literal>"`` whose literal names a CONTRACT-owned run dir."""
     found = []
     for node in ast.walk(ast.parse(source(name))):
-        if (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div)
-                and isinstance(node.right, ast.Constant)
-                and isinstance(node.right.value, str)
-                and owned_by_the_contract(node.right.value)):
+        if (
+            isinstance(node, ast.BinOp)
+            and isinstance(node.op, ast.Div)
+            and isinstance(node.right, ast.Constant)
+            and isinstance(node.right.value, str)
+            and owned_by_the_contract(node.right.value)
+        ):
             found.append((node.lineno, node.right.value))
     return found
 
@@ -71,9 +75,14 @@ class DetectorTest(unittest.TestCase):
     """Without this the suite could pass by matching nothing at all."""
 
     def test_detector_classifies_dataset1_ownership_correctly(self):
-        for owned in ("dataset1", "dataset1-novirt", "dataset1-bpr-t0.25",
-                      "dataset1-bpr-t0.25-s31337", "dataset1-novirt-tmax1.1548e+08",
-                      "dataset1-bpr-innov-t0.25"):
+        for owned in (
+            "dataset1",
+            "dataset1-novirt",
+            "dataset1-bpr-t0.25",
+            "dataset1-bpr-t0.25-s31337",
+            "dataset1-novirt-tmax1.1548e+08",
+            "dataset1-bpr-innov-t0.25",
+        ):
             with self.subTest(owned=owned):
                 self.assertTrue(owned_by_the_contract(owned))
         # Sibling OUTPUT directories are not run directories.
@@ -85,10 +94,14 @@ class DetectorTest(unittest.TestCase):
         # The exact expression 4ad5b63 used for the serve embedding. If this
         # stopped being detected the chain test below would be vacuous.
         tree = ast.parse('REPO / "outputs" / "dataset1"')
-        hits = [n.right.value for n in ast.walk(tree)
-                if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Div)
-                and isinstance(n.right, ast.Constant)
-                and owned_by_the_contract(n.right.value)]
+        hits = [
+            n.right.value
+            for n in ast.walk(tree)
+            if isinstance(n, ast.BinOp)
+            and isinstance(n.op, ast.Div)
+            and isinstance(n.right, ast.Constant)
+            and owned_by_the_contract(n.right.value)
+        ]
         self.assertEqual(hits, ["dataset1"])
 
 
@@ -97,12 +110,14 @@ class ProductionChainContractTest(unittest.TestCase):
         for name in CHAIN_CONSUMERS:
             with self.subTest(module=name):
                 self.assertEqual(
-                    literal_path_joins(name), [],
+                    literal_path_joins(name),
+                    [],
                     f"{name} rebuilds a run directory from a literal instead of "
-                    "calling pipeline_common.line_run_dir/bpr_run_dir")
+                    "calling pipeline_common.line_run_dir/bpr_run_dir",
+                )
 
     def test_producer_and_consumer_resolve_the_same_directory(self):
-        self.assertIn("pc.line_run_dir(DATASET", source(PRODUCER))
+        self.assertRegex(source(PRODUCER), r"pc\.line_run_dir\(\s*DATASET")
         self.assertIn('tl.line_run_dir("dataset1")', source("ranker_ds1.py"))
 
     def test_the_contract_appends_the_novirt_suffix_by_default(self):
@@ -129,10 +144,12 @@ class ProductionChainContractTest(unittest.TestCase):
                 sfx = "" if seed == 42 else f"-s{seed}"
                 self.assertEqual(
                     pc.bpr_run_dir(DATASET, seed=seed, tau_frac=0.25).name,
-                    "dataset1-bpr-t0.25" + sfx)
+                    "dataset1-bpr-t0.25" + sfx,
+                )
                 self.assertEqual(
                     pc.bpr_run_dir(DATASET, seed=seed, tau_frac=0.25, time_max=CUT).name,
-                    "dataset1-bpr-t0.25-tmax1.1548e+08" + sfx)
+                    "dataset1-bpr-t0.25-tmax1.1548e+08" + sfx,
+                )
 
     def test_innovation_bpr_directory_is_distinct_from_the_plain_one(self):
         innov = pc.bpr_run_dir(DATASET, tau_frac=0.25, innov=True)
@@ -147,11 +164,14 @@ class ProductionChainContractTest(unittest.TestCase):
 class ProductionManifestAgreementTest(unittest.TestCase):
     def test_the_manifest_names_the_ranker_as_the_dataset1_chain_producer(self):
         import json
+
         cfg = json.loads((REPO / "configs" / "production.json").read_text(encoding="utf-8"))
         chain = cfg["dataset1"]["strategy_chain"]
         base = next(s for s in chain if s["order"] == 0)
         self.assertEqual(Path(base["implementation"]).name, "ranker_ds1.py")
-        self.assertIn("src/train_line.py", base["upstream"])
+        self.assertIn("src/train_line_jt.py", base["upstream"])
+        provenance = cfg["dataset1"]["accepted_embedding_provenance"]
+        self.assertIn("reference/pytorch/train_line.py", provenance["implementations"])
 
 
 if __name__ == "__main__":

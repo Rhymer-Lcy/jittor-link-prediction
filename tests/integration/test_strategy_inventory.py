@@ -42,6 +42,7 @@ class InventoryConsistencyTest(unittest.TestCase):
         essential. What is banned is a concrete seed or round pinned into a name.
         """
         import re
+
         banned_tokens = ("round", "codex", "fable", "opus", "gpt")
         banned_patterns = (r"r\d{2}", r"seed\d+", r"_s\d+", r"v\d+$")
         for strategy in INVENTORY["strategies"]:
@@ -53,8 +54,7 @@ class InventoryConsistencyTest(unittest.TestCase):
 
     def test_every_record_carries_the_required_fields(self):
         for strategy in INVENTORY["strategies"]:
-            for field in ("strategy_id", "dataset", "mechanism",
-                          "lifecycle_status", "confidence"):
+            for field in ("strategy_id", "dataset", "mechanism", "lifecycle_status", "confidence"):
                 self.assertIn(field, strategy, strategy.get("strategy_id"))
 
     def test_closed_strategies_state_why(self):
@@ -73,8 +73,10 @@ class InventoryConsistencyTest(unittest.TestCase):
     def test_shipped_strategies_carry_online_evidence(self):
         for strategy in INVENTORY["strategies"]:
             if strategy["lifecycle_status"].startswith("SHIPPED"):
-                self.assertTrue(strategy.get("online_evidence"),
-                                f"{strategy['strategy_id']} claims shipped with no online evidence")
+                self.assertTrue(
+                    strategy.get("online_evidence"),
+                    f"{strategy['strategy_id']} claims shipped with no online evidence",
+                )
 
 
 if __name__ == "__main__":

@@ -22,13 +22,14 @@ so a verification run cannot clobber a production artifact.
 
 Usage: DATASET=dataset1 BPR_TAU_FRAC=0.25 python src/train_bpr_jt.py
 """
+
 import os
 import time
 from pathlib import Path
 
+import jittor as jt
 import numpy as np
 import pandas as pd
-import jittor as jt
 from jittor import nn
 
 import pipeline_common as pc
@@ -49,14 +50,21 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATASET = os.environ.get("DATASET", "dataset2")
 assert DATASET in ("dataset1", "dataset2"), f"unknown dataset: {DATASET}"
 DATA_PACK = os.environ.get("DATA_PACK", "data_A")
-DATA_DIR = pc.data_dir(DATASET, DATA_PACK)   # one definition, shared with the consumers
+DATA_DIR = pc.data_dir(DATASET, DATA_PACK)  # one definition, shared with the consumers
 # Canonical runs write the contract name; see train_line_jt.py.
 JT_OUT_SUFFIX = os.environ.get("JT_OUT_SUFFIX", "")
 
 # Single source of truth, shared with the rankers that consume this output.
-_BASE_DIR = pc.bpr_run_dir(DATASET, seed=SEED, tau_frac=TAU_FRAC, dim=DIM,
-                           time_max=TIME_MAX, innov=INNOV, holdout=EVAL_HOLDOUT,
-                           root=PROJECT_ROOT)
+_BASE_DIR = pc.bpr_run_dir(
+    DATASET,
+    seed=SEED,
+    tau_frac=TAU_FRAC,
+    dim=DIM,
+    time_max=TIME_MAX,
+    innov=INNOV,
+    holdout=EVAL_HOLDOUT,
+    root=PROJECT_ROOT,
+)
 OUT_DIR = _BASE_DIR.parent / (_BASE_DIR.name + JT_OUT_SUFFIX)
 os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -71,8 +79,10 @@ def split_train_val_by_tail(df):
 
 
 def main():
-    print(f"Dataset: {DATASET} ({DATA_PACK}) | jittor cuda={jt.flags.use_cuda} | "
-          f"dim {DIM} | epochs {EPOCHS} | seed {SEED} | tau_frac {TAU_FRAC:g}")
+    print(
+        f"Dataset: {DATASET} ({DATA_PACK}) | jittor cuda={jt.flags.use_cuda} | "
+        f"dim {DIM} | epochs {EPOCHS} | seed {SEED} | tau_frac {TAU_FRAC:g}"
+    )
     df = pd.read_csv(DATA_DIR / "train.csv")
     df = df.drop_duplicates(subset=["src", "dst", "time"]).reset_index(drop=True)
     df["src"] = df["src"].astype(np.int64)
@@ -89,7 +99,11 @@ def main():
         print(f"[BPR_TIME_MAX] Kept {len(df)}/{n_before} edges with time <= {TIME_MAX:g}")
     if INNOV:
         n_before = len(df)
-        df = df.sort_values("time").drop_duplicates(["src", "dst"], keep="first").reset_index(drop=True)
+        df = (
+            df.sort_values("time")
+            .drop_duplicates(["src", "dst"], keep="first")
+            .reset_index(drop=True)
+        )
         print(f"[BPR_INNOV] Kept {len(df)}/{n_before} first-time (src, dst) links")
 
     rng = np.random.default_rng(SEED)
@@ -99,7 +113,7 @@ def main():
     opt = jt.optim.Adam(emb.parameters(), lr=LR, weight_decay=L2)
 
     pw = np.bincount(df["dst"].values, minlength=num_entity).astype(np.float64) + 1.0
-    cdf = np.cumsum(pw ** 0.75 / (pw ** 0.75).sum())
+    cdf = np.cumsum(pw**0.75 / (pw**0.75).sum())
     s_all = df["src"].values.astype(np.int32)
     d_all = df["dst"].values.astype(np.int32)
     n_pos = len(s_all)
@@ -122,7 +136,7 @@ def main():
             if pair_cdf is not None:
                 idx = np.searchsorted(pair_cdf, rng.random(m)).clip(0, n_pos - 1)
             else:
-                idx = perm[beg:beg + m]
+                idx = perm[beg : beg + m]
             vneg = np.searchsorted(cdf, rng.random(m)).clip(0, num_entity - 1).astype(np.int32)
             u = jt.array(s_all[idx])
             v = jt.array(d_all[idx])
@@ -134,8 +148,11 @@ def main():
             total += float(loss.item())
             batches += 1
         if (ep_i + 1) % 20 == 0:
-            print(f"[BPR epoch {ep_i + 1}/{EPOCHS}] avg loss {total / batches:.4f} "
-                  f"({time.time() - t0:.0f}s)", flush=True)
+            print(
+                f"[BPR epoch {ep_i + 1}/{EPOCHS}] avg loss {total / batches:.4f} "
+                f"({time.time() - t0:.0f}s)",
+                flush=True,
+            )
 
     out_path = OUT_DIR / "bpr_emb.npy"
     tmp_path = OUT_DIR / "bpr_emb.tmp.npy"

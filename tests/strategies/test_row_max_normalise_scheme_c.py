@@ -46,23 +46,20 @@ class UnaffectedRowsAreBitExactTest(unittest.TestCase):
 
     def test_ordinary_positive_rows_are_bit_identical(self):
         rows = np.random.default_rng(1).random((300, 100)) + 0.05
-        self.assertTrue(np.array_equal(row_max_normalise(rows),
-                                       frozen_row_max_normalise(rows)))
+        self.assertTrue(np.array_equal(row_max_normalise(rows), frozen_row_max_normalise(rows)))
 
     def test_mixed_sign_rows_with_a_positive_maximum_are_bit_identical(self):
         rng = np.random.default_rng(2)
         rows = rng.standard_normal((400, 100))
         rows = rows[rows.max(axis=1) > EPS]
         self.assertGreater(len(rows), 0)
-        self.assertTrue(np.array_equal(row_max_normalise(rows),
-                                       frozen_row_max_normalise(rows)))
+        self.assertTrue(np.array_equal(row_max_normalise(rows), frozen_row_max_normalise(rows)))
 
     def test_a_matrix_with_no_degenerate_row_takes_the_frozen_path(self):
         # The fast path must be the frozen expression itself, not a re-derivation
         # that happens to agree to floating-point tolerance.
         rows = np.random.default_rng(3).random((50, 100)) + 1.0
-        self.assertTrue(np.array_equal(row_max_normalise(rows),
-                                       frozen_row_max_normalise(rows)))
+        self.assertTrue(np.array_equal(row_max_normalise(rows), frozen_row_max_normalise(rows)))
 
     def test_positive_rows_stay_bit_exact_when_a_degenerate_row_is_present(self):
         # The repair must not perturb its neighbours: the same positive rows are
@@ -70,8 +67,9 @@ class UnaffectedRowsAreBitExactTest(unittest.TestCase):
         rng = np.random.default_rng(4)
         positive = rng.random((20, 100)) + 0.05
         mixed = np.vstack([positive, -(rng.random((3, 100)) + 0.05)])
-        self.assertTrue(np.array_equal(row_max_normalise(mixed)[:20],
-                                       frozen_row_max_normalise(positive)))
+        self.assertTrue(
+            np.array_equal(row_max_normalise(mixed)[:20], frozen_row_max_normalise(positive))
+        )
 
 
 class DegenerateRowsTest(unittest.TestCase):
@@ -84,9 +82,12 @@ class DegenerateRowsTest(unittest.TestCase):
 
     def test_all_negative_rows_preserve_candidate_order(self):
         rows = -(np.random.default_rng(6).random((40, 100)) + 0.05)
-        self.assertTrue(np.array_equal(
-            np.argsort(-rows, axis=1, kind="stable"),
-            np.argsort(-row_max_normalise(rows), axis=1, kind="stable")))
+        self.assertTrue(
+            np.array_equal(
+                np.argsort(-rows, axis=1, kind="stable"),
+                np.argsort(-row_max_normalise(rows), axis=1, kind="stable"),
+            )
+        )
 
     def test_constant_negative_rows_map_to_one_half(self):
         rows = np.full((5, 100), -3.7)
@@ -129,14 +130,16 @@ class RegressionAgainstTheObservedDefectTest(unittest.TestCase):
 
     def test_every_row_of_a_hostile_matrix_is_finite_and_bounded_above(self):
         rng = np.random.default_rng(7)
-        hostile = np.vstack([
-            rng.random((10, 100)) + 0.05,           # ordinary
-            rng.standard_normal((10, 100)),         # mixed sign, positive maximum
-            -(rng.random((10, 100)) + 0.05),        # all negative
-            np.zeros((3, 100)),                     # all zero
-            np.full((3, 100), -42.0),               # constant negative
-            np.full((3, 100), 7.0),                 # constant positive
-        ])
+        hostile = np.vstack(
+            [
+                rng.random((10, 100)) + 0.05,  # ordinary
+                rng.standard_normal((10, 100)),  # mixed sign, positive maximum
+                -(rng.random((10, 100)) + 0.05),  # all negative
+                np.zeros((3, 100)),  # all zero
+                np.full((3, 100), -42.0),  # constant negative
+                np.full((3, 100), 7.0),  # constant positive
+            ]
+        )
         out = row_max_normalise(hostile)
         self.assertTrue(np.isfinite(out).all())
         self.assertLessEqual(out.max(), 1.0)
@@ -164,18 +167,21 @@ class ScopeIsNotAFullRangeGuaranteeTest(unittest.TestCase):
         row = np.array([[-5.0, -2.0, 1.0]])
         out = row_max_normalise(row)
         self.assertLess(out.min(), 0.0)
-        self.assertTrue(np.array_equal(out, frozen_row_max_normalise(row)),
-                        "the frozen branch must remain bit-identical")
+        self.assertTrue(
+            np.array_equal(out, frozen_row_max_normalise(row)),
+            "the frozen branch must remain bit-identical",
+        )
 
     def test_the_repair_branch_is_exactly_the_non_positive_maximum_rows(self):
         rng = np.random.default_rng(8)
-        rows = np.vstack([rng.standard_normal((60, 100)),
-                          -(rng.random((10, 100)) + 0.05),
-                          np.zeros((2, 100))])
+        rows = np.vstack(
+            [rng.standard_normal((60, 100)), -(rng.random((10, 100)) + 0.05), np.zeros((2, 100))]
+        )
         changed = ~np.all(row_max_normalise(rows) == frozen_row_max_normalise(rows), axis=1)
         expected = rows.max(axis=1) <= EPS
-        self.assertTrue(np.array_equal(changed, expected),
-                        "only rows with a non-positive maximum may change")
+        self.assertTrue(
+            np.array_equal(changed, expected), "only rows with a non-positive maximum may change"
+        )
 
 
 class ScopeBoundaryTest(unittest.TestCase):
@@ -183,12 +189,14 @@ class ScopeBoundaryTest(unittest.TestCase):
         # pipeline_common.rownorm must keep returning an all-zero row unchanged.
         # Mapping it to 0.5 would rewrite 117 measured dataset2 f_collab rows.
         import pipeline_common as pc
+
         zero = np.zeros(100)
         self.assertTrue(np.array_equal(pc.rownorm(zero), zero))
         self.assertEqual(float(pc.rownorm(zero).max()), 0.0)
 
     def test_rownorm_still_normalises_an_ordinary_row(self):
         import pipeline_common as pc
+
         row = np.arange(1.0, 101.0)
         self.assertAlmostEqual(float(pc.rownorm(row).max()), 1.0)
 

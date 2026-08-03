@@ -46,19 +46,23 @@ class FeaturizerUsesTheContract(unittest.TestCase):
         self.assertIn("sc.validate_npz_cache(reused, feat)", self.source)
 
     def test_force_quarantines_rather_than_deletes(self):
-        self.assertIn("sc.quarantine(stale", self.source)
+        self.assertRegex(self.source, r"sc\.quarantine\(\s*stale")
         self.assertNotIn("feat.unlink()", self.source)
 
     def test_the_geometry_keys_are_excluded_from_the_reuse_digest(self):
         constants = self.module_constants()
         for key in constants["CACHE_GEOMETRY_KEYS"]:
-            self.assertNotIn(key, constants["CACHE_DIGEST_KEYS"],
-                             "geometry measurable only after the run cannot gate reuse")
+            self.assertNotIn(
+                key,
+                constants["CACHE_DIGEST_KEYS"],
+                "geometry measurable only after the run cannot gate reuse",
+            )
         for key in ("cut", "num_entity", "negatives_per_sample"):
             self.assertIn(key, constants["CACHE_DIGEST_KEYS"])
-        self.assertEqual(set(constants["CACHE_KEYS"]),
-                         {"Xf", "yf", "lens", "qsrc_tr", "qt_tr", "qorig_tr",
-                          "cands_concat", "num_entity"})
+        self.assertEqual(
+            set(constants["CACHE_KEYS"]),
+            {"Xf", "yf", "lens", "qsrc_tr", "qt_tr", "qorig_tr", "cands_concat", "num_entity"},
+        )
 
     def test_the_reuse_digest_binds_the_official_inputs(self):
         """The cache must be invalidated by a change to train.csv or test.csv."""
@@ -118,10 +122,12 @@ class ProducersPublishAtomically(unittest.TestCase):
             self.assertIn("header=False", source, name)
 
     def test_rankers_resolve_their_directory_through_the_path_contract(self):
-        self.assertIn('tl.ranker_dir("dataset1")',
-                      (SRC / "ranker_ds1.py").read_text(encoding="utf-8"))
-        self.assertIn('tl.ranker_dir("dataset2")',
-                      (SRC / "ranker_basket_ds2.py").read_text(encoding="utf-8"))
+        self.assertIn(
+            'tl.ranker_dir("dataset1")', (SRC / "ranker_ds1.py").read_text(encoding="utf-8")
+        )
+        self.assertIn(
+            'tl.ranker_dir("dataset2")', (SRC / "ranker_basket_ds2.py").read_text(encoding="utf-8")
+        )
 
     def test_trainers_resolve_their_data_directory_through_the_path_contract(self):
         for name in ("train_line_jt.py", "train_bpr_jt.py"):
@@ -134,8 +140,9 @@ class RootOverrides(unittest.TestCase):
     """--data-root and --output-root have to reach producer and consumer alike."""
 
     def test_the_output_root_variable_wins_over_an_explicit_root_argument(self):
-        import os
         import importlib
+        import os
+
         import pipeline_common as pc
 
         importlib.reload(pc)
@@ -151,14 +158,16 @@ class RootOverrides(unittest.TestCase):
 
     def test_the_data_root_variable_redirects_the_data_directory(self):
         import os
+
         import pipeline_common as pc
 
         default = pc.data_dir("dataset1")
         self.assertTrue(str(default).endswith(str(Path("data") / "data_A" / "dataset1")))
         os.environ["DATA_ROOT"] = str(Path("Z") / "official")
         try:
-            self.assertEqual(pc.data_dir("dataset1"),
-                             Path("Z") / "official" / "data_A" / "dataset1")
+            self.assertEqual(
+                pc.data_dir("dataset1"), Path("Z") / "official" / "data_A" / "dataset1"
+            )
         finally:
             os.environ.pop("DATA_ROOT", None)
         self.assertEqual(pc.data_dir("dataset1"), default)

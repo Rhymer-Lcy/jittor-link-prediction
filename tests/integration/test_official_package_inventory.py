@@ -40,28 +40,29 @@ CANONICAL_RUNTIME = [
     "src/strategies/registry.py",
     "src/strategies/shared/frozen_ops.py",
     "src/strategies/ds1/source_slate_recurrence.py",
-    "src/strategies/ds1/test_graph_reciprocity.py",
+    "src/strategies/ds1/graph_reciprocity.py",
     "src/strategies/ds2/cross_time_exclusivity.py",
 ]
 
 #: Required alongside the code.
 REQUIRED_ENVIRONMENT_FILES = ["environment.yaml", "requirements.txt"]
 
-#: Proposed staging exclusions for PyTorch. The historical trainers keep their
-#: provenance value in git and stay in the working tree; they are not shipped,
+#: Staging exclusions for PyTorch. The historical trainers retain provenance
+#: value as explicit references; they are not shipped,
 #: because the canonical runtime is Jittor and shipping a second backend in a
 #: Jittor-mandated competition is an ambiguity, not a feature.
 TORCH_EXCLUSIONS = [
-    "src/train_line.py",
-    "src/train_bpr.py",
+    "reference/pytorch/train_line.py",
+    "reference/pytorch/train_bpr.py",
     "tools/diagnostics/compare_backends.py",
 ]
 
 #: Excluded for reasons other than torch: audit evidence, scratch work, local
 #: notes, competition data and frozen artifacts.
 NON_CODE_EXCLUSIONS = [
-    "artifacts_durable/", "audit_exports/", "scratchpad/", "docs_local/",
-    "data/", "outputs/", "reference/",
+    "data/",
+    "outputs/",
+    "reference/pytorch/",
 ]
 
 JITTOR_GEOMETRIC_COMMIT = "ff7d8ffac7bf3d95cc1962e091c52dc5737492d4"
@@ -82,7 +83,7 @@ def module_imports(path: Path) -> set[str]:
 def files_importing(package: str) -> set[str]:
     """Repository-relative paths of every tracked Python file importing ``package``."""
     found = set()
-    for directory in (SRC, REPO / "tools"):
+    for directory in (SRC, REPO / "tools", REPO / "reference" / "pytorch"):
         for path in directory.rglob("*.py"):
             if "__pycache__" in path.parts:
                 continue
@@ -97,16 +98,26 @@ class CanonicalInventory(unittest.TestCase):
     def test_every_canonical_runtime_file_exists_and_is_tracked(self):
         import subprocess
 
-        tracked = set(subprocess.run(["git", "-C", str(REPO), "ls-files"],
-                                     capture_output=True, text=True).stdout.split())
+        tracked = set(
+            subprocess.run(
+                ["git", "-C", str(REPO), "ls-files"], capture_output=True, text=True
+            ).stdout.split()
+        )
         for name in CANONICAL_RUNTIME + REQUIRED_ENVIRONMENT_FILES:
             self.assertTrue((REPO / name).is_file(), f"{name} is missing")
             self.assertIn(name, tracked, f"{name} is not tracked by git")
 
     def test_no_canonical_runtime_dependency_lives_outside_the_repository(self):
         """A canonical file in a worktree, scratchpad or evidence tree is a blocker."""
-        forbidden = ("scratchpad", "artifacts_durable", "audit_exports", "docs_local",
-                     "jlp-p1-diag-wt", "jlp-p1-int-wt", "jlp-schemeC-wt")
+        forbidden = (
+            "scratchpad",
+            "artifacts_durable",
+            "audit_exports",
+            "docs_local",
+            "jlp-p1-diag-wt",
+            "jlp-p1-int-wt",
+            "jlp-schemeC-wt",
+        )
         for name in CANONICAL_RUNTIME:
             resolved = (REPO / name).resolve().as_posix()
             for token in forbidden:
@@ -117,8 +128,9 @@ class CanonicalInventory(unittest.TestCase):
         for name in CANONICAL_RUNTIME:
             text = (REPO / name).read_text(encoding="utf-8")
             for token in suspicious:
-                self.assertNotIn(token.replace("\\\\", "\\"), text,
-                                 f"{name} hard-codes a host path")
+                self.assertNotIn(
+                    token.replace("\\\\", "\\"), text, f"{name} hard-codes a host path"
+                )
 
 
 class TorchIsExcluded(unittest.TestCase):
@@ -126,15 +138,20 @@ class TorchIsExcluded(unittest.TestCase):
         """Live scan, so a new torch importer cannot slip past the list."""
         importers = files_importing("torch")
         self.assertTrue(importers, "the scanner found no torch importers at all")
-        self.assertEqual(importers - set(TORCH_EXCLUSIONS), set(),
-                         "a file imports torch and is not on the staging exclusion list")
+        self.assertEqual(
+            importers - set(TORCH_EXCLUSIONS),
+            set(),
+            "a file imports torch and is not on the staging exclusion list",
+        )
         # The diagnostic driver is excluded too. It reaches torch by spawning the
         # historical trainers rather than by importing it, so the scan alone
         # would not catch it and the list has to name it explicitly.
         self.assertIn("tools/diagnostics/compare_backends.py", TORCH_EXCLUSIONS)
-        self.assertEqual(set(TORCH_EXCLUSIONS) - importers,
-                         {"tools/diagnostics/compare_backends.py"},
-                         "the exclusion list names a file with no torch relationship")
+        self.assertEqual(
+            set(TORCH_EXCLUSIONS) - importers,
+            {"tools/diagnostics/compare_backends.py"},
+            "the exclusion list names a file with no torch relationship",
+        )
 
     def test_no_canonical_runtime_file_imports_torch(self):
         for name in CANONICAL_RUNTIME:
@@ -163,14 +180,16 @@ class JittorGeometricContract(unittest.TestCase):
         for name in REQUIRED_ENVIRONMENT_FILES:
             text = (REPO / name).read_text(encoding="utf-8")
             self.assertIn("JittorGeometric", text, name)
-            self.assertIn(JITTOR_GEOMETRIC_COMMIT, text,
-                          f"{name} does not pin the JittorGeometric commit")
+            self.assertIn(
+                JITTOR_GEOMETRIC_COMMIT, text, f"{name} does not pin the JittorGeometric commit"
+            )
 
     def test_no_canonical_module_imports_it(self):
         """The documentation claim must match the code, in this direction too."""
         importers = files_importing("jittor_geometric")
-        self.assertEqual(importers, set(),
-                         f"the chain now imports jittor_geometric: {sorted(importers)}")
+        self.assertEqual(
+            importers, set(), f"the chain now imports jittor_geometric: {sorted(importers)}"
+        )
 
     def test_the_documented_claim_matches_the_measurement(self):
         text = (REPO / "environment.yaml").read_text(encoding="utf-8")
@@ -182,9 +201,10 @@ class JittorGeometricContract(unittest.TestCase):
 
     def test_the_scanner_would_notice_an_import(self):
         """Anti-vacuity: the same scan finds jittor, which the chain does import."""
-        self.assertTrue(files_importing("jittor"),
-                        "the scanner reports no jittor importers, so its negatives "
-                        "prove nothing")
+        self.assertTrue(
+            files_importing("jittor"),
+            "the scanner reports no jittor importers, so its negatives prove nothing",
+        )
         self.assertIn("src/train_line_jt.py", files_importing("jittor"))
 
 

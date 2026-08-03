@@ -9,10 +9,12 @@ virtual edges for the next training round -> evaluate leave-one-out tail MRR.
 
 Historical score note (from the original 1.py header): "21: redo: 0.424".
 """
+
 from __future__ import annotations
 
 import os
 import random
+import re
 from pathlib import Path
 
 import numpy as np
@@ -22,25 +24,19 @@ from tqdm import tqdm
 
 # PyTorch is REFERENCE-ONLY here and is imported lazily on purpose.
 #
-# This module is the historical PyTorch LINE trainer, but it is also the shared
-# utility module that the canonical ranking stages import (rownorm, build_cooc,
-# build_sim_cache, the path and constant definitions, ...). A top-level
-# `import torch` therefore made torch a hard dependency of the canonical
-# pipeline even though the canonical neural training runs on Jittor in
-# train_line_jt.py / train_bpr_jt.py, which import no torch at all.
-#
-# The guard below keeps the historical trainer working when torch is installed
-# while letting every canonical stage import this module without it. There is no
-# framework fallback: the Jittor trainers are separate entry points and nothing
-# here substitutes for them. Running the PyTorch trainer without torch fails
-# loudly at TORCH_IMPORT_ERROR rather than silently changing framework.
-try:                                            # pragma: no cover - env dependent
+# This historical trainer imports PyTorch lazily so source-level diagnostics can
+# inspect the module in an environment without PyTorch. Canonical shared
+# utilities live in ``src/pipeline_common.py`` and do not import this module.
+# There is no framework fallback: running this trainer without PyTorch fails at
+# the explicit availability gate instead of selecting another backend.
+try:  # pragma: no cover - env dependent
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
+
     TORCH_AVAILABLE = True
     TORCH_IMPORT_ERROR = None
-except ModuleNotFoundError as _exc:              # pragma: no cover - env dependent
+except ModuleNotFoundError as _exc:  # pragma: no cover - env dependent
     torch = None
     nn = None
     F = None
@@ -53,7 +49,7 @@ except ModuleNotFoundError as _exc:              # pragma: no cover - env depend
 SEED = int(os.environ.get("SEED", "42"))
 random.seed(SEED)
 np.random.seed(SEED)
-if TORCH_AVAILABLE:                              # reference-only trainer seeding
+if TORCH_AVAILABLE:  # reference-only trainer seeding
     torch.manual_seed(SEED)
     torch.cuda.manual_seed(SEED)
     torch.cuda.manual_seed_all(SEED)
@@ -86,8 +82,9 @@ INIT_LR = 1e-4
 VIRT_REPEAT_TIMES = int(os.environ.get("VIRT_REPEAT_TIMES", "2"))
 
 # ===================== Paths (relative to project root) =====================
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-# Switch dataset via env var, e.g.  DATASET=dataset1 python src/train_line.py
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# Switch dataset via env var, for example:
+# DATASET=dataset1 python reference/pytorch/train_line.py
 DATASET = os.environ.get("DATASET", "dataset2")
 assert DATASET in ("dataset1", "dataset2"), f"unknown dataset: {DATASET}"
 # Data package selector for the B-board release, e.g. DATA_PACK=data_B
@@ -141,15 +138,20 @@ assert VIRT_MODE in ("normal", "freeze", "off"), f"unknown VIRT_MODE: {VIRT_MODE
 # table stays full-size so node ids align with full-data artifacts.
 LINE_TIME_MAX = float(os.environ.get("LINE_TIME_MAX", "0"))
 
-_suffix = (("" if SEED == 42 else f"-s{SEED}")
-           + ("-staged" if STAGED else "")
-           + ("-negpop" if NEG_DIST == "pop075" else "")
-           + (f"-d{emb_total_dim}" if emb_total_dim != 400 else "")
-           + (f"-t{LINE_TAU_FRAC:g}" if LINE_TAU_FRAC > 0 else "")
-           + ({"freeze": "-vfreeze", "off": "-novirt"}.get(VIRT_MODE, ""))
-           + (f"-tmax{LINE_TIME_MAX:g}" if LINE_TIME_MAX > 0 else "")
-           + ("-holdout" if EVAL_HOLDOUT else ""))
-OUTPUT_DIR = PROJECT_ROOT / "outputs" / (DATASET + _suffix)
+_suffix = (
+    ("" if SEED == 42 else f"-s{SEED}")
+    + ("-staged" if STAGED else "")
+    + ("-negpop" if NEG_DIST == "pop075" else "")
+    + (f"-d{emb_total_dim}" if emb_total_dim != 400 else "")
+    + (f"-t{LINE_TAU_FRAC:g}" if LINE_TAU_FRAC > 0 else "")
+    + ({"freeze": "-vfreeze", "off": "-novirt"}.get(VIRT_MODE, ""))
+    + (f"-tmax{LINE_TIME_MAX:g}" if LINE_TIME_MAX > 0 else "")
+    + ("-holdout" if EVAL_HOLDOUT else "")
+)
+PYTORCH_OUT_SUFFIX = os.environ.get("PYTORCH_OUT_SUFFIX", "-pytorch")
+if not re.fullmatch(r"-[a-z0-9][a-z0-9._-]*", PYTORCH_OUT_SUFFIX):
+    raise ValueError("PYTORCH_OUT_SUFFIX must be a safe, non-empty directory suffix")
+OUTPUT_DIR = PROJECT_ROOT / "outputs" / (DATASET + _suffix + PYTORCH_OUT_SUFFIX)
 ckpt_dir = OUTPUT_DIR / "checkpoints"
 os.makedirs(ckpt_dir, exist_ok=True)
 
@@ -225,35 +227,37 @@ predict_run_count = 0
 # Reference-only: defined only when torch is present. The canonical LINE
 # trainer is src/train_line_jt.py (Jittor).
 if TORCH_AVAILABLE:
-  class LINE(nn.Module):
-    def __init__(self, n_node, d_sub):
-        super().__init__()
-        self.emb_first = nn.Embedding(n_node, d_sub)
-        self.emb_node = nn.Embedding(n_node, d_sub)
-        self.emb_ctx = nn.Embedding(n_node, d_sub)
-        # One seed for the whole init: reseeding before each table made
-        # emb_first == emb_node == emb_ctx at init (identical shapes), which
-        # started first/second-order components perfectly correlated. Only
-        # affects fresh runs; resumed checkpoints keep their trained weights.
-        torch.manual_seed(SEED)
-        nn.init.xavier_uniform_(self.emb_first.weight)
-        nn.init.xavier_uniform_(self.emb_node.weight)
-        nn.init.xavier_uniform_(self.emb_ctx.weight)
 
-    def score_first(self, s, d):
-        es = self.emb_first(s)
-        ed = self.emb_first(d)
-        return torch.sum(es * ed, dim=-1)
+    class LINE(nn.Module):
+        def __init__(self, n_node, d_sub):
+            super().__init__()
+            self.emb_first = nn.Embedding(n_node, d_sub)
+            self.emb_node = nn.Embedding(n_node, d_sub)
+            self.emb_ctx = nn.Embedding(n_node, d_sub)
+            # One seed for the whole init: reseeding before each table made
+            # emb_first == emb_node == emb_ctx at init (identical shapes), which
+            # started first/second-order components perfectly correlated. Only
+            # affects fresh runs; resumed checkpoints keep their trained weights.
+            torch.manual_seed(SEED)
+            nn.init.xavier_uniform_(self.emb_first.weight)
+            nn.init.xavier_uniform_(self.emb_node.weight)
+            nn.init.xavier_uniform_(self.emb_ctx.weight)
 
-    def score_second(self, s, d):
-        es = self.emb_node(s)
-        ed = self.emb_ctx(d)
-        return torch.sum(es * ed, dim=-1)
+        def score_first(self, s, d):
+            es = self.emb_first(s)
+            ed = self.emb_first(d)
+            return torch.sum(es * ed, dim=-1)
 
-    def get_final_emb(self):
-        e1 = self.emb_first.weight.detach()
-        e2 = self.emb_node.weight.detach()
-        return torch.cat([e1, e2], dim=-1)
+        def score_second(self, s, d):
+            es = self.emb_node(s)
+            ed = self.emb_ctx(d)
+            return torch.sum(es * ed, dim=-1)
+
+        def get_final_emb(self):
+            e1 = self.emb_first.weight.detach()
+            e2 = self.emb_node.weight.detach()
+            return torch.cat([e1, e2], dim=-1)
+
 
 # ===================== Tool 1: tail split per src =====================
 def split_train_val_by_tail(df):
@@ -265,6 +269,7 @@ def split_train_val_by_tail(df):
     val_df = val_df.reset_index(drop=True)
     return train_df, val_df
 
+
 # ===================== Tool 2: negative sampling =====================
 def build_pos_keys(pos_set, n_node: int) -> np.ndarray:
     # Sorted encoded (src * n_node + dst) keys for O(log n) membership checks;
@@ -272,6 +277,7 @@ def build_pos_keys(pos_set, n_node: int) -> np.ndarray:
     arr = np.fromiter((u * n_node + v for u, v in pos_set), dtype=np.int64, count=len(pos_set))
     arr.sort()
     return arr
+
 
 def gen_neg_epoch(s_pos_np: np.ndarray, pos_keys: np.ndarray, n_node: int) -> torch.Tensor:
     # One rejection-sampling pass for the whole epoch on `device` (same draw
@@ -307,6 +313,7 @@ def gen_neg_epoch(s_pos_np: np.ndarray, pos_keys: np.ndarray, n_node: int) -> to
         bad = _collides(bad)
     return d
 
+
 # ===================== Cache utilities =====================
 def add_src_dst_record(cache_dict, src_id: int, dst_id: int):
     if src_id not in cache_dict:
@@ -317,6 +324,7 @@ def add_src_dst_record(cache_dict, src_id: int, dst_id: int):
     else:
         dst_dict[dst_id] = dst_dict.get(dst_id, 0.0) + 1.0
 
+
 def build_history_index(full_df):
     # One-off per-src index sorted by time, replacing full-table scans
     src_hist_times.clear()
@@ -326,12 +334,14 @@ def build_history_index(full_df):
         src_hist_times[int(src)] = g["time"].values.astype(float)
         src_hist_dsts[int(src)] = g["dst"].values.astype(np.int64)
 
+
 def get_dst_before_time(src_id: int, cutoff_time: float) -> np.ndarray:
     times = src_hist_times.get(src_id)
     if times is None:
         return np.array([], dtype=np.int64)
     k = np.searchsorted(times, cutoff_time, side="left")
     return src_hist_dsts[src_id][:k]
+
 
 def get_hist_before_time(src_id: int, cutoff_time: float):
     # Like get_dst_before_time but also returns the matching timestamps
@@ -340,6 +350,7 @@ def get_hist_before_time(src_id: int, cutoff_time: float):
         return np.array([], dtype=np.int64), np.array([], dtype=float)
     k = np.searchsorted(times, cutoff_time, side="left")
     return src_hist_dsts[src_id][:k], times[:k]
+
 
 def count_in_history(candidates: np.ndarray, hist: np.ndarray) -> np.ndarray:
     # Occurrence count of each candidate in the (possibly repeating) history
@@ -351,9 +362,11 @@ def count_in_history(candidates: np.ndarray, hist: np.ndarray) -> np.ndarray:
     hit = values[idx] == candidates
     return np.where(hit, counts[idx], 0).astype(np.float32)
 
+
 def rownorm(v: np.ndarray) -> np.ndarray:
     mx = v.max()
     return v / mx if mx > 1e-12 else v
+
 
 def build_cooc(df, n_node: int):
     global ui_mat, ui_mat_csc, dst_pop, dst_rpop_log
@@ -370,6 +383,7 @@ def build_cooc(df, n_node: int):
         rpop[int(d)] = float(c)
     dst_rpop_log = np.log1p(rpop)
 
+
 def cooc_scores(src: int, cands: np.ndarray) -> np.ndarray:
     # Popularity-normalized co-occurrence CF: users overlapping src's history,
     # weighted by overlap size, aggregated over their interactions with cands
@@ -379,6 +393,7 @@ def cooc_scores(src: int, cands: np.ndarray) -> np.ndarray:
     x[src] = 0.0
     sc = np.asarray((sp.csr_matrix(x) @ ui_mat_csc[:, cands]).todense()).ravel()
     return sc.astype(np.float64) / np.sqrt(dst_pop[cands])
+
 
 def precompute_cooc_rows(test_src_arr: np.ndarray, cand_mat: np.ndarray) -> np.ndarray:
     # Group rows by src so the expensive user-overlap vector is built once per src
@@ -401,6 +416,7 @@ def precompute_cooc_rows(test_src_arr: np.ndarray, cand_mat: np.ndarray) -> np.n
         i = j
     return out
 
+
 # ===================== Vectorized scoring =====================
 def cache_dict_to_matrix(base_cache: dict, add_pair_set: set, max_node: int):
     # Sparse CSR: dataset2 has 139k+ node ids, a dense (N+1)^2 float32 matrix
@@ -422,6 +438,7 @@ def cache_dict_to_matrix(base_cache: dict, add_pair_set: set, max_node: int):
     ).tocsr()
     return mat
 
+
 def batch_sim_score(target_src: int, dst_batch: np.ndarray, cache_mat):
     row_idx = src2row.get(target_src, -1)
     if row_idx == -1:
@@ -431,6 +448,7 @@ def batch_sim_score(target_src: int, dst_batch: np.ndarray, cache_mat):
     weight_slice = cache_mat[neigh_ids][:, dst_batch].toarray()
     scores = neigh_w @ weight_slice
     return scores.astype(np.float32)
+
 
 def build_sim_cache(emb_matrix, real_src_np):
     # Two-band decayed similar-user cache: chunked cosine top-k.
@@ -463,9 +481,10 @@ def build_sim_cache(emb_matrix, real_src_np):
     chunk = 1024
     neigh_chunks = []
     weight_chunks = []
-    for beg in tqdm(range(0, len(valid_targets), chunk),
-                    desc="Building two-band decayed similar-user cache"):
-        ids = targets[beg:beg + chunk]
+    for beg in tqdm(
+        range(0, len(valid_targets), chunk), desc="Building two-band decayed similar-user cache"
+    ):
+        ids = targets[beg : beg + chunk]
         sim = emb_norm[ids] @ emb_norm.T
         # Exclude self-similarity, matching the original per-row zeroing
         sim[np.arange(len(ids)), ids] = 0.0
@@ -496,12 +515,13 @@ def build_sim_cache(emb_matrix, real_src_np):
     for row_idx, src_id in enumerate(valid_targets):
         src2row[src_id] = row_idx
 
+
 def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch):
     build_sim_cache(emb_matrix, real_src_np)
 
     # Copy the base real interactions, then merge current virtual edges
     curr_cache = {usr: ddict.copy() for usr, ddict in base_src_dst_cache.items()}
-    for (u, d) in last_pair_set:
+    for u, d in last_pair_set:
         add_src_dst_record(curr_cache, u, d)
 
     curr_round_all_pair = set()
@@ -512,7 +532,9 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
     if STAGED:
         stage_frac = min(1.0, (predict_run_count + 1) / N_STAGES)
         stage_cut = float(test_df["time"].quantile(stage_frac))
-        print(f"[staged] cycle {predict_run_count + 1}: harvesting virtual edges from test rows with time <= {stage_frac:.0%} quantile")
+        print(
+            f"[staged] cycle {predict_run_count + 1}: harvesting virtual edges from test rows with time <= {stage_frac:.0%} quantile"
+        )
     else:
         stage_cut = float("inf")
 
@@ -555,7 +577,9 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
         if COOC_GAMMA > 0:
             extra += COOC_GAMMA * rownorm(cooc_rows[i])
         if RPOP_DELTA > 0:
-            extra += RPOP_DELTA * rownorm(dst_rpop_log[np.clip(all_candidates, 0, len(dst_rpop_log) - 1)])
+            extra += RPOP_DELTA * rownorm(
+                dst_rpop_log[np.clip(all_candidates, 0, len(dst_rpop_log) - 1)]
+            )
 
         if MASK_HISTORY:
             # dataset2: real interactions before the query time never repeat
@@ -568,7 +592,9 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
             # dataset1: repeats dominate, boost candidates by own history count
             own_cnt = count_in_history(all_candidates, history_real_d)
             raw_scores = collab + HIST_BOOST * own_cnt
-            blend = HIST_BOOST * own_cnt.astype(np.float64) + rownorm(collab.astype(np.float64)) + extra
+            blend = (
+                HIST_BOOST * own_cnt.astype(np.float64) + rownorm(collab.astype(np.float64)) + extra
+            )
 
         # Legacy confidence-gated probabilities drive virtual-edge generation only
         row_max = raw_scores.max()
@@ -601,31 +627,46 @@ def predict_test(test_df, emb_matrix, last_pair_set, real_src_np, current_epoch)
     elif len(curr_round_all_pair) > 0:
         df_virt = pd.DataFrame(sorted(curr_round_all_pair), columns=["src", "dst"])
         df_virt.to_csv(virtual_edge_csv, mode="w", header=True, index=False)
-        print(f"[OK] Wrote {len(curr_round_all_pair)} virtual edges to {virtual_edge_csv} (old file replaced)")
+        print(
+            f"[OK] Wrote {len(curr_round_all_pair)} virtual edges to {virtual_edge_csv} (old file replaced)"
+        )
     else:
-        pd.DataFrame([], columns=["src", "dst"]).to_csv(virtual_edge_csv, mode="w", header=True, index=False)
+        pd.DataFrame([], columns=["src", "dst"]).to_csv(
+            virtual_edge_csv, mode="w", header=True, index=False
+        )
         print("[WARN] No virtual edges this round, csv cleared")
 
     out_df = pd.DataFrame(test_prob_rows)
     save_path = test_result_template.format(current_epoch)
     out_df.to_csv(save_path, index=False, header=False)
     print(f"\n[OK] Submission file saved: {save_path}")
-    print("Masking rule: only real interactions before the query time are masked; virtual edges are deduped")
+    print(
+        "Masking rule: only real interactions before the query time are masked; virtual edges are deduped"
+    )
 
     return curr_round_all_pair
+
 
 # ===================== MRR evaluation (leave-one-out tail) =====================
 def build_eval_cache_mat(emb_matrix):
     """Collaborative-scoring matrix incl. current virtual edges (shared across
     the two MRR arms so it is built once per predict cycle)."""
     curr_cache = {src: dst_map.copy() for src, dst_map in base_src_dst_cache.items()}
-    for (u, d) in prev_virt_single_for_cache:
+    for u, d in prev_virt_single_for_cache:
         add_src_dst_record(curr_cache, u, d)
     return cache_dict_to_matrix(curr_cache, set(), emb_matrix.shape[0] - 1)
 
 
-def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000, sim_cache_ready=False,
-                  real_cand_pools=None, eval_positives=None, cache_mat=None):
+def calc_mrr_eval(
+    train_df,
+    emb_matrix,
+    real_src_np,
+    sample_num=10000,
+    sim_cache_ready=False,
+    real_cand_pools=None,
+    eval_positives=None,
+    cache_mat=None,
+):
     """Leave-one-out tail MRR monitor.
 
     real_cand_pools: {src: set(candidate ids)} from the test file. When given,
@@ -648,11 +689,13 @@ def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000, sim_cache
     tail_records = []
     for src, g in pos_df.groupby("src"):
         last_row = g.loc[g["time"].idxmax()]
-        tail_records.append({
-            "src": int(last_row["src"]),
-            "true_dst": int(last_row["dst"]),
-            "time": float(last_row["time"]),
-        })
+        tail_records.append(
+            {
+                "src": int(last_row["src"]),
+                "true_dst": int(last_row["dst"]),
+                "time": float(last_row["time"]),
+            }
+        )
     if len(tail_records) > sample_num:
         eval_samples = random.sample(tail_records, sample_num)
     else:
@@ -706,6 +749,7 @@ def calc_mrr_eval(train_df, emb_matrix, real_src_np, sample_num=10000, sim_cache
     avg_mrr = total_mrr / total_cnt if total_cnt > 0 else 0.0
     return avg_mrr
 
+
 # ===================== Main =====================
 if __name__ == "__main__":
     print(f"Dataset: {DATASET} | device: {device}")
@@ -718,14 +762,18 @@ if __name__ == "__main__":
     if EVAL_HOLDOUT:
         n_before = len(df_raw)
         df_raw, holdout_val_df = split_train_val_by_tail(df_raw)
-        print(f"[EVAL_HOLDOUT] Dropped {n_before - len(df_raw)} per-src tail rows from training data")
+        print(
+            f"[EVAL_HOLDOUT] Dropped {n_before - len(df_raw)} per-src tail rows from training data"
+        )
     full_num_entity = int(max(df_raw.src.max(), df_raw.dst.max())) + 1
     if LINE_TIME_MAX > 0:
         n_before = len(df_raw)
         df_raw = df_raw[df_raw["time"] <= LINE_TIME_MAX].reset_index(drop=True)
         print(f"[LINE_TIME_MAX] Kept {len(df_raw)}/{n_before} edges with time <= {LINE_TIME_MAX:g}")
     train_df_split, val_df_split = split_train_val_by_tail(df_raw)
-    print(f"Train slice: {len(train_df_split)}, val slice: {len(val_df_split)}, total rows: {len(df_raw)}")
+    print(
+        f"Train slice: {len(train_df_split)}, val slice: {len(val_df_split)}, total rows: {len(df_raw)}"
+    )
 
     # Keep the original test row order (no sorting)
     test_df = pd.read_csv(test_csv)
@@ -759,7 +807,7 @@ if __name__ == "__main__":
     build_history_index(df_raw)
     build_cooc(df_raw, num_entity)
     if NEG_DIST == "pop075":
-        _pw = dst_pop ** 0.75
+        _pw = dst_pop**0.75
         neg_cdf = np.cumsum(_pw / _pw.sum())
         print(f"Negative sampling: degree^0.75 (pop075), {len(neg_cdf)} nodes")
     else:
@@ -796,7 +844,9 @@ if __name__ == "__main__":
         prev_virt_single_for_cache = set(
             zip(df_load["src"].astype(int), df_load["dst"].astype(int))
         )
-        print(f"\n[OK] Loaded {len(prev_virt_single_for_cache)} virtual edges from {virtual_edge_csv}")
+        print(
+            f"\n[OK] Loaded {len(prev_virt_single_for_cache)} virtual edges from {virtual_edge_csv}"
+        )
         # Build bidirectional training samples from the loaded virtual edges
         virt_bi_list = []
         for u, v in prev_virt_single_for_cache:
@@ -805,7 +855,9 @@ if __name__ == "__main__":
             base_pos_set.add((u, v))
             base_pos_set.add((v, u))
         virt_tensor = torch.LongTensor(virt_bi_list).to(device)
-        current_virt_bi_edges = torch.repeat_interleave(virt_tensor, repeats=VIRT_REPEAT_TIMES, dim=0)
+        current_virt_bi_edges = torch.repeat_interleave(
+            virt_tensor, repeats=VIRT_REPEAT_TIMES, dim=0
+        )
     else:
         print(f"\n[WARN] Virtual edge file {virtual_edge_csv} not found, none used this round")
 
@@ -826,7 +878,9 @@ if __name__ == "__main__":
         predict_run_count = ckpt.get("predict_run_count", 0)
         if "scaler_state" in ckpt:
             scaler.load_state_dict(ckpt["scaler_state"])
-        print(f"[OK] Resumed from checkpoint at epoch {start_epoch}, predict cycles done: {predict_run_count}")
+        print(
+            f"[OK] Resumed from checkpoint at epoch {start_epoch}, predict cycles done: {predict_run_count}"
+        )
 
     cycle_counter = start_epoch % TRAIN_CYCLE
     total_line_epoch = epochs
@@ -834,7 +888,9 @@ if __name__ == "__main__":
         if cycle_counter >= TRAIN_CYCLE:
             cycle_counter = 0
             current_epoch_num = ep + 1
-            print(f"\n===== {TRAIN_CYCLE} LINE epochs done, running test prediction + MRR eval (epoch {current_epoch_num}) =====")
+            print(
+                f"\n===== {TRAIN_CYCLE} LINE epochs done, running test prediction + MRR eval (epoch {current_epoch_num}) ====="
+            )
             current_emb = model.get_final_emb().cpu().numpy()
             emb_np = np.round(current_emb, decimals=EMB_PRECISION)
             emb_df = pd.DataFrame(emb_np)
@@ -846,7 +902,9 @@ if __name__ == "__main__":
             os.replace(tmp_emb_path, latest_emb_path)
 
             # Predict, generating a new virtual edge set (file is overwritten)
-            new_virt_set = predict_test(test_df, emb_np, prev_virt_single_for_cache, global_real_src_np, current_epoch_num)
+            new_virt_set = predict_test(
+                test_df, emb_np, prev_virt_single_for_cache, global_real_src_np, current_epoch_num
+            )
             print(f"Virtual edges generated this round: {len(new_virt_set)}")
             # predict_test above has just built the sim cache for this exact
             # embedding and src set — no need to rebuild it
@@ -854,14 +912,29 @@ if __name__ == "__main__":
             # optimistic random-negative arm and the competition-faithful
             # real-candidate arm, and print them side by side.
             _cache_mat = build_eval_cache_mat(emb_np)
-            mrr_rand = calc_mrr_eval(df_raw, emb_np, global_real_src_np, sample_num=MCC_SAMPLE_COUNT,
-                                     sim_cache_ready=True, cache_mat=_cache_mat)
-            mrr_real = calc_mrr_eval(df_raw, emb_np, global_real_src_np, sample_num=MCC_SAMPLE_COUNT,
-                                     sim_cache_ready=True, cache_mat=_cache_mat,
-                                     real_cand_pools=eval_cand_pools, eval_positives=holdout_val_df)
+            mrr_rand = calc_mrr_eval(
+                df_raw,
+                emb_np,
+                global_real_src_np,
+                sample_num=MCC_SAMPLE_COUNT,
+                sim_cache_ready=True,
+                cache_mat=_cache_mat,
+            )
+            mrr_real = calc_mrr_eval(
+                df_raw,
+                emb_np,
+                global_real_src_np,
+                sample_num=MCC_SAMPLE_COUNT,
+                sim_cache_ready=True,
+                cache_mat=_cache_mat,
+                real_cand_pools=eval_cand_pools,
+                eval_positives=holdout_val_df,
+            )
             _rpos = "leak-free" if holdout_val_df is not None else "in-training"
-            print(f"Leave-one-out tail MRR | random-neg/in-training: {mrr_rand:.4f}  "
-                  f"| real-cand/{_rpos}: {mrr_real:.4f}  <- leaderboard-comparable")
+            print(
+                f"Leave-one-out tail MRR | random-neg/in-training: {mrr_rand:.4f}  "
+                f"| real-cand/{_rpos}: {mrr_real:.4f}  <- leaderboard-comparable"
+            )
 
             predict_run_count += 1
             print(f"Predict cycles completed: {predict_run_count}")
@@ -893,7 +966,9 @@ if __name__ == "__main__":
                     base_pos_set.add((u, v))
                     base_pos_set.add((v, u))
                 virt_tensor = torch.LongTensor(virt_bi_list).to(device)
-                current_virt_bi_edges = torch.repeat_interleave(virt_tensor, repeats=VIRT_REPEAT_TIMES, dim=0)
+                current_virt_bi_edges = torch.repeat_interleave(
+                    virt_tensor, repeats=VIRT_REPEAT_TIMES, dim=0
+                )
                 pos_keys = build_pos_keys(base_pos_set, num_entity)
                 print("[OK] Switched to this round's virtual edges")
             else:
@@ -903,8 +978,7 @@ if __name__ == "__main__":
         full_train_graph = torch.cat([base_single_edges, current_virt_bi_edges], dim=0)
         pos_cnt = full_train_graph.shape[0]
         if base_time_w is not None:
-            w = np.concatenate([base_time_w,
-                                np.ones(len(current_virt_bi_edges), dtype=np.float64)])
+            w = np.concatenate([base_time_w, np.ones(len(current_virt_bi_edges), dtype=np.float64)])
             pos_cdf = torch.from_numpy(np.cumsum(w / w.sum())).to(device)
             perm = torch.searchsorted(
                 pos_cdf, torch.rand(pos_cnt, device=device, dtype=torch.float64)
@@ -917,7 +991,7 @@ if __name__ == "__main__":
         # Pregenerate the whole epoch's negatives in one vectorized pass; the
         # per-batch scipy indexing + CPU->GPU round-trips dominated epoch time
         d_neg_epoch = gen_neg_epoch(pos_shuffle[:, 0].cpu().numpy(), pos_keys, num_entity)
-        pbar = tqdm(range(0, pos_cnt, batch_size), desc=f"LINE epoch {ep+1}/{total_line_epoch}")
+        pbar = tqdm(range(0, pos_cnt, batch_size), desc=f"LINE epoch {ep + 1}/{total_line_epoch}")
 
         for start_idx in pbar:
             end_idx = min(start_idx + batch_size, pos_cnt)
@@ -925,7 +999,7 @@ if __name__ == "__main__":
             s_pos = batch_pos[:, 0]
             d_pos = batch_pos[:, 1]
             s_neg = torch.repeat_interleave(s_pos, neg_ratio)
-            d_neg = d_neg_epoch[start_idx * neg_ratio:end_idx * neg_ratio]
+            d_neg = d_neg_epoch[start_idx * neg_ratio : end_idx * neg_ratio]
 
             s_all = torch.cat([s_pos, s_neg])
             d_all = torch.cat([d_pos, d_neg])
@@ -954,7 +1028,7 @@ if __name__ == "__main__":
 
         avg_loss = total_loss / batch_total
         cycle_counter += 1
-        print(f"\n[LINE epoch {ep+1}] avg loss: {avg_loss:.4f}")
+        print(f"\n[LINE epoch {ep + 1}] avg loss: {avg_loss:.4f}")
 
         # Save checkpoint
         save_dict = {
@@ -970,7 +1044,7 @@ if __name__ == "__main__":
         }
         torch.save(save_dict, last_ckpt_path)
         if (ep + 1) % save_interval == 0:
-            torch.save(save_dict, ckpt_dir / f"line_epoch_{ep+1}.pt")
+            torch.save(save_dict, ckpt_dir / f"line_epoch_{ep + 1}.pt")
         if avg_loss < best_loss:
             best_loss = avg_loss
             torch.save(save_dict, best_ckpt_path)

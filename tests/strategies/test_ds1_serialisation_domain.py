@@ -26,8 +26,8 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 os.environ.setdefault("DATASET", "dataset1")
 
-import pipeline_common as pc                              # noqa: E402
-from ranker_ds1 import serialisation_normalise            # noqa: E402
+import pipeline_common as pc  # noqa: E402
+from ranker_ds1 import serialisation_normalise  # noqa: E402
 
 
 def lambdarank_like(rows: int, cols: int, seed: int) -> np.ndarray:
@@ -83,9 +83,11 @@ class SerialisationDomainTest(unittest.TestCase):
 
     def test_the_degenerate_convention_matches_row_max_normalise(self):
         from strategies.shared.frozen_ops import row_max_normalise
+
         row = np.full(100, -2.5)
-        self.assertTrue(np.array_equal(serialisation_normalise(row),
-                                       row_max_normalise(row.reshape(1, -1))[0]))
+        self.assertTrue(
+            np.array_equal(serialisation_normalise(row), row_max_normalise(row.reshape(1, -1))[0])
+        )
 
     def test_output_is_finite_on_a_wide_dynamic_range(self):
         row = np.array([-1e12] + [0.0] * 98 + [1e12])
@@ -154,6 +156,7 @@ class FrozenRankerFixedPointTest(unittest.TestCase):
     @staticmethod
     def _sha256(path: Path) -> str:
         import hashlib
+
         digest = hashlib.sha256()
         with path.open("rb") as handle:
             for block in iter(lambda: handle.read(1 << 20), b""):
@@ -172,8 +175,10 @@ class FrozenRankerFixedPointTest(unittest.TestCase):
                 self.frozen = candidate
                 return
             seen.append(f"{rel}: {digest[:16]}...")
-        self.skipTest("the frozen dataset1 ranker (sha256 cb4964ea...) is not "
-                      f"available locally; searched {', '.join(seen)}")
+        self.skipTest(
+            "the frozen dataset1 ranker (sha256 cb4964ea...) is not "
+            f"available locally; searched {', '.join(seen)}"
+        )
 
     def test_patched_persistence_reproduces_the_frozen_ranker_bytes(self):
         import hashlib
@@ -194,13 +199,16 @@ class FrozenRankerFixedPointTest(unittest.TestCase):
             # platform dependence of the intermediate artifact, recorded here so
             # this test measures the transform rather than the host. The final
             # member is unaffected: frozen_ops.write_score_matrix pins CRLF.
-            pd.DataFrame(out).to_csv(path, index=False, header=False,
-                                     float_format="%.6f", lineterminator="\r\n")
+            pd.DataFrame(out).to_csv(
+                path, index=False, header=False, float_format="%.6f", lineterminator="\r\n"
+            )
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             self.assertEqual(path.stat().st_size, self.frozen.stat().st_size)
-        self.assertEqual(digest, self.EXPECTED,
-                         "the patched persistence path no longer reproduces the "
-                         "frozen dataset1 ranker artifact")
+        self.assertEqual(
+            digest,
+            self.EXPECTED,
+            "the patched persistence path no longer reproduces the frozen dataset1 ranker artifact",
+        )
 
     def test_the_frozen_artifact_carries_the_min_max_fingerprint(self):
         # The discriminating measurement, pinned so it cannot silently change.

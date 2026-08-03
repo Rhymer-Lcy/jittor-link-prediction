@@ -20,7 +20,6 @@ import os
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import scipy.sparse as sp
 from tqdm import tqdm
 
@@ -100,6 +99,7 @@ src_hist_dsts = dict()
 
 c_cols = [f"c{i}" for i in range(1, 101)]
 
+
 def split_train_val_by_tail(df):
     # Last VAL_PER_SRC_TAIL rows (by time) of each src go to val; srcs with too
     # few rows put the whole group in val and contribute nothing to train.
@@ -108,6 +108,7 @@ def split_train_val_by_tail(df):
     train_df = df.drop(val_df.index).reset_index(drop=True)
     val_df = val_df.reset_index(drop=True)
     return train_df, val_df
+
 
 def build_history_index(full_df):
     # One-off per-src index sorted by time, replacing full-table scans
@@ -118,6 +119,7 @@ def build_history_index(full_df):
         src_hist_times[int(src)] = g["time"].values.astype(float)
         src_hist_dsts[int(src)] = g["dst"].values.astype(np.int64)
 
+
 def get_hist_before_time(src_id: int, cutoff_time: float):
     # Like get_dst_before_time but also returns the matching timestamps
     times = src_hist_times.get(src_id)
@@ -125,6 +127,7 @@ def get_hist_before_time(src_id: int, cutoff_time: float):
         return np.array([], dtype=np.int64), np.array([], dtype=float)
     k = np.searchsorted(times, cutoff_time, side="left")
     return src_hist_dsts[src_id][:k], times[:k]
+
 
 def count_in_history(candidates: np.ndarray, hist: np.ndarray) -> np.ndarray:
     # Occurrence count of each candidate in the (possibly repeating) history
@@ -136,9 +139,11 @@ def count_in_history(candidates: np.ndarray, hist: np.ndarray) -> np.ndarray:
     hit = values[idx] == candidates
     return np.where(hit, counts[idx], 0).astype(np.float32)
 
+
 def rownorm(v: np.ndarray) -> np.ndarray:
     mx = v.max()
     return v / mx if mx > 1e-12 else v
+
 
 def build_cooc(df, n_node: int):
     global ui_mat, ui_mat_csc, dst_pop, dst_rpop_log
@@ -155,6 +160,7 @@ def build_cooc(df, n_node: int):
         rpop[int(d)] = float(c)
     dst_rpop_log = np.log1p(rpop)
 
+
 def cooc_scores(src: int, cands: np.ndarray) -> np.ndarray:
     # Popularity-normalized co-occurrence CF: users overlapping src's history,
     # weighted by overlap size, aggregated over their interactions with cands
@@ -164,6 +170,7 @@ def cooc_scores(src: int, cands: np.ndarray) -> np.ndarray:
     x[src] = 0.0
     sc = np.asarray((sp.csr_matrix(x) @ ui_mat_csc[:, cands]).todense()).ravel()
     return sc.astype(np.float64) / np.sqrt(dst_pop[cands])
+
 
 def cache_dict_to_matrix(base_cache: dict, add_pair_set: set, max_node: int):
     # Sparse CSR: dataset2 has 139k+ node ids, a dense (N+1)^2 float32 matrix
@@ -185,6 +192,7 @@ def cache_dict_to_matrix(base_cache: dict, add_pair_set: set, max_node: int):
     ).tocsr()
     return mat
 
+
 def batch_sim_score(target_src: int, dst_batch: np.ndarray, cache_mat):
     row_idx = src2row.get(target_src, -1)
     if row_idx == -1:
@@ -194,6 +202,7 @@ def batch_sim_score(target_src: int, dst_batch: np.ndarray, cache_mat):
     weight_slice = cache_mat[neigh_ids][:, dst_batch].toarray()
     scores = neigh_w @ weight_slice
     return scores.astype(np.float32)
+
 
 def build_sim_cache(emb_matrix, real_src_np):
     # Two-band decayed similar-user cache: chunked cosine top-k.
@@ -223,9 +232,10 @@ def build_sim_cache(emb_matrix, real_src_np):
     chunk = 1024
     neigh_chunks = []
     weight_chunks = []
-    for beg in tqdm(range(0, len(valid_targets), chunk),
-                    desc="Building two-band decayed similar-user cache"):
-        ids = targets[beg:beg + chunk]
+    for beg in tqdm(
+        range(0, len(valid_targets), chunk), desc="Building two-band decayed similar-user cache"
+    ):
+        ids = targets[beg : beg + chunk]
         sim = emb_norm[ids] @ emb_norm.T
         # Exclude self-similarity, matching the original per-row zeroing
         sim[np.arange(len(ids)), ids] = 0.0
@@ -256,11 +266,13 @@ def build_sim_cache(emb_matrix, real_src_np):
     for row_idx, src_id in enumerate(valid_targets):
         src2row[src_id] = row_idx
 
+
 # ===================== Run-directory contract =====================
 # One authoritative definition used by BOTH the producer (the Jittor trainers)
 # and the consumers (the rankers). Before this existed they disagreed for the
 # full-train LINE case -- the trainer wrote "<dataset>-novirt" while the ranker
 # read "<dataset>" -- and the gap had to be bridged by a hand-made symlink.
+
 
 def outputs_root(root: Path | None = None) -> Path:
     """Directory holding every run artifact.
@@ -277,16 +289,24 @@ def outputs_root(root: Path | None = None) -> Path:
     return (Path(root) if root is not None else PROJECT_ROOT) / "outputs"
 
 
-def line_run_dir(dataset: str, *, seed: int = 42, neg_dist: str = "uniform",
-                 emb_dim: int = 400, time_max: float = 0.0, holdout: bool = False,
-                 virtual_edges: bool = False, root: Path | None = None) -> Path:
+def line_run_dir(
+    dataset: str,
+    *,
+    seed: int = 42,
+    neg_dist: str = "uniform",
+    emb_dim: int = 400,
+    time_max: float = 0.0,
+    holdout: bool = False,
+    virtual_edges: bool = False,
+    root: Path | None = None,
+) -> Path:
     """Directory holding a LINE run's line_latest_emb.csv.
 
     ``virtual_edges`` defaults to False because virtual-edge self-training is a
     measured no-op in the production configuration and the Jittor trainer omits
     it, which is what the "-novirt" marker records.
     """
-    suffix = ("" if seed == 42 else f"-s{seed}")
+    suffix = "" if seed == 42 else f"-s{seed}"
     suffix += "-negpop" if neg_dist == "pop075" else ""
     suffix += f"-d{emb_dim}" if emb_dim != 400 else ""
     suffix += "" if virtual_edges else "-novirt"
@@ -295,9 +315,17 @@ def line_run_dir(dataset: str, *, seed: int = 42, neg_dist: str = "uniform",
     return outputs_root(root) / (dataset + suffix)
 
 
-def bpr_run_dir(dataset: str, *, seed: int = 42, tau_frac: float = 0.0,
-                dim: int = 256, time_max: float = 0.0, innov: bool = False,
-                holdout: bool = False, root: Path | None = None) -> Path:
+def bpr_run_dir(
+    dataset: str,
+    *,
+    seed: int = 42,
+    tau_frac: float = 0.0,
+    dim: int = 256,
+    time_max: float = 0.0,
+    innov: bool = False,
+    holdout: bool = False,
+    root: Path | None = None,
+) -> Path:
     """Directory holding a BPR run's bpr_emb.npy."""
     name = dataset + "-bpr"
     name += "-innov" if innov else ""

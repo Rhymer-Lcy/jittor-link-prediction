@@ -115,8 +115,9 @@ class DiffAccountingTest(SmallSpecMixin):
         trt = self.good.copy()
         trt[1] = [1.0, 0.2, 0.3, 0.4, 0.5]
         rep = report()
-        d = pc.diff_against_baseline(trt, self.good, as_csv(trt), as_csv(self.good),
-                                     rep, inversions=True)
+        d = pc.diff_against_baseline(
+            trt, self.good, as_csv(trt), as_csv(self.good), rep, inversions=True
+        )
         self.assertEqual(d["top1_changes"], 1)
         self.assertEqual(d["changed_rows_text"], 1)
         self.assertEqual(d["order_changed_rows"], 1)
@@ -124,8 +125,9 @@ class DiffAccountingTest(SmallSpecMixin):
 
     def test_identical_input_warns_that_it_measures_nothing(self):
         rep = report()
-        d = pc.diff_against_baseline(self.good, self.good, as_csv(self.good),
-                                     as_csv(self.good), rep, inversions=False)
+        d = pc.diff_against_baseline(
+            self.good, self.good, as_csv(self.good), as_csv(self.good), rep, inversions=False
+        )
         self.assertEqual(d["changed_cells"], 0)
         self.assertTrue(rep.warned)
 
@@ -170,8 +172,10 @@ class ZipWriterTest(unittest.TestCase):
                 # arcname would derive create_system from sys.platform (0 on
                 # Windows, 3 on Linux) and the official review environment is
                 # Ubuntu 22.04.
-                self.assertEqual((i.create_system, i.create_version,
-                                  i.external_attr, i.flag_bits), (0, 20, 0x1800000, 0))
+                self.assertEqual(
+                    (i.create_system, i.create_version, i.external_attr, i.flag_bits),
+                    (0, 20, 0x1800000, 0),
+                )
                 self.assertEqual(z.read("dataset1.csv"), payload)
 
     def test_container_fields_do_not_depend_on_the_host_platform(self):
@@ -184,8 +188,7 @@ class ZipWriterTest(unittest.TestCase):
         # 0 means MS-DOS/FAT, which is what all three accepted archives carry.
         # A host-derived value (3, Unix) here would mean a rebuilt pack no longer
         # matches the accepted container.
-        self.assertEqual(entry.create_system, 0,
-                         "create_system leaked from the host platform")
+        self.assertEqual(entry.create_system, 0, "create_system leaked from the host platform")
         self.assertEqual(entry.compress_type, 8)
 
     def test_preserves_line_endings_verbatim(self):
@@ -195,8 +198,9 @@ class ZipWriterTest(unittest.TestCase):
             crlf = b"0.1,0.2\r\n0.3,0.4\r\n"
             pc.write_zip(out, [("dataset1.csv", crlf)], rep)
             with zipfile.ZipFile(out) as z:
-                self.assertEqual(z.read("dataset1.csv"), crlf,
-                                 "CSV members must be treated as opaque bytes")
+                self.assertEqual(
+                    z.read("dataset1.csv"), crlf, "CSV members must be treated as opaque bytes"
+                )
 
     def test_member_order_is_preserved(self):
         rep = report()
@@ -213,20 +217,35 @@ class ScoreArithmeticTest(unittest.TestCase):
         self.assertEqual(ds1 + ds2, pc.ACCEPTED_TOTAL)
 
     def test_spec_mirrors_the_production_manifest(self):
-        self.assertEqual(pc.SPEC["ds1"]["baseline_sha256"],
-                         pc.PROD["dataset1"]["member_sha256"])
-        self.assertEqual(pc.SPEC["ds2"]["baseline_sha256"],
-                         pc.PROD["dataset2"]["member_sha256"])
+        self.assertEqual(pc.SPEC["ds1"]["baseline_sha256"], pc.PROD["dataset1"]["member_sha256"])
+        self.assertEqual(pc.SPEC["ds2"]["baseline_sha256"], pc.PROD["dataset2"]["member_sha256"])
 
 
 class ManifestSchemaTest(SmallSpecMixin):
     REQUIRED = [
-        "experiment", "dataset", "source_csv_path", "baseline_csv_sha256",
-        "treatment_csv_sha256", "zip_path", "zip_sha256", "member_names", "member_sha256",
-        "rows", "cols", "changed_rows", "changed_cells", "top1_changes",
-        "compress_method", "compress_level", "archive_bytes",
-        "baseline_component_score", "treatment_component_score", "component_delta",
-        "predicted_combined_total", "created_utc", "command_line",
+        "experiment",
+        "dataset",
+        "source_csv_path",
+        "baseline_csv_sha256",
+        "treatment_csv_sha256",
+        "zip_path",
+        "zip_sha256",
+        "member_names",
+        "member_sha256",
+        "rows",
+        "cols",
+        "changed_rows",
+        "changed_cells",
+        "top1_changes",
+        "compress_method",
+        "compress_level",
+        "archive_bytes",
+        "baseline_component_score",
+        "treatment_component_score",
+        "component_delta",
+        "predicted_combined_total",
+        "created_utc",
+        "command_line",
     ]
 
     #: ``REQUIRED`` describes a single-dataset COMPONENT manifest. A combined-pack
@@ -238,9 +257,20 @@ class ManifestSchemaTest(SmallSpecMixin):
 
     #: Keys a combined-pack manifest must still carry. Asserted so that excluding
     #: it from REQUIRED cannot become a way to check nothing at all.
-    COMBINED_REQUIRED = ["experiment", "dataset", "mode", "zip_path", "zip_sha256",
-                         "member_names", "member_sha256", "rows", "cols",
-                         "archive_bytes", "created_utc", "command_line"]
+    COMBINED_REQUIRED = [
+        "experiment",
+        "dataset",
+        "mode",
+        "zip_path",
+        "zip_sha256",
+        "member_names",
+        "member_sha256",
+        "rows",
+        "cols",
+        "archive_bytes",
+        "created_utc",
+        "command_line",
+    ]
 
     def _manifests(self):
         """Every packaging manifest, in a DETERMINISTIC order.
@@ -252,6 +282,7 @@ class ManifestSchemaTest(SmallSpecMixin):
         Selection is now by declared ``mode``, and every manifest is checked.
         """
         import json
+
         found = []
         for path in sorted((REPO / "outputs" / "submissions").rglob("*_manifest.json")):
             found.append((path, json.loads(path.read_text(encoding="utf-8"))))
@@ -266,16 +297,21 @@ class ManifestSchemaTest(SmallSpecMixin):
 
         component = [(p, m) for p, m in manifests if m.get("mode") in self.COMPONENT_MODES]
         combined = [(p, m) for p, m in manifests if m.get("mode") in self.COMBINED_MODES]
-        unknown = [p.name for p, m in manifests
-                   if m.get("mode") not in self.COMPONENT_MODES + self.COMBINED_MODES]
+        unknown = [
+            p.name
+            for p, m in manifests
+            if m.get("mode") not in self.COMPONENT_MODES + self.COMBINED_MODES
+        ]
         self.assertEqual(unknown, [], f"manifest with an unrecognised mode: {unknown}")
 
         # Anti-vacuity: the assertions below must actually run on something.
-        self.assertTrue(component,
-                        "no single-dataset component manifest present; this test "
-                        "would otherwise pass without checking the REQUIRED schema")
+        self.assertTrue(
+            component,
+            "no single-dataset component manifest present; this test "
+            "would otherwise pass without checking the REQUIRED schema",
+        )
 
-        for path, payload in component:            # every one, not an arbitrary one
+        for path, payload in component:  # every one, not an arbitrary one
             for field in self.REQUIRED:
                 self.assertIn(field, payload, f"{path.name} is missing {field}")
         for path, payload in combined:
@@ -288,9 +324,12 @@ class ManifestSchemaTest(SmallSpecMixin):
         if len(manifests) < 2:
             self.skipTest("need at least two manifests to demonstrate the hazard")
         modes = {m.get("mode") for _, m in manifests}
-        self.assertGreater(len(modes), 1,
-                           "expected both component and combined-pack manifests, so "
-                           "that order-dependent selection would be observable")
+        self.assertGreater(
+            len(modes),
+            1,
+            "expected both component and combined-pack manifests, so "
+            "that order-dependent selection would be observable",
+        )
 
 
 if __name__ == "__main__":

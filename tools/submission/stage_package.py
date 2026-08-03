@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Deterministically stage the official submission tree, and audit what it holds.
+"""Deterministically stage and audit the official submission tree.
 
-This builds a DRAFT. It does not create an archive and still stages the English
-working PDF under its English name. The approved final Chinese PDF is held in
-the cold archive and is introduced only by the separate freeze step.
+The team name and approved Chinese PDF are explicit inputs. The tool never
+creates a placeholder package and never selects a document implicitly.
 
 Everything staged is copied from tracked files at the current commit, so the
 package cannot contain a file that exists only in a worktree, in a scratch
@@ -18,8 +17,9 @@ Three audits run over the result and all three must pass:
   host paths) survives either a filename or a content scan;
 * every staged file is byte-identical to its tracked source.
 
-    python tools/submission/stage_package.py            # build and audit
-    python tools/submission/stage_package.py --audit    # audit an existing tree
+    python tools/submission/stage_package.py \
+        --team-name TEAM_NAME --document path/to/提交说明文档.pdf
+    python tools/submission/stage_package.py --audit --root submission_staging/PACKAGE
 """
 
 from __future__ import annotations
@@ -36,16 +36,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 
-#: The archive-name template used by this draft builder. The approved team name
-#: is deliberately applied only by the separate final-freeze step.
-INTENDED_ARCHIVE_NAME = "contest1_<TEAM_NAME>_003.zip"
-#: Windows rejects '<' and '>' in path components, so the staging directory uses
-#: a filesystem-safe token instead. The token is a placeholder in exactly the
-#: same sense -- it must be replaced with the real team name at freeze time, and
-#: the intended name above is what the final archive will be called.
-DIRECTORY_PLACEHOLDER = "TEAM_NAME_PLACEHOLDER"
 STAGING_ROOT = REPO / "submission_staging"
-PACKAGE_NAME = f"contest1_{DIRECTORY_PLACEHOLDER}_003"
+OFFICIAL_DOCUMENT_NAME = "提交说明文档.pdf"
 
 # --------------------------------------------------------------------------
 # membership
@@ -53,87 +45,130 @@ PACKAGE_NAME = f"contest1_{DIRECTORY_PLACEHOLDER}_003"
 
 #: (repository path, classification, why it is in the package).
 CODE_MEMBERS: list[tuple[str, str, str]] = [
-    ("run_all.py", "entrypoint",
-     "one-command reproduction: runs both dataset pipelines in the required "
-     "order; an orchestration wrapper with no scientific logic of its own"),
-    ("main.py", "entrypoint",
-     "the organiser-facing command; executes the canonical graph for one dataset"),
-    ("src/canonical_pipeline.py", "orchestration",
-     "the stage graph for both datasets and the fail-closed runner"),
-    ("src/stage_contract.py", "orchestration",
-     "completion records, atomic publication, artifact validators"),
-    ("src/pipeline_common.py", "shared",
-     "run-directory and data-root path contracts; framework-neutral utilities"),
-    ("src/train_line_jt.py", "training",
-     "LINE embedding trainer (Jittor); dataset1 and dataset2"),
-    ("src/train_bpr_jt.py", "training",
-     "BPR-MF embedding trainer (Jittor); dataset1 and dataset2"),
-    ("src/ensemble_predict.py", "inference",
-     "embedding loading and collaborative scoring used by both rankers"),
-    ("src/ranker_ds1.py", "ranking",
-     "dataset1 cut-split LambdaRank over 21 features; writes the base score matrix"),
-    ("src/ranker_basket_ds2.py", "ranking",
-     "dataset2 18-feature LambdaRank with three-pass basket feedback"),
-    ("src/ds2_basket_featurizer.py", "features",
-     "dataset2 feature construction and the contract-governed train-feature cache"),
-    ("src/ds2_mf_basket_pack.py", "ranking",
-     "dataset2 MF sibling-message geometry; produces the production base matrix"),
-    ("src/crf_promote.py", "postprocessing",
-     "dataset2 equality CRF and the structural-invariant demotions"),
-    ("src/build_ds1_member.py", "final output",
-     "applies the frozen dataset1 postprocessor chain and writes the member"),
-    ("src/build_ds2_member.py", "final output",
-     "applies the cross-time exclusivity decode and writes the member"),
+    (
+        "run_all.py",
+        "entrypoint",
+        "one-command reproduction: runs both dataset pipelines in the required "
+        "order; an orchestration wrapper with no scientific logic of its own",
+    ),
+    (
+        "main.py",
+        "entrypoint",
+        "the organiser-facing command; executes the canonical graph for one dataset",
+    ),
+    (
+        "src/canonical_pipeline.py",
+        "orchestration",
+        "the stage graph for both datasets and the fail-closed runner",
+    ),
+    (
+        "src/stage_contract.py",
+        "orchestration",
+        "completion records, atomic publication, artifact validators",
+    ),
+    (
+        "src/pipeline_common.py",
+        "shared",
+        "run-directory and data-root path contracts; framework-neutral utilities",
+    ),
+    ("src/train_line_jt.py", "training", "LINE embedding trainer (Jittor); dataset1 and dataset2"),
+    ("src/train_bpr_jt.py", "training", "BPR-MF embedding trainer (Jittor); dataset1 and dataset2"),
+    (
+        "src/ensemble_predict.py",
+        "inference",
+        "embedding loading and collaborative scoring used by both rankers",
+    ),
+    (
+        "src/ranker_ds1.py",
+        "ranking",
+        "dataset1 cut-split LambdaRank over 21 features; writes the base score matrix",
+    ),
+    (
+        "src/ranker_basket_ds2.py",
+        "ranking",
+        "dataset2 18-feature LambdaRank with three-pass basket feedback",
+    ),
+    (
+        "src/ds2_basket_featurizer.py",
+        "features",
+        "dataset2 feature construction and the contract-governed train-feature cache",
+    ),
+    (
+        "src/ds2_mf_basket_pack.py",
+        "ranking",
+        "dataset2 MF sibling-message geometry; produces the production base matrix",
+    ),
+    (
+        "src/crf_promote.py",
+        "postprocessing",
+        "dataset2 equality CRF and the structural-invariant demotions",
+    ),
+    (
+        "src/build_ds1_member.py",
+        "final output",
+        "applies the frozen dataset1 postprocessor chain and writes the member",
+    ),
+    (
+        "src/build_ds2_member.py",
+        "final output",
+        "applies the cross-time exclusivity decode and writes the member",
+    ),
     ("src/strategies/__init__.py", "package marker", "package initialiser"),
-    ("src/strategies/registry.py", "postprocessing",
-     "the ordered, order-sensitive dataset1 postprocessor chain"),
+    (
+        "src/strategies/registry.py",
+        "postprocessing",
+        "the ordered, order-sensitive dataset1 postprocessor chain",
+    ),
     ("src/strategies/shared/__init__.py", "package marker", "package initialiser"),
-    ("src/strategies/shared/frozen_ops.py", "postprocessing",
-     "frozen numeric primitives and the final submission-format gate"),
+    (
+        "src/strategies/shared/frozen_ops.py",
+        "postprocessing",
+        "frozen numeric primitives and the final submission-format gate",
+    ),
     ("src/strategies/ds1/__init__.py", "package marker", "package initialiser"),
-    ("src/strategies/ds1/source_slate_recurrence.py", "postprocessing",
-     "dataset1 postprocessor 1"),
-    ("src/strategies/ds1/test_graph_reciprocity.py", "postprocessing",
-     "dataset1 postprocessor 2"),
+    ("src/strategies/ds1/source_slate_recurrence.py", "postprocessing", "dataset1 postprocessor 1"),
+    ("src/strategies/ds1/graph_reciprocity.py", "postprocessing", "dataset1 postprocessor 2"),
     ("src/strategies/ds2/__init__.py", "package marker", "package initialiser"),
-    ("src/strategies/ds2/cross_time_exclusivity.py", "postprocessing",
-     "the dataset2 final decoder"),
-    ("configs/production.json", "configuration",
-     "the machine-readable production description main.py --stage describe reads"),
-    ("tools/submission/package_component.py", "verification",
-     "submission-format verifier; lets a reviewer check a member independently"),
+    (
+        "src/strategies/ds2/cross_time_exclusivity.py",
+        "postprocessing",
+        "the dataset2 final decoder",
+    ),
+    (
+        "configs/production.json",
+        "configuration",
+        "the machine-readable production description main.py --stage describe reads",
+    ),
+    (
+        "tools/submission/package_component.py",
+        "verification",
+        "submission-format verifier; lets a reviewer check a member independently",
+    ),
 ]
 
 #: Copied to the archive root, beside code/.
 ROOT_MEMBERS = ["requirements.txt", "environment.yaml"]
 
-#: The draft reviewer document, intentionally staged under its English working
-#: name. The approved Chinese rendering now exists in the cold archive, but this
-#: draft builder does not perform the final freeze or introduce that artifact.
-REVIEW_DOCUMENT = ("docs/submission/submission_document_en.pdf",
-                   "submission_document_en.pdf")
-
 #: Deliberately excluded, with the reason a reviewer would want.
 EXCLUSIONS: list[tuple[str, str]] = [
-    ("src/train_line.py", "PyTorch-only historical trainer; not on the canonical path"),
-    ("src/train_bpr.py", "PyTorch-only historical trainer; not on the canonical path"),
-    ("tools/diagnostics/compare_backends.py",
-     "local dual-backend diagnostic; spawns the two PyTorch trainers"),
-    ("src/ranker_basket_ab_ds2.py", "out-of-chain A/B probe; not in the production chain"),
-    ("src/footprint_feature.py", "superseded feature channel; not in the production chain"),
-    ("src/footprint_ab_probe.py", "out-of-chain A/B probe"),
-    ("src/validate_footprint_packs.py", "out-of-chain validation of a superseded channel"),
-    ("src/triple_promote.py", "superseded standalone rule; subsumed by crf_promote"),
+    (
+        "reference/pytorch/train_line.py",
+        "PyTorch-only historical trainer; not on the canonical path",
+    ),
+    (
+        "reference/pytorch/train_bpr.py",
+        "PyTorch-only historical trainer; not on the canonical path",
+    ),
+    (
+        "tools/diagnostics/compare_backends.py",
+        "local dual-backend diagnostic; spawns the two PyTorch trainers",
+    ),
     ("tests/", "the maintained test suite; not required to reproduce a result"),
-    ("docs/", "internal engineering records; the submission PDF is the reviewer document"),
-    ("README.md", "internal score ledger and experiment history"),
+    ("docs/", "public documentation; the approved PDF is supplied explicitly"),
+    ("README.md", "repository overview; not part of the organiser package"),
     ("data/", "official competition data; not redistributable, never bundled"),
     ("outputs/", "run artifacts, completion records, intermediate and final members"),
-    ("reference/", "reference predictions; never a computational input"),
-    ("artifacts_durable/", "retained audit evidence"),
-    ("audit_exports/", "deterministic evidence archives"),
-    ("scratchpad/", "untracked working notes and one-off drivers"),
-    ("docs_local/", "local consultation briefs"),
+    ("reference/pytorch/", "optional PyTorch backend; not on the Jittor path"),
     ("submission_staging/", "this staging tree itself"),
     (".git/", "version-control metadata"),
 ]
@@ -146,8 +181,10 @@ EXCLUSIONS: list[tuple[str, str]] = [
 SECRET_PATTERNS = [
     (r"BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY", "private key material"),
     (r"ssh-(rsa|ed25519) AAAA", "public key blob"),
-    (r"(?i)\b(password|passwd|secret|api[_-]?key|access[_-]?token)\s*[:=]\s*['\"][^'\"]{6,}",
-     "credential literal"),
+    (
+        r"(?i)\b(password|passwd|secret|api[_-]?key|access[_-]?token)\s*[:=]\s*['\"][^'\"]{6,}",
+        "credential literal",
+    ),
     (r"gh[pousr]_[A-Za-z0-9]{20,}", "GitHub token"),
     (r"seetacloud\.com", "rented-instance endpoint"),
     (r"connect\.bjb1", "rented-instance endpoint"),
@@ -163,29 +200,39 @@ SECRET_PATTERNS = [
     (r"(?m)^\s*from\s+torch[\s.]", "PyTorch import"),
 ]
 
-#: Reported for the record, but not blocking. These are provenance comments in
-#: production source ("ported verbatim from scratchpad/..."), not runtime
-#: dependencies. Editing production source to remove a historical note would
-#: make the package diverge from the code that was actually executed, which is a
-#: worse outcome for a reviewer than an unresolved comment reference.
-ADVISORY_PATTERNS = [
-    (r"scratchpad/[\w./-]*", "provenance comment referring to an unshipped scratch path"),
-]
+ADVISORY_PATTERNS: list[tuple[str, str]] = []
 
 #: Declared in the environment specification without being imported by the
 #: staged code. Each needs a reason a reviewer would accept.
 DECLARED_WITHOUT_IMPORT = {
     "scikit-learn": "named explicitly by the official inspection notice as a "
-                    "version-pinned requirement of the target environment; the "
-                    "canonical chain uses LightGBM for its learned components "
-                    "and does not import sklearn",
+    "version-pinned requirement of the target environment; the "
+    "canonical chain uses LightGBM for its learned components "
+    "and does not import sklearn",
 }
 
 #: File names/suffixes that must never be staged.
 FORBIDDEN_NAMES = [
-    "*.npz", "*.npy", "*.pt", "*.pth", "*.ckpt", "*.zip", "*.bundle", "*.part",
-    "*.log", "*.pyc", "*.done.json", "id_rsa*", "*.pem", "*.key", ".env*",
-    "train.csv", "test.csv", "dataset1.csv", "dataset2.csv", "result_ranker.csv",
+    "*.npz",
+    "*.npy",
+    "*.pt",
+    "*.pth",
+    "*.ckpt",
+    "*.zip",
+    "*.bundle",
+    "*.part",
+    "*.log",
+    "*.pyc",
+    "*.done.json",
+    "id_rsa*",
+    "*.pem",
+    "*.key",
+    ".env*",
+    "train.csv",
+    "test.csv",
+    "dataset1.csv",
+    "dataset2.csv",
+    "result_ranker.csv",
 ]
 
 LARGE_FILE_BYTES = 2 << 20
@@ -200,15 +247,36 @@ def sha256_file(path: Path) -> str:
 
 
 def git(*args: str) -> str:
-    return subprocess.run(("git", "-C", str(REPO), *args), capture_output=True,
-                          text=True, check=True).stdout.strip()
+    return subprocess.run(
+        ("git", "-C", str(REPO), *args), capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+
+def package_name(team_name: str) -> str:
+    """Return the organiser-prescribed package name for a validated team name."""
+    value = team_name.strip()
+    if not value or len(value) > 80:
+        raise ValueError("team name must contain between 1 and 80 characters")
+    if value in {".", ".."} or not re.fullmatch(r"[\w.-]+", value):
+        raise ValueError("team name may contain only letters, numbers, '_', '-', and '.'")
+    return f"contest1_{value}_003"
+
+
+def report_path(path: Path) -> str:
+    """Render a path without recording a host-specific absolute location."""
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(REPO).as_posix()
+    except ValueError:
+        return f"<external>/{resolved.name}"
 
 
 # --------------------------------------------------------------------------
 # staging
 # --------------------------------------------------------------------------
 
-def build(root: Path) -> list[dict]:
+
+def build(root: Path, document: Path) -> list[dict]:
     if root.exists():
         shutil.rmtree(root)
     (root / "code").mkdir(parents=True)
@@ -225,40 +293,62 @@ def build(root: Path) -> list[dict]:
         target = root / "code" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-        manifest.append({
-            "package_path": f"code/{relative}", "source_path": relative,
-            "source_commit": commit, "size": source.stat().st_size,
-            "sha256": sha256_file(source), "classification": classification,
-            "rationale": rationale})
+        manifest.append(
+            {
+                "package_path": f"code/{relative}",
+                "source_path": relative,
+                "source_commit": commit,
+                "size": source.stat().st_size,
+                "sha256": sha256_file(source),
+                "classification": classification,
+                "rationale": rationale,
+            }
+        )
 
     for relative in ROOT_MEMBERS:
         source = REPO / relative
         if relative not in tracked:
             raise SystemExit(f"REFUSED: {relative} is not tracked by git")
         shutil.copy2(source, root / relative)
-        manifest.append({
-            "package_path": relative, "source_path": relative,
-            "source_commit": commit, "size": source.stat().st_size,
-            "sha256": sha256_file(source), "classification": "environment",
-            "rationale": "dependency specification required at the archive root"})
+        manifest.append(
+            {
+                "package_path": relative,
+                "source_path": relative,
+                "source_commit": commit,
+                "size": source.stat().st_size,
+                "sha256": sha256_file(source),
+                "classification": "environment",
+                "rationale": "dependency specification required at the archive root",
+            }
+        )
 
-    source = REPO / REVIEW_DOCUMENT[0]
-    if source.is_file():
-        shutil.copy2(source, root / REVIEW_DOCUMENT[1])
-        manifest.append({
-            "package_path": REVIEW_DOCUMENT[1], "source_path": REVIEW_DOCUMENT[0],
-            "source_commit": commit, "size": source.stat().st_size,
-            "sha256": sha256_file(source),
-            "classification": "documentation (ENGLISH REVIEW)",
-            "rationale": "reviewer document, staged under its English working name; the "
-                         "official filename is taken only after the Chinese rendering "
-                         "exists and the owner has approved it"})
+    document = document.resolve()
+    if not document.is_file():
+        raise SystemExit(f"REFUSED: reviewer document does not exist: {report_path(document)}")
+    with document.open("rb") as handle:
+        header = handle.read(5)
+    if header != b"%PDF-":
+        raise SystemExit("REFUSED: reviewer document does not begin with a PDF header")
+    target = root / OFFICIAL_DOCUMENT_NAME
+    shutil.copy2(document, target)
+    manifest.append(
+        {
+            "package_path": OFFICIAL_DOCUMENT_NAME,
+            "source_path": report_path(document),
+            "source_commit": None,
+            "size": document.stat().st_size,
+            "sha256": sha256_file(document),
+            "classification": "approved reviewer documentation",
+            "rationale": "owner-supplied final Chinese PDF under the organiser-prescribed name",
+        }
+    )
     return manifest
 
 
 # --------------------------------------------------------------------------
 # audits
 # --------------------------------------------------------------------------
+
 
 def audit_fidelity(root: Path, manifest: list[dict]) -> list[str]:
     """Every staged byte must equal its tracked source."""
@@ -314,8 +404,10 @@ def audit_hygiene(root: Path) -> tuple[list[str], list[str]]:
             if path.match(pattern):
                 problems.append(f"{relative}: matches the forbidden name pattern {pattern}")
         if path.stat().st_size > LARGE_FILE_BYTES:
-            problems.append(f"{relative}: {path.stat().st_size} bytes exceeds "
-                            f"the {LARGE_FILE_BYTES} byte staging limit")
+            problems.append(
+                f"{relative}: {path.stat().st_size} bytes exceeds "
+                f"the {LARGE_FILE_BYTES} byte staging limit"
+            )
         if path.suffix.lower() == ".pdf":
             # A rendered document is legitimately binary. Its SOURCE is scanned
             # instead, which is where any leaked path or secret would originate.
@@ -351,7 +443,7 @@ def audit_environment(root: Path, third_party: set[str]) -> tuple[list[str], dic
         stripped = line.strip()
         if stripped and not stripped.startswith("#"):
             name = re.split(r"[=<>!~ ]", stripped, 1)[0].strip()
-            version = stripped[len(name):].strip()
+            version = stripped[len(name) :].strip()
             declared[name] = version or "UNPINNED"
     problems = []
     for name in sorted(needed):
@@ -361,7 +453,7 @@ def audit_environment(root: Path, third_party: set[str]) -> tuple[list[str], dic
             problems.append(f"{name} is declared without an explicit version")
     for name in sorted(set(declared) - needed):
         if name in DECLARED_WITHOUT_IMPORT:
-            continue          # justified; carried into the report below
+            continue  # justified; carried into the report below
         problems.append(f"{name} is declared but not imported by the staged code")
     for forbidden in ("torch", "torchvision", "torchaudio"):
         if forbidden in declared:
@@ -369,31 +461,52 @@ def audit_environment(root: Path, third_party: set[str]) -> tuple[list[str], dic
     return problems, {
         "imported_by_staged_code": sorted(needed),
         "declared": declared,
-        "declared_without_import": {n: DECLARED_WITHOUT_IMPORT[n]
-                                    for n in sorted(set(declared) - needed)
-                                    if n in DECLARED_WITHOUT_IMPORT},
+        "declared_without_import": {
+            n: DECLARED_WITHOUT_IMPORT[n]
+            for n in sorted(set(declared) - needed)
+            if n in DECLARED_WITHOUT_IMPORT
+        },
         "jittor_geometric": {
             "declared_in_requirements_body": "jittor_geometric" in declared,
             "imported_by_staged_code": "jittor_geometric" in needed,
             "note": "installed from a pinned upstream commit documented in the "
-                    "comment header of both environment files; not on PyPI, so it "
-                    "cannot appear as a requirements line",
+            "comment header of both environment files; not on PyPI, so it "
+            "cannot appear as a requirements line",
         },
     }
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--root", type=Path, default=STAGING_ROOT / PACKAGE_NAME)
-    ap.add_argument("--audit", action="store_true",
-                    help="audit an existing tree instead of rebuilding it")
+    ap.add_argument(
+        "--root", type=Path, help="staging directory; required with --audit, derived otherwise"
+    )
+    ap.add_argument("--team-name", help="approved team name; required when building")
+    ap.add_argument("--document", type=Path, help="approved Chinese PDF; required when building")
+    ap.add_argument(
+        "--audit", action="store_true", help="audit an existing tree instead of rebuilding it"
+    )
     args = ap.parse_args()
-    root = args.root
 
     if args.audit:
+        if args.root is None:
+            ap.error("--root is required with --audit")
+        root = args.root
         manifest = json.loads((root / "STAGING_MANIFEST.json").read_text(encoding="utf-8"))
     else:
-        manifest = build(root)
+        if not args.team_name or args.document is None:
+            ap.error("--team-name and --document are required when building")
+        try:
+            name = package_name(args.team_name)
+        except ValueError as exc:
+            ap.error(str(exc))
+        root = args.root or STAGING_ROOT / name
+        if root.name != name:
+            ap.error(f"staging directory must be named {name!r}")
+        manifest = build(root, args.document)
+
+    name = root.name
+    intended_archive_name = f"{name}.zip"
 
     fidelity = audit_fidelity(root, manifest)
     imports, third_party = audit_imports(root)
@@ -402,10 +515,9 @@ def main() -> int:
 
     total = sum(e["size"] for e in manifest)
     report = {
-        "intended_archive_name": INTENDED_ARCHIVE_NAME,
-        "staging_directory_name": PACKAGE_NAME,
-        "placeholder_still_open": DIRECTORY_PLACEHOLDER,
-        "staging_root": str(root),
+        "intended_archive_name": intended_archive_name,
+        "staging_directory_name": name,
+        "staging_root": report_path(root),
         "source_commit": git("rev-parse", "HEAD"),
         "file_count": len(manifest),
         "total_bytes": total,
@@ -423,17 +535,15 @@ def main() -> int:
     }
     if not args.audit:
         (root / "STAGING_MANIFEST.json").write_text(
-            json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+            json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+        )
         report["file_count"] = len(manifest)
     (root.parent / "STAGING_REPORT.json").write_text(
-        json.dumps(report, indent=2) + "\n", encoding="utf-8")
-
-    print(f"staging root : {root}")
-    print(f"intended zip : {INTENDED_ARCHIVE_NAME}  (draft; NOT built)")
-    print(
-        f"placeholder  : {DIRECTORY_PLACEHOLDER} "
-        "-> replace with approved team name at freeze"
+        json.dumps(report, indent=2) + "\n", encoding="utf-8"
     )
+
+    print(f"staging root : {report_path(root)}")
+    print(f"intended zip : {intended_archive_name}  (not built by this command)")
     print(f"source commit: {report['source_commit']}")
     print(f"files        : {len(manifest)} ({report['code_file_count']} under code/)")
     print(f"total bytes  : {total:,}")

@@ -29,7 +29,7 @@ import json
 from pathlib import Path
 from typing import Callable
 
-from .ds1 import source_slate_recurrence, test_graph_reciprocity
+from .ds1 import graph_reciprocity, source_slate_recurrence
 from .ds2 import cross_time_exclusivity
 
 SHIPPED_ACTIVE = "SHIPPED_ACTIVE"
@@ -41,8 +41,13 @@ CLOSED = "CLOSED"
 PROBE = "PROBE"
 
 LIFECYCLE_STATUSES = (
-    SHIPPED_ACTIVE, SHIPPED_SUPERSEDED, ONLINE_VALIDATED,
-    CANDIDATE, STANDBY, CLOSED, PROBE,
+    SHIPPED_ACTIVE,
+    SHIPPED_SUPERSEDED,
+    ONLINE_VALIDATED,
+    CANDIDATE,
+    STANDBY,
+    CLOSED,
+    PROBE,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -52,7 +57,7 @@ INVENTORY_PATH = REPO_ROOT / "docs" / "strategy_inventory.json"
 #: Each entry: (strategy id, module, apply callable).
 DS1_POSTPROCESSOR_CHAIN: list[tuple[str, object, Callable]] = [
     (source_slate_recurrence.STRATEGY_ID, source_slate_recurrence, source_slate_recurrence.apply),
-    (test_graph_reciprocity.STRATEGY_ID, test_graph_reciprocity, test_graph_reciprocity.apply),
+    (graph_reciprocity.STRATEGY_ID, graph_reciprocity, graph_reciprocity.apply),
 ]
 
 #: Ordered dataset2 score postprocessors of the accepted submission. One stage:
@@ -95,6 +100,5 @@ def active_ds2_chain_ids() -> list[str]:
 def active_chain_ids(dataset: str) -> list[str]:
     """Strategy ids of the ordered postprocessor chain for ``dataset``."""
     if dataset not in POSTPROCESSOR_CHAINS:
-        raise ValueError(f"unknown dataset {dataset!r}; "
-                         f"known: {sorted(POSTPROCESSOR_CHAINS)}")
+        raise ValueError(f"unknown dataset {dataset!r}; known: {sorted(POSTPROCESSOR_CHAINS)}")
     return [sid for sid, _, _ in POSTPROCESSOR_CHAINS[dataset]]

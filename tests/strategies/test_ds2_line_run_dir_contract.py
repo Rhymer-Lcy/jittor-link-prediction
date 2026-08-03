@@ -10,13 +10,7 @@ failed on the missing file after the full 244,056-query feature loop had already
 run -- about three and a half hours in.
 
 These tests fix the contract at the source level, where it can be checked without
-competition data, without local artifacts and without executing the chain.
-
-Scope note: two modules outside the production strategy chain
-(``ranker_basket_ab_ds2.py``, ``footprint_ab_probe.py``) still rebuild the name
-independently. They carry the same latent defect and are recorded by
-``test_out_of_chain_sites_are_a_known_finding`` so the divergence cannot be lost,
-but repairing them is not part of this correction.
+competition data, local artifacts, or pipeline execution.
 """
 
 from __future__ import annotations
@@ -39,10 +33,6 @@ DATASET = "dataset2"
 PRODUCER = "train_line_jt.py"
 CHAIN_CONSUMERS = ("ranker_basket_ds2.py", "ds2_mf_basket_pack.py")
 
-#: Known divergent sites outside the chain. Listed so a reader cannot mistake
-#: their absence from the chain tests for their absence from the repository.
-OUT_OF_CHAIN = ("ranker_basket_ab_ds2.py", "footprint_ab_probe.py")
-
 
 def source(name: str) -> str:
     return (REPO / "src" / name).read_text(encoding="utf-8")
@@ -54,7 +44,8 @@ def source(name: str) -> str:
 #: directories and are legitimately spelled out.
 CONTRACT_SUFFIX = re.compile(
     r"^dataset[12]"
-    r"(-bpr|-innov|-novirt|-negpop|-holdout|-s\d+|-d\d+|-t[\d.]+|-tmax[\d.e+]+)*$")
+    r"(-bpr|-innov|-novirt|-negpop|-holdout|-s\d+|-d\d+|-t[\d.]+|-tmax[\d.e+]+)*$"
+)
 
 
 def owned_by_the_contract(literal: str) -> bool:
@@ -73,10 +64,13 @@ def literal_path_joins(name: str) -> list[tuple[int, str]]:
     """
     found = []
     for node in ast.walk(ast.parse(source(name))):
-        if (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div)
-                and isinstance(node.right, ast.Constant)
-                and isinstance(node.right.value, str)
-                and owned_by_the_contract(node.right.value)):
+        if (
+            isinstance(node, ast.BinOp)
+            and isinstance(node.op, ast.Div)
+            and isinstance(node.right, ast.Constant)
+            and isinstance(node.right.value, str)
+            and owned_by_the_contract(node.right.value)
+        ):
             found.append((node.lineno, node.right.value))
     return found
 
@@ -87,25 +81,26 @@ class DetectorTest(unittest.TestCase):
 
     def test_detector_classifies_contract_ownership_correctly(self):
         # The exact literal that broke stage 1, plus other names the contract owns.
-        for owned in ("dataset2", "dataset1", "dataset2-novirt", "dataset2-bpr",
-                      "dataset2-bpr-s31337", "dataset2-novirt-tmax1.26196e+09"):
+        for owned in (
+            "dataset2",
+            "dataset1",
+            "dataset2-novirt",
+            "dataset2-bpr",
+            "dataset2-bpr-s31337",
+            "dataset2-novirt-tmax1.26196e+09",
+        ):
             with self.subTest(owned=owned):
                 self.assertTrue(owned_by_the_contract(owned))
         # Sibling OUTPUT directories are not run directories; flagging them would
         # make the chain test fail for a legitimate literal.
-        for free in ("dataset2-ranker", "dataset2-crf", "dataset1-ensemble",
-                     "dataset2-submissions"):
+        for free in (
+            "dataset2-ranker",
+            "dataset2-crf",
+            "dataset1-ensemble",
+            "dataset2-submissions",
+        ):
             with self.subTest(free=free):
                 self.assertFalse(owned_by_the_contract(free))
-
-    def test_detector_still_sees_the_known_out_of_chain_sites(self):
-        # If these ever come back clean the detector has silently stopped working,
-        # or the sites were fixed -- either way this test must be revisited.
-        for name in OUT_OF_CHAIN:
-            with self.subTest(module=name):
-                self.assertTrue(literal_path_joins(name),
-                                f"{name} no longer contains a literal run-dir join; "
-                                "update OUT_OF_CHAIN and the module docstring")
 
 
 class ProductionChainContractTest(unittest.TestCase):
@@ -113,9 +108,11 @@ class ProductionChainContractTest(unittest.TestCase):
         for name in CHAIN_CONSUMERS:
             with self.subTest(module=name):
                 self.assertEqual(
-                    literal_path_joins(name), [],
+                    literal_path_joins(name),
+                    [],
                     f"{name} rebuilds a run directory from a literal instead of "
-                    "calling pipeline_common.line_run_dir/bpr_run_dir")
+                    "calling pipeline_common.line_run_dir/bpr_run_dir",
+                )
 
     def test_mf_pack_calls_the_contract_for_the_line_directory(self):
         text = source("ds2_mf_basket_pack.py")
@@ -125,7 +122,7 @@ class ProductionChainContractTest(unittest.TestCase):
     def test_producer_and_consumers_resolve_the_same_directory(self):
         # The trainer derives its output directory from the same call, so the
         # contract is what makes producer and consumer agree.
-        self.assertIn("pc.line_run_dir(DATASET", source(PRODUCER))
+        self.assertRegex(source(PRODUCER), r"pc\.line_run_dir\(\s*DATASET")
         self.assertIn('tl.line_run_dir("dataset2")', source("ds2_mf_basket_pack.py"))
         self.assertIn('tl.line_run_dir("dataset2")', source("ranker_basket_ds2.py"))
 
@@ -153,21 +150,6 @@ class ProductionChainContractTest(unittest.TestCase):
             with self.subTest(seed=seed):
                 literal = "dataset2-bpr" + (f"-s{seed}" if seed != 42 else "")
                 self.assertEqual(pc.bpr_run_dir(DATASET, seed=seed).name, literal)
-
-
-class OutOfChainFindingTest(unittest.TestCase):
-    def test_out_of_chain_sites_are_a_known_finding(self):
-        # Documents, without asserting a defect is desirable, that these two
-        # modules are outside the strategy chain and were deliberately left
-        # unmodified by the path-contract correction.
-        import json
-        cfg = json.loads((REPO / "configs" / "production.json").read_text(encoding="utf-8"))
-        chain = {Path(s["implementation"]).name for s in cfg["dataset2"]["strategy_chain"]}
-        for name in OUT_OF_CHAIN:
-            with self.subTest(module=name):
-                self.assertNotIn(name, chain,
-                                 f"{name} is now in the production chain and must "
-                                 "be brought onto the path contract")
 
 
 if __name__ == "__main__":

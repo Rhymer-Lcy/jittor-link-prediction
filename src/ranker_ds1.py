@@ -26,29 +26,40 @@ submission file: src/build_ds1_member.py turns it into the member.
 
 Run: DATASET=dataset1 python src/ranker_ds1.py
 """
+
 import os
 import time
 from pathlib import Path
 
 os.environ.setdefault("DATASET", "dataset1")
+import lightgbm as lgb
 import numpy as np
 import pandas as pd
-import lightgbm as lgb
 
-import pipeline_common as tl   # framework-neutral shared components
 import ensemble_predict as ep
-import stage_contract as sc    # atomic publication helper (imports no framework)
+import pipeline_common as tl  # framework-neutral shared components
+import stage_contract as sc  # atomic publication helper (imports no framework)
 
 REPO = Path(__file__).resolve().parent.parent
 CUT = 115480000.0
 YEAR = 365.0 * 86400.0
 NEG = 99
 BPR_SEEDS = (42, 123, 777, 2024, 31337)
-PARAMS = dict(objective="lambdarank", metric="ndcg", ndcg_eval_at=[10], n_estimators=400,
-              learning_rate=0.05, num_leaves=31, min_child_samples=100, random_state=42,
-              n_jobs=6, verbosity=-1, label_gain=[0, 1])
+PARAMS = dict(
+    objective="lambdarank",
+    metric="ndcg",
+    ndcg_eval_at=[10],
+    n_estimators=400,
+    learning_rate=0.05,
+    num_leaves=31,
+    min_child_samples=100,
+    random_state=42,
+    n_jobs=6,
+    verbosity=-1,
+    label_gain=[0, 1],
+)
 RNG = np.random.default_rng(20260727)
-TIME_COLS_CLIP = (12, 19)     # time_gap, last_gap -- clip to train range at infer
+TIME_COLS_CLIP = (12, 19)  # time_gap, last_gap -- clip to train range at infer
 T0 = time.time()
 
 
@@ -105,8 +116,9 @@ def popwin(dvals, tvals, hi, lo, frac, num_entity):
     return np.log1p(np.bincount(dvals[m], minlength=num_entity).astype(np.float64))
 
 
-def featurize(struct_df, freeze_t, queries, line_dir, bpr_dirs, ibpr_dir,
-              num_entity, freq_cand, cfreq_log):
+def featurize(
+    struct_df, freeze_t, queries, line_dir, bpr_dirs, ibpr_dir, num_entity, freq_cand, cfreq_log
+):
     """Return the (Nrows, 21) feature matrix for `queries` with history/pops/
     embeddings frozen on `struct_df` at `freeze_t`. queries: list of (src,t,cands).
     Identical computation for train (cut) and infer (full)."""
@@ -121,8 +133,12 @@ def featurize(struct_df, freeze_t, queries, line_dir, bpr_dirs, ibpr_dir,
     for d, tv in struct_df.groupby("dst")["time"].max().items():
         gr[int(d)] = (float(tv) - tmin) / (freeze_t - tmin)
     seen = (np.bincount(struct_df["dst"].values, minlength=num_entity) > 0).astype(np.float64)
-    rps = popwin(struct_df["dst"].values, struct_df["time"].values, freeze_t, tmin, 0.05, num_entity)
-    rpl = popwin(struct_df["dst"].values, struct_df["time"].values, freeze_t, tmin, 0.40, num_entity)
+    rps = popwin(
+        struct_df["dst"].values, struct_df["time"].values, freeze_t, tmin, 0.05, num_entity
+    )
+    rpl = popwin(
+        struct_df["dst"].values, struct_df["time"].values, freeze_t, tmin, 0.40, num_entity
+    )
     src_last = np.full(num_entity, tmin)
     for s, tv in struct_df.groupby("src")["time"].max().items():
         src_last[int(s)] = float(tv)
@@ -168,20 +184,51 @@ def featurize(struct_df, freeze_t, queries, line_dir, bpr_dirs, ibpr_dir,
         f_popratio = tl.rownorm(dst_pop_raw[cc] / (freq_cand[cc] + 1.0))
         last_gap = np.full(m, (t - src_last[int(src)]) / YEAR)
         ib = tl.rownorm(np.maximum(ibpr[cc] @ ibpr[min(int(src), ibpr.shape[0] - 1)], 0.0))
-        ib[np.isin(cc_, hist_d)] = 0.0                          # iBPR reranks non-repeat block
-        rows.append(np.column_stack([
-            f_collab, f_rpop, f_icfm, f_icf3, f_bpr, f_cooc,
-            gr[cc], dst_pop_log[cc], np.full(m, len(hist_d)), hm, hcnt,
-            seen[cc], np.full(m, (t - freeze_t) / YEAR), np.full(m, m), rs, rl,
-            rs - rl, f_cfreq, f_popratio, last_gap, ib]))
+        ib[np.isin(cc_, hist_d)] = 0.0  # iBPR reranks non-repeat block
+        rows.append(
+            np.column_stack(
+                [
+                    f_collab,
+                    f_rpop,
+                    f_icfm,
+                    f_icf3,
+                    f_bpr,
+                    f_cooc,
+                    gr[cc],
+                    dst_pop_log[cc],
+                    np.full(m, len(hist_d)),
+                    hm,
+                    hcnt,
+                    seen[cc],
+                    np.full(m, (t - freeze_t) / YEAR),
+                    np.full(m, m),
+                    rs,
+                    rl,
+                    rs - rl,
+                    f_cfreq,
+                    f_popratio,
+                    last_gap,
+                    ib,
+                ]
+            )
+        )
     return np.vstack(rows).astype(np.float32)
 
 
 def main():
     df_raw = pd.read_csv(tl.train_csv)
     test_df = pd.read_csv(tl.test_csv)
-    num_entity = int(max(df_raw["src"].max(), df_raw["dst"].max(),
-                         test_df[tl.c_cols].values.max(), test_df["src"].max())) + 1
+    num_entity = (
+        int(
+            max(
+                df_raw["src"].max(),
+                df_raw["dst"].max(),
+                test_df[tl.c_cols].values.max(),
+                test_df["src"].max(),
+            )
+        )
+        + 1
+    )
     split0 = df_raw[df_raw["time"] <= CUT].reset_index(drop=True)
     split1 = df_raw[df_raw["time"] > CUT].reset_index(drop=True)
     cand_mat = test_df[tl.c_cols].values.astype(np.int64)
@@ -209,8 +256,7 @@ def main():
 
     # Producer/consumer path contract: these names come from the same helpers the
     # Jittor trainers use, so a producer and its consumer cannot disagree.
-    cut_bpr = [tl.bpr_run_dir("dataset1", seed=s, tau_frac=0.25, time_max=CUT)
-               for s in BPR_SEEDS]
+    cut_bpr = [tl.bpr_run_dir("dataset1", seed=s, tau_frac=0.25, time_max=CUT) for s in BPR_SEEDS]
     cut_ibpr = tl.bpr_run_dir("dataset1", tau_frac=0.25, time_max=CUT, innov=True)
     cut_line = tl.line_run_dir("dataset1", time_max=CUT)
     log("featurize TRAIN (cut-frozen) ...")
@@ -231,24 +277,28 @@ def main():
     full_t = float(df_raw["time"].max())
     full_bpr = [tl.bpr_run_dir("dataset1", seed=s, tau_frac=0.25) for s in BPR_SEEDS]
     full_ibpr = tl.bpr_run_dir("dataset1", tau_frac=0.25, innov=True)
-    full_line = tl.line_run_dir("dataset1")     # holds line_latest_emb.csv
-    iq = [(int(test_df["src"].values[i]), float(test_df["time"].values[i]), cand_mat[i])
-          for i in range(len(test_df))]
+    full_line = tl.line_run_dir("dataset1")  # holds line_latest_emb.csv
+    iq = [
+        (int(test_df["src"].values[i]), float(test_df["time"].values[i]), cand_mat[i])
+        for i in range(len(test_df))
+    ]
     log(f"featurize INFER (full-frozen, freeze_t={full_t:g}) ...")
-    Xte = featurize(df_raw, full_t, iq, full_line, full_bpr, full_ibpr, num_entity, freq_cand, cfreq_log)
-    for c in TIME_COLS_CLIP:                                    # forward-extrapolation guard
+    Xte = featurize(
+        df_raw, full_t, iq, full_line, full_bpr, full_ibpr, num_entity, freq_cand, cfreq_log
+    )
+    for c in TIME_COLS_CLIP:  # forward-extrapolation guard
         Xte[:, c] = np.clip(Xte[:, c], clip_lo[c], clip_hi[c])
     log(f"infer matrix {Xte.shape}; predicting")
 
     scores = mdl.predict(Xte)
-    out_dir = tl.ranker_dir("dataset1")     # the shared path contract, not a literal
+    out_dir = tl.ranker_dir("dataset1")  # the shared path contract, not a literal
     os.makedirs(out_dir, exist_ok=True)
     save_path = out_dir / "result_ranker.csv"
     out_rows = []
     pos = 0
     for i in range(len(iq)):
         m = len(iq[i][2])
-        s = scores[pos:pos + m]
+        s = scores[pos : pos + m]
         pos += m
         out_rows.append(serialisation_normalise(s.astype(np.float64)).tolist())
     # Atomic publication. The formatter, the float format and therefore the bytes
@@ -269,7 +319,9 @@ def main():
         am = int(np.argmax(out_rows[i]))
         if np.isin(cc_[am], hist_d):
             rep_top += 1
-    log(f"sanity: argmax is a repeat candidate on {rep_top}/{len(iq)} = {rep_top/len(iq):.3f} of rows")
+    log(
+        f"sanity: argmax is a repeat candidate on {rep_top}/{len(iq)} = {rep_top / len(iq):.3f} of rows"
+    )
 
 
 if __name__ == "__main__":

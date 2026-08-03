@@ -15,7 +15,6 @@ silently fixing it would destroy that evidence and change the ranking.
 
 from __future__ import annotations
 
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -67,31 +66,38 @@ class MatrixGateRejectsTest(unittest.TestCase):
         self.reject(np.zeros(100), "ndim")
 
     def test_nan(self):
-        m = good(); m[1, 1] = np.nan
+        m = good()
+        m[1, 1] = np.nan
         self.reject(m, "NaN")
 
     def test_positive_infinity(self):
-        m = good(); m[2, 2] = np.inf
+        m = good()
+        m[2, 2] = np.inf
         self.reject(m, "+Inf")
 
     def test_negative_infinity(self):
-        m = good(); m[3, 3] = -np.inf
+        m = good()
+        m[3, 3] = -np.inf
         self.reject(m, "-Inf")
 
     def test_values_above_one(self):
-        m = good(); m[4, 4] = 1.0000001
+        m = good()
+        m[4, 4] = 1.0000001
         self.reject(m, "outside [0, 1]")
 
     def test_values_below_zero(self):
-        m = good(); m[5, 5] = -1e-9
+        m = good()
+        m[5, 5] = -1e-9
         self.reject(m, "outside [0, 1]")
 
     def test_the_actual_observed_defect_value(self):
-        m = good(); m[6, 6] = -4.723676999999999776e24
+        m = good()
+        m[6, 6] = -4.723676999999999776e24
         self.reject(m, "outside [0, 1]")
 
     def test_the_gate_does_not_repair_the_matrix(self):
-        m = good(); m[7, 7] = -5.0
+        m = good()
+        m[7, 7] = -5.0
         before = m.copy()
         with self.assertRaises(ValueError):
             validate_submission_matrix(m)
@@ -162,8 +168,9 @@ class AtomicWriteTest(unittest.TestCase):
         m = good(8, 100)
         original = write_score_matrix.__globals__["verify_submission_file"]
         try:
-            write_score_matrix.__globals__["verify_submission_file"] = \
-                lambda *a, **k: (_ for _ in ()).throw(ValueError("forced"))
+            write_score_matrix.__globals__["verify_submission_file"] = lambda *a, **k: (
+                _ for _ in ()
+            ).throw(ValueError("forced"))
             with self.assertRaises(ValueError):
                 write_score_matrix(m, p)
         finally:
@@ -195,46 +202,62 @@ class BuilderCommandLineTest(unittest.TestCase):
 
         def final_write_line(main, writer, target):
             for node in ast.walk(main):
-                if (isinstance(node, ast.Call)
-                        and getattr(node.func, "id", getattr(node.func, "attr", "")) == writer
-                        and any(ast.unparse(a) == target for a in node.args)):
+                if (
+                    isinstance(node, ast.Call)
+                    and getattr(node.func, "id", getattr(node.func, "attr", "")) == writer
+                    and any(ast.unparse(a) == target for a in node.args)
+                ):
                     return node.lineno
             return None
 
         for name, writer, target in (
-                ("build_ds1_member.py", "write_score_matrix", "args.output"),
-                ("build_ds2_member.py", "swap_score_tokens", "payload")):
+            ("build_ds1_member.py", "write_score_matrix", "args.output"),
+            ("build_ds2_member.py", "swap_score_tokens", "payload"),
+        ):
             with self.subTest(builder=name):
                 tree = ast.parse((REPO / "src" / name).read_text(encoding="utf-8"))
-                main = next(n for n in ast.walk(tree)
-                            if isinstance(n, ast.FunctionDef) and n.name == "main")
-                gate = [n.lineno for n in ast.walk(main) if isinstance(n, ast.Call)
-                        and getattr(n.func, "id", getattr(n.func, "attr", "")) ==
-                        "validate_submission_matrix"]
+                main = next(
+                    n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+                )
+                gate = [
+                    n.lineno
+                    for n in ast.walk(main)
+                    if isinstance(n, ast.Call)
+                    and getattr(n.func, "id", getattr(n.func, "attr", ""))
+                    == "validate_submission_matrix"
+                ]
                 write = final_write_line(main, writer, target)
                 self.assertTrue(gate, f"{name} never calls the gate")
                 self.assertIsNotNone(write, f"{name}: no final {writer}({target}) found")
-                self.assertLess(min(gate), write,
-                                f"{name}: the gate must precede the final {writer}")
+                self.assertLess(
+                    min(gate), write, f"{name}: the gate must precede the final {writer}"
+                )
 
     def test_the_ds1_stage_dumps_are_deliberately_not_gated(self):
         # Pins the decision above so a later change cannot quietly start gating
         # (and therefore suppressing) the diagnostic stage CSVs.
         import ast
+
         tree = ast.parse((REPO / "src" / "build_ds1_member.py").read_text(encoding="utf-8"))
-        main = next(n for n in ast.walk(tree)
-                    if isinstance(n, ast.FunctionDef) and n.name == "main")
-        stage_writes = [n for n in ast.walk(main) if isinstance(n, ast.Call)
-                        and getattr(n.func, "id", "") == "write_score_matrix"
-                        and any(ast.unparse(a) == "stage_path" for a in n.args)]
-        self.assertEqual(len(stage_writes), 1,
-                         "the optional per-stage dump must still exist and stay ungated")
+        main = next(
+            n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+        )
+        stage_writes = [
+            n
+            for n in ast.walk(main)
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "id", "") == "write_score_matrix"
+            and any(ast.unparse(a) == "stage_path" for a in n.args)
+        ]
+        self.assertEqual(
+            len(stage_writes), 1, "the optional per-stage dump must still exist and stay ungated"
+        )
 
     def test_both_builders_return_nonzero_without_writing_on_rejection(self):
         for name in ("build_ds1_member.py", "build_ds2_member.py"):
             with self.subTest(builder=name):
                 text = (REPO / "src" / name).read_text(encoding="utf-8")
-                block = text[text.index("validate_submission_matrix("):]
+                block = text[text.index("validate_submission_matrix(") :]
                 block = block[: block.index("\n\n")] if "\n\n" in block else block
                 self.assertIn("return 1", block)
                 self.assertIn("no CSV was written", block)

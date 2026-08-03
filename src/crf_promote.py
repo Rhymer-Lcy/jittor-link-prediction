@@ -139,6 +139,7 @@ Usage:
 --base is a headerless R x 100 CSV of per-row [0,1] scores (the basket
 ranker output); --ds1-from supplies dataset1.csv bytes verbatim.
 """
+
 import argparse
 import io
 import os
@@ -217,8 +218,7 @@ def reliability_factor(C, tsrc, tt, warm, eta, nq=5, off=5, clip=(0.3, 3.0)):
 
     def share_one(k):
         idx = np.flatnonzero((tt[:-k] == tt[k:]) & (tsrc[:-k] != tsrc[k:]))
-        cs = [next(iter(s)) for a in idx
-              if len(s := wsets[a] & wsets[a + k]) == 1]
+        cs = [next(iter(s)) for a in idx if len(s := wsets[a] & wsets[a + k]) == 1]
         return len(idx), np.array(cs, np.int64)
 
     E1, c1 = share_one(1)
@@ -232,8 +232,10 @@ def reliability_factor(C, tsrc, tt, warm, eta, nq=5, off=5, clip=(0.3, 3.0)):
     pq = np.clip(1.0 - (n5 / E5) / np.maximum(n1 / E1, 1e-12), 0.02, 0.995)
     lo = np.log(pq / (1.0 - pq))
     fac_q = np.clip(np.exp(eta * (lo - np.average(lo, weights=n1))), *clip)
-    log("reliability bins (cfreq quintiles): "
-        + "  ".join(f"p={p*100:.1f}% f={f:.2f}" for p, f in zip(pq, fac_q)))
+    log(
+        "reliability bins (cfreq quintiles): "
+        + "  ".join(f"p={p * 100:.1f}% f={f:.2f}" for p, f in zip(pq, fac_q))
+    )
     gc = np.clip(np.searchsorted(edges, freq_cand, side="right") - 1, 0, nq - 1)
     return fac_q[gc]
 
@@ -269,7 +271,7 @@ def equality_crf(Sn, FWD, BWD, tau, B, p, BF=None):
                     continue
                 nb = belief[n] / belief[n].sum()
                 if p != 1.0:
-                    nb = nb ** p
+                    nb = nb**p
                 v = np.ones(100)
                 if BF is None:
                     v[ok] = 1.0 + B * nb[row[ok]]
@@ -389,9 +391,11 @@ def zero_repeat_demotions(C, csets, tsrc, tt, trip, pair_lab, demote_dups):
             for col in range(100):
                 if int(C[r, col]) in dups and trip.get(r) != int(C[r, col]):
                     dem.setdefault(r, {}).setdefault(int(col), 1)
-    log(f"zero-repeat: labels triple {len(trip)} pair {len(pair_lab)}, "
+    log(
+        f"zero-repeat: labels triple {len(trip)} pair {len(pair_lab)}, "
         f"exclusion events {n_excl} (guarded {n_guard}), dup rows {n_dup_rows}, "
-        f"rows demoted {len(dem)}")
+        f"rows demoted {len(dem)}"
+    )
     return dem
 
 
@@ -478,16 +482,29 @@ def main():
     ap.add_argument("--B", type=float, default=100.0)
     ap.add_argument("--W", type=int, default=1, help="band half-width (1 = chain)")
     ap.add_argument("--p", type=float, default=1.0, help="exponent on the neighbour marginal")
-    ap.add_argument("--eta", type=float, default=0.0,
-                    help="candidate-reliability exponent on B (0 = constant B)")
+    ap.add_argument(
+        "--eta",
+        type=float,
+        default=0.0,
+        help="candidate-reliability exponent on B (0 = constant B)",
+    )
     ap.add_argument("--no-triple", action="store_true", help="skip the triple rule")
     ap.add_argument("--no-pair", action="store_true", help="skip the pair rule")
-    ap.add_argument("--zr-exclude", action="store_true",
-                    help="cross-time zero-repeat exclusion of labeled answers")
-    ap.add_argument("--demote-dups", action="store_true",
-                    help="demote duplicated slate ids (with-replacement negatives)")
-    ap.add_argument("--st-exclude", action="store_true",
-                    help="same-time structural run exclusion (sixth invariant)")
+    ap.add_argument(
+        "--zr-exclude",
+        action="store_true",
+        help="cross-time zero-repeat exclusion of labeled answers",
+    )
+    ap.add_argument(
+        "--demote-dups",
+        action="store_true",
+        help="demote duplicated slate ids (with-replacement negatives)",
+    )
+    ap.add_argument(
+        "--st-exclude",
+        action="store_true",
+        help="same-time structural run exclusion (sixth invariant)",
+    )
     ap.add_argument("--data", default=os.path.join("data", "data_A", "dataset2"))
     ap.add_argument("--compare", default=None, help="optional previous zip for top-1 diff report")
     args = ap.parse_args()
@@ -521,14 +538,15 @@ def main():
     qhi = Q.max(1, keepdims=True)
     S = (Q - qlo) / np.maximum(qhi - qlo, 1e-12)
     crf_flips = int((np.argmax(S, axis=1) != np.argmax(Sn, axis=1)).sum())
-    log(f"CRF done (tau={args.tau}, B={args.B}, W={args.W}, p={args.p}, "
-        f"eta={args.eta}): top-1 flips vs base {crf_flips} ({crf_flips / R * 100:.2f}%)")
+    log(
+        f"CRF done (tau={args.tau}, B={args.B}, W={args.W}, p={args.p}, "
+        f"eta={args.eta}): top-1 flips vs base {crf_flips} ({crf_flips / R * 100:.2f}%)"
+    )
 
     trip = {} if args.no_triple else find_triples(C, csets, tsrc, tt, warm)
     for r, x in trip.items():
         S[r] = promote(S[r].copy(), int(np.where(C[r] == x)[0][0]))
-    tgt_map, n_conf = ({}, 0) if args.no_pair else \
-        find_pairs(S, C, csets, tsrc, tt, warm, trip)
+    tgt_map, n_conf = ({}, 0) if args.no_pair else find_pairs(S, C, csets, tsrc, tt, warm, trip)
     for r, c in tgt_map.items():
         S[r] = promote(S[r].copy(), int(np.where(C[r] == c)[0][0]))
     log(f"hard rules: triple {len(trip)} rows, pair {len(tgt_map)} (conflicts {n_conf})")
@@ -536,9 +554,9 @@ def main():
     dem = {}
     if args.zr_exclude or args.demote_dups or args.st_exclude:
         pair_lab = find_pair_labels(csets, tsrc, tt, warm, trip) if args.zr_exclude else {}
-        dem = zero_repeat_demotions(C, csets, tsrc, tt,
-                                    trip if args.zr_exclude else {},
-                                    pair_lab, args.demote_dups)
+        dem = zero_repeat_demotions(
+            C, csets, tsrc, tt, trip if args.zr_exclude else {}, pair_lab, args.demote_dups
+        )
         if args.st_exclude:
             protected = dict(tgt_map)
             protected.update(trip)  # promoted answers are never demoted
@@ -549,8 +567,7 @@ def main():
         pre_top1 = np.argmax(S, axis=1)
         S = apply_demotions(S, dem)
         zr_flips = int((np.argmax(S, axis=1) != pre_top1).sum())
-        log(f"zero-repeat demotions applied: top-1 flips {zr_flips} "
-            f"({zr_flips / R * 100:.2f}%)")
+        log(f"zero-repeat demotions applied: top-1 flips {zr_flips} ({zr_flips / R * 100:.2f}%)")
 
     lines = [",".join(f"{v:.6f}" for v in S[r]) for r in range(R)]
     with zipfile.ZipFile(args.ds1_from) as z:

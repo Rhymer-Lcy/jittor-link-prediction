@@ -29,13 +29,14 @@ production artifact.
 
 Usage: DATASET=dataset1 python src/train_line_jt.py
 """
+
 import os
 import time
 from pathlib import Path
 
+import jittor as jt
 import numpy as np
 import pandas as pd
-import jittor as jt
 from jittor import nn
 
 import pipeline_common as pc
@@ -57,7 +58,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATASET = os.environ.get("DATASET", "dataset2")
 assert DATASET in ("dataset1", "dataset2"), f"unknown dataset: {DATASET}"
 DATA_PACK = os.environ.get("DATA_PACK", "data_A")
-DATA_DIR = pc.data_dir(DATASET, DATA_PACK)   # one definition, shared with the consumers
+DATA_DIR = pc.data_dir(DATASET, DATA_PACK)  # one definition, shared with the consumers
 NEG_DIST = os.environ.get("NEG_DIST", "uniform")
 assert NEG_DIST in ("uniform", "pop075"), f"unknown NEG_DIST: {NEG_DIST}"
 EVAL_HOLDOUT = os.environ.get("EVAL_HOLDOUT", "0") == "1"
@@ -69,8 +70,15 @@ LINE_TAU_FRAC = float(os.environ.get("LINE_TAU_FRAC", "0"))
 JT_OUT_SUFFIX = os.environ.get("JT_OUT_SUFFIX", "")
 
 # Single source of truth, shared with the rankers that consume this output.
-_BASE_DIR = pc.line_run_dir(DATASET, seed=SEED, neg_dist=NEG_DIST, emb_dim=emb_total_dim,
-                            time_max=LINE_TIME_MAX, holdout=EVAL_HOLDOUT, root=PROJECT_ROOT)
+_BASE_DIR = pc.line_run_dir(
+    DATASET,
+    seed=SEED,
+    neg_dist=NEG_DIST,
+    emb_dim=emb_total_dim,
+    time_max=LINE_TIME_MAX,
+    holdout=EVAL_HOLDOUT,
+    root=PROJECT_ROOT,
+)
 OUTPUT_DIR = _BASE_DIR.parent / (_BASE_DIR.name + JT_OUT_SUFFIX)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 latest_emb_path = OUTPUT_DIR / "line_latest_emb.csv"
@@ -88,8 +96,9 @@ class LINE(nn.Module):
         # Reseeding per table would make the three identical at initialisation.
         bound = float(np.sqrt(6.0 / (n_node + d_sub)))
         for e in (self.emb_first, self.emb_node, self.emb_ctx):
-            e.weight.assign(jt.array(
-                rng.uniform(-bound, bound, (n_node, d_sub)).astype(np.float32)))
+            e.weight.assign(
+                jt.array(rng.uniform(-bound, bound, (n_node, d_sub)).astype(np.float32))
+            )
 
     def score_first(self, s, d):
         return (self.emb_first(s) * self.emb_first(d)).sum(-1)
@@ -98,8 +107,7 @@ class LINE(nn.Module):
         return (self.emb_node(s) * self.emb_ctx(d)).sum(-1)
 
     def get_final_emb(self):
-        return np.concatenate(
-            [self.emb_first.weight.numpy(), self.emb_node.weight.numpy()], axis=1)
+        return np.concatenate([self.emb_first.weight.numpy(), self.emb_node.weight.numpy()], axis=1)
 
 
 def split_train_val_by_tail(df):
@@ -151,8 +159,10 @@ def export_emb(model, num_entity):
 
 
 def main():
-    print(f"Dataset: {DATASET} ({DATA_PACK}) | jittor cuda={jt.flags.use_cuda} | "
-          f"dim {emb_total_dim} | epochs {epochs} | seed {SEED} | neg {NEG_DIST}")
+    print(
+        f"Dataset: {DATASET} ({DATA_PACK}) | jittor cuda={jt.flags.use_cuda} | "
+        f"dim {emb_total_dim} | epochs {epochs} | seed {SEED} | neg {NEG_DIST}"
+    )
     df_raw = pd.read_csv(DATA_DIR / "train.csv")
     df_raw = df_raw.drop_duplicates(subset=["src", "dst", "time"]).reset_index(drop=True)
     df_raw["src"] = df_raw["src"].astype(np.int64)
@@ -193,7 +203,7 @@ def main():
     neg_cdf = None
     if NEG_DIST == "pop075":
         dst_pop = np.bincount(df_raw["dst"].values, minlength=num_entity).astype(np.float64) + 1.0
-        _pw = dst_pop ** 0.75
+        _pw = dst_pop**0.75
         neg_cdf = np.cumsum(_pw / _pw.sum())
         print("Negative sampling: degree^0.75 (pop075)")
 
@@ -225,23 +235,28 @@ def main():
             s_pos = pos_shuffle[beg:end, 0].astype(np.int32)
             d_pos = pos_shuffle[beg:end, 1].astype(np.int32)
             s_neg = np.repeat(s_pos, neg_ratio)
-            d_neg = d_neg_epoch[beg * neg_ratio:end * neg_ratio]
+            d_neg = d_neg_epoch[beg * neg_ratio : end * neg_ratio]
             s_batch = jt.array(np.concatenate([s_pos, s_neg]))
             d_batch = jt.array(np.concatenate([d_pos, d_neg]))
-            label = jt.array(np.concatenate(
-                [np.ones(len(s_pos), np.float32), np.zeros(len(s_neg), np.float32)]))
+            label = jt.array(
+                np.concatenate([np.ones(len(s_pos), np.float32), np.zeros(len(s_neg), np.float32)])
+            )
             scr1 = model.score_first(s_batch, d_batch)
             scr2 = model.score_second(s_batch, d_batch)
-            loss = (nn.binary_cross_entropy_with_logits(scr1, label)
-                    + LOSS_ALPHA * nn.binary_cross_entropy_with_logits(scr2, label))
+            loss = nn.binary_cross_entropy_with_logits(
+                scr1, label
+            ) + LOSS_ALPHA * nn.binary_cross_entropy_with_logits(scr2, label)
             opt.zero_grad()
             opt.backward(loss)
             opt.clip_grad_norm(GRAD_CLIP, 2)
             opt.step()
             total += float(loss.item())
             batches += 1
-        print(f"[LINE epoch {ep_i + 1}/{epochs}] avg loss {total / batches:.4f} "
-              f"({time.time() - t0:.0f}s)", flush=True)
+        print(
+            f"[LINE epoch {ep_i + 1}/{epochs}] avg loss {total / batches:.4f} "
+            f"({time.time() - t0:.0f}s)",
+            flush=True,
+        )
         if (ep_i + 1) % EXPORT_EVERY == 0:
             export_emb(model, num_entity)
 

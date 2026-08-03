@@ -61,8 +61,7 @@ def build_command(dataset: str, args: argparse.Namespace) -> list[str]:
     command = [sys.executable, str(ENTRYPOINT), "--dataset", dataset]
     if args.plan:
         command += ["--stage", "plan"]
-    command += ["--data-root", str(args.data_root),
-                "--output-root", str(args.output_root)]
+    command += ["--data-root", str(args.data_root), "--output-root", str(args.output_root)]
     if args.data_pack != "data_A":
         command += ["--data-pack", args.data_pack]
     if args.log_dir is not None:
@@ -82,7 +81,8 @@ def preflight(args: argparse.Namespace) -> list[str]:
     if args.data_root.resolve() == args.output_root.resolve():
         problems.append(
             f"--data-root and --output-root are the same directory "
-            f"({args.data_root}); run artifacts would be written into the raw data")
+            f"({args.data_root}); run artifacts would be written into the raw data"
+        )
     if not args.plan:
         for dataset in DATASETS:
             for path in raw_files(args.data_root, args.data_pack, dataset):
@@ -97,8 +97,9 @@ def run(command: list[str]) -> int:
     try:
         completed = subprocess.run(command, cwd=str(CODE_ROOT))
     except KeyboardInterrupt:
-        print("\nINTERRUPTED: the child process was signalled; stopping.",
-              file=sys.stderr, flush=True)
+        print(
+            "\nINTERRUPTED: the child process was signalled; stopping.", file=sys.stderr, flush=True
+        )
         return 130
     return completed.returncode
 
@@ -107,23 +108,33 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__.split("\n")[0],
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Runs dataset1 then dataset2. Dataset 2 is not started if "
-               "dataset 1 fails.")
-    ap.add_argument("--data-root", type=Path, default=default_data_root(),
-                    help="root holding the official data packs "
-                         "(default: <code>/data)")
-    ap.add_argument("--data-pack", default="data_A",
-                    help="data pack under --data-root (default: data_A)")
-    ap.add_argument("--output-root", type=Path, default=default_output_root(),
-                    help="root for every run artifact (default: <code>/outputs)")
-    ap.add_argument("--log-dir", type=Path, default=None,
-                    help="stage logs (default: <output-root>/_logs)")
-    ap.add_argument("--fresh", action="store_true",
-                    help="refuse to reuse any completed stage")
-    ap.add_argument("--plan", action="store_true",
-                    help="print both stage graphs and execute nothing")
-    ap.add_argument("--quiet", action="store_true",
-                    help="do not echo stage output (logs are still written)")
+        epilog="Runs dataset1 then dataset2. Dataset 2 is not started if dataset 1 fails.",
+    )
+    ap.add_argument(
+        "--data-root",
+        type=Path,
+        default=default_data_root(),
+        help="root holding the official data packs (default: <code>/data)",
+    )
+    ap.add_argument(
+        "--data-pack", default="data_A", help="data pack under --data-root (default: data_A)"
+    )
+    ap.add_argument(
+        "--output-root",
+        type=Path,
+        default=default_output_root(),
+        help="root for every run artifact (default: <code>/outputs)",
+    )
+    ap.add_argument(
+        "--log-dir", type=Path, default=None, help="stage logs (default: <output-root>/_logs)"
+    )
+    ap.add_argument("--fresh", action="store_true", help="refuse to reuse any completed stage")
+    ap.add_argument(
+        "--plan", action="store_true", help="print both stage graphs and execute nothing"
+    )
+    ap.add_argument(
+        "--quiet", action="store_true", help="do not echo stage output (logs are still written)"
+    )
     args = ap.parse_args(argv)
 
     print("=" * 72)
@@ -133,17 +144,21 @@ def main(argv: list[str] | None = None) -> int:
     print(f"data root   : {args.data_root}")
     print(f"output root : {args.output_root}")
     print(f"log dir     : {args.log_dir or (args.output_root / '_logs')}")
-    print(f"mode        : {'PLAN ONLY (no computation)' if args.plan else ('FRESH (no reuse)' if args.fresh else 'validated resume')}")
-    print(f"order       : dataset1 -> dataset2 (required; dataset2 consumes the "
-          f"dataset1 member)")
+    print(
+        f"mode        : {'PLAN ONLY (no computation)' if args.plan else ('FRESH (no reuse)' if args.fresh else 'validated resume')}"
+    )
+    print("order       : dataset1 -> dataset2 (required; dataset2 consumes the dataset1 member)")
 
     problems = preflight(args)
     if problems:
         print("\nFAILED PREFLIGHT:", file=sys.stderr)
         for problem in problems:
             print(f"  - {problem}", file=sys.stderr)
-        print("\nThe competition data is not redistributable and is not bundled; "
-              "point --data-root at it.", file=sys.stderr)
+        print(
+            "\nThe competition data is not redistributable and is not bundled; "
+            "point --data-root at it.",
+            file=sys.stderr,
+        )
         return 2
 
     for index, dataset in enumerate(DATASETS, start=1):
@@ -152,10 +167,12 @@ def main(argv: list[str] | None = None) -> int:
         if code != 0:
             print(f"\n----- FAILED {dataset} (exit {code}) -----", file=sys.stderr)
             if dataset == DATASETS[0]:
-                print("dataset2 was NOT started: it consumes the dataset1 member.",
-                      file=sys.stderr)
-            print("No completion record is written for a failed stage; inspect the "
-                  "stage log named above and re-run.", file=sys.stderr)
+                print("dataset2 was NOT started: it consumes the dataset1 member.", file=sys.stderr)
+            print(
+                "No completion record is written for a failed stage; inspect the "
+                "stage log named above and re-run.",
+                file=sys.stderr,
+            )
             return code
         print(f"----- OK {dataset} -----", flush=True)
 
@@ -168,8 +185,10 @@ def main(argv: list[str] | None = None) -> int:
         for dataset in DATASETS:
             print(f"  {args.output_root / 'members' / (dataset + '.csv')}")
         print(f"stage logs   : {args.log_dir or (args.output_root / '_logs')}")
-        print("each artifact carries a <artifact>.done.json completion record "
-              "recording exactly what produced it")
+        print(
+            "each artifact carries a <artifact>.done.json completion record "
+            "recording exactly what produced it"
+        )
     print("=" * 72)
     return 0
 

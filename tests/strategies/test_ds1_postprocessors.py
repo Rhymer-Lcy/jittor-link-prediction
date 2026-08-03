@@ -19,8 +19,8 @@ import pandas as pd
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 
+from strategies.ds1 import graph_reciprocity as tgr  # noqa: E402
 from strategies.ds1 import source_slate_recurrence as ssr  # noqa: E402
-from strategies.ds1 import test_graph_reciprocity as tgr  # noqa: E402
 from strategies.shared import frozen_ops  # noqa: E402
 
 
@@ -61,13 +61,19 @@ class FrozenOpsTest(unittest.TestCase):
 
     def test_history_mask_is_directed(self):
         test = make_test_frame([1], [[7, 8]])
-        train = pd.DataFrame({"src": [7], "dst": [1]})   # reverse edge only
+        train = pd.DataFrame({"src": [7], "dst": [1]})  # reverse edge only
         num_entity = frozen_ops.entity_upper_bound(
-            test["src"], test[frozen_ops.CANDIDATE_COLUMNS].to_numpy(np.int64),
-            train["src"], train["dst"])
+            test["src"],
+            test[frozen_ops.CANDIDATE_COLUMNS].to_numpy(np.int64),
+            train["src"],
+            train["dst"],
+        )
         hm = frozen_ops.history_mask(
-            train, test["src"].to_numpy(np.int64),
-            test[frozen_ops.CANDIDATE_COLUMNS].to_numpy(np.int64), num_entity)
+            train,
+            test["src"].to_numpy(np.int64),
+            test[frozen_ops.CANDIDATE_COLUMNS].to_numpy(np.int64),
+            num_entity,
+        )
         self.assertFalse(hm[0, 0], "a reverse training edge must not count as history")
 
 
@@ -92,12 +98,12 @@ class SourceSlateRecurrenceTest(unittest.TestCase):
         self.assertEqual(info["actions"], 0)
 
     def test_history_candidates_are_ineligible_as_winners(self):
-        train = pd.DataFrame({"src": [1], "dst": [7]})   # the recurring candidate is a partner
+        train = pd.DataFrame({"src": [1], "dst": [7]})  # the recurring candidate is a partner
         _, info = ssr.apply(self.scores, self.test, train)
         self.assertEqual(info["actions"], 0)
 
     def test_threshold_requires_two_other_slates(self):
-        two_slates = make_test_frame([1, 1], [[5, 7], [6, 7]])   # 7 has only ONE other slate
+        two_slates = make_test_frame([1, 1], [[5, 7], [6, 7]])  # 7 has only ONE other slate
         _, info = ssr.apply(uniform_scores(2), two_slates, self.train)
         self.assertEqual(info["actions"], 0)
         self.assertEqual(ssr.MINIMUM_OTHER_SLATES, 2, "the support threshold is frozen at 2")
@@ -155,8 +161,8 @@ class TestGraphReciprocityTest(unittest.TestCase):
         # candidate 2 is reciprocated but demoted to rank 3; the rule must not see it
         scores = np.full((2, 100), 0.1)
         scores[:, 0] = 1.0
-        scores[:, 3] = 0.9      # rank 2 is column 3 (candidate 903, not reciprocated)
-        scores[:, 1] = 0.5      # candidate 2 is only rank 3
+        scores[:, 3] = 0.9  # rank 2 is column 3 (candidate 903, not reciprocated)
+        scores[:, 1] = 0.5  # candidate 2 is only rank 3
         _, info = tgr.apply(scores, self.test, self.train)
         self.assertEqual(info["actions"], 0, "ranks below 2 must never be inspected")
 
@@ -173,16 +179,20 @@ class TestGraphReciprocityTest(unittest.TestCase):
 class ChainOrderTest(unittest.TestCase):
     def test_registry_exposes_the_accepted_order(self):
         from strategies.registry import active_ds1_chain_ids
-        self.assertEqual(active_ds1_chain_ids(),
-                         ["source_slate_recurrence", "test_graph_reciprocity"])
+
+        self.assertEqual(active_ds1_chain_ids(), ["source_slate_recurrence", "graph_reciprocity"])
 
     def test_no_prohibited_knobs_are_exposed(self):
         """Frozen parameters must be module constants, not call arguments."""
         import inspect
+
         for fn in (ssr.apply, tgr.apply):
             params = list(inspect.signature(fn).parameters)
-            self.assertEqual(params, ["scores", "test", "train"],
-                             f"{fn.__module__} must not expose tunable arguments")
+            self.assertEqual(
+                params,
+                ["scores", "test", "train"],
+                f"{fn.__module__} must not expose tunable arguments",
+            )
 
 
 if __name__ == "__main__":

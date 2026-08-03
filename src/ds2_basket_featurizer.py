@@ -31,6 +31,7 @@ during development to test whether query-level bootstrapping helped. It is NOT
 invoked by any of the 33 canonical stages and takes no part in a reproduction;
 it remains here because the five production helpers above live in the same file.
 """
+
 import argparse
 import json
 import os
@@ -38,6 +39,11 @@ import sys
 import time
 from collections import defaultdict
 from pathlib import Path
+
+import lightgbm as lgb
+import numpy as np
+import pandas as pd
+import scipy.sparse as sp
 
 os.environ.setdefault("DATASET", "dataset2")
 if os.environ["DATASET"] != "dataset2":
@@ -50,13 +56,9 @@ SRC = REPO / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-import lightgbm as lgb
-import numpy as np
-import pandas as pd
-import scipy.sparse as sp
-import pipeline_common as tl   # framework-neutral shared components
-import ensemble_predict as ep
-import stage_contract as sc    # completion contract for the train-feature cache
+import ensemble_predict as ep  # noqa: E402
+import pipeline_common as tl  # noqa: E402 - framework-neutral shared components
+import stage_contract as sc  # noqa: E402 - completion contract for the feature cache
 
 assert tl.DATASET == "dataset2", "this pipeline is dataset2-only"
 
@@ -65,9 +67,19 @@ CUT = 1261958400.0
 W = {"collab": 0.25, "rpop": 1.25, "icfm": 0.5, "icf3": 1.0, "bpr": 0.7}
 YEAR = 365.0 * 86400.0
 RNG = np.random.default_rng(42)  # identical negative-sampling RNG as the live build
-PARAMS = dict(objective="lambdarank", metric="ndcg", ndcg_eval_at=[10], n_estimators=400,
-              learning_rate=0.05, num_leaves=31, min_child_samples=100, random_state=42,
-              n_jobs=6, verbosity=-1, label_gain=[0, 1])
+PARAMS = dict(
+    objective="lambdarank",
+    metric="ndcg",
+    ndcg_eval_at=[10],
+    n_estimators=400,
+    learning_rate=0.05,
+    num_leaves=31,
+    min_child_samples=100,
+    random_state=42,
+    n_jobs=6,
+    verbosity=-1,
+    label_gain=[0, 1],
+)
 FEATURE_FRACTION = 0.8
 CACHE = HERE / "bagging_cache"
 METRICS = HERE / "bagging_ensemble_ds2_metrics.json"
@@ -75,18 +87,23 @@ T0 = time.time()
 
 #: Arrays the train-feature cache must contain. Named here rather than inferred
 #: from the file, so a cache missing one is a failure and not a smaller cache.
-CACHE_KEYS = ("Xf", "yf", "lens", "qsrc_tr", "qt_tr", "qorig_tr",
-              "cands_concat", "num_entity")
+CACHE_KEYS = ("Xf", "yf", "lens", "qsrc_tr", "qt_tr", "qorig_tr", "cands_concat", "num_entity")
 #: Geometry that only exists once the cache has been built. Recorded and
 #: re-validated on every load, but excluded from the reuse digest, which has to
 #: be computable before the stage runs.
 CACHE_GEOMETRY_KEYS = ("queries", "feature_width")
 #: The configuration that decides whether an existing cache is the right cache.
-CACHE_DIGEST_KEYS = ("cut", "negatives_per_sample", "max_queries",
-                     "negative_sampling_seed", "subsample_seed", "num_entity",
-                     "npz_keys", "tag")
-CACHE_CODE_FILES = ("ds2_basket_featurizer.py", "pipeline_common.py",
-                    "ensemble_predict.py")
+CACHE_DIGEST_KEYS = (
+    "cut",
+    "negatives_per_sample",
+    "max_queries",
+    "negative_sampling_seed",
+    "subsample_seed",
+    "num_entity",
+    "npz_keys",
+    "tag",
+)
+CACHE_CODE_FILES = ("ds2_basket_featurizer.py", "pipeline_common.py", "ensemble_predict.py")
 
 
 def log(m):
@@ -100,11 +117,16 @@ def popwin(dvals, tvals, hi, lo, frac, num_entity):
 
 
 def item_profiles(edges, num_entity):
-    P = sp.csr_matrix((np.ones(len(edges), np.float32),
-                       (edges.dst.values.astype(np.int64), edges.src.values.astype(np.int64))),
-                      shape=(num_entity, num_entity))
+    P = sp.csr_matrix(
+        (
+            np.ones(len(edges), np.float32),
+            (edges.dst.values.astype(np.int64), edges.src.values.astype(np.int64)),
+        ),
+        shape=(num_entity, num_entity),
+    )
     P.data[:] = 1.0
-    nrm = np.sqrt(P.multiply(P).sum(1)).A.ravel(); nrm[nrm == 0] = 1.0
+    nrm = np.sqrt(P.multiply(P).sum(1)).A.ravel()
+    nrm[nrm == 0] = 1.0
     return (sp.diags(1.0 / nrm) @ P).tocsr()
 
 
@@ -144,7 +166,8 @@ def structural_labels(qsrc, qt, qorig, csets, warm):
             else:
                 pair[r] = x
     pair = {r: x for r, x in pair.items() if r not in pambig}
-    lab = dict(pair); lab.update(trip)
+    lab = dict(pair)
+    lab.update(trip)
     return lab, len(trip), len(pair)
 
 
@@ -166,9 +189,12 @@ def fb_features(qsrc, qt, cands, s1, P, num_entity, labels=None):
                 continue
             s = np.asarray(s1[j], np.float64)
             o3 = np.argsort(-s)[:3]
-            w = np.exp(s[o3] - s[o3].max()); w /= w.sum()
-            tvecs.append(sp.csr_matrix(w[None, :], dtype=np.float32) @
-                         P[np.clip(cands[j][o3], 0, num_entity - 1)])
+            w = np.exp(s[o3] - s[o3].max())
+            w /= w.sum()
+            tvecs.append(
+                sp.csr_matrix(w[None, :], dtype=np.float32)
+                @ P[np.clip(cands[j][o3], 0, num_entity - 1)]
+            )
         T = sp.vstack(tvecs).T.tocsc()
         for pos, i in enumerate(idxs):
             V = (P[np.clip(cands[i], 0, num_entity - 1)] @ T).toarray()
@@ -178,53 +204,92 @@ def fb_features(qsrc, qt, cands, s1, P, num_entity, labels=None):
     return fmax, fmean
 
 
-def build_features(struct_df, freeze_t, queries, bpr_dirs, line_dir, need_srcs, num_entity,
-                   freq_cand, cfreq_log):
+def build_features(
+    struct_df, freeze_t, queries, bpr_dirs, line_dir, need_srcs, num_entity, freq_cand, cfreq_log
+):
     tl.build_history_index(struct_df)
     tl.build_cooc(struct_df, num_entity)
     base_cache = ep.build_base_cache(struct_df)
     cache_mat = tl.cache_dict_to_matrix(base_cache, set(), num_entity - 1)
-    dst_pop_log = np.log1p(tl.dst_pop); rpop = tl.dst_rpop_log.copy(); dst_pop_raw = tl.dst_pop.copy()
+    dst_pop_log = np.log1p(tl.dst_pop)
+    rpop = tl.dst_rpop_log.copy()
+    dst_pop_raw = tl.dst_pop.copy()
     tmin = float(struct_df["time"].min())
     gr = np.zeros(num_entity)
     for d, tv in struct_df.groupby("dst")["time"].max().items():
         gr[int(d)] = (float(tv) - tmin) / (freeze_t - tmin)
     seen = (np.bincount(struct_df["dst"].values, minlength=num_entity) > 0).astype(np.float64)
-    rps = popwin(struct_df["dst"].values, struct_df["time"].values, freeze_t, tmin, 0.05, num_entity)
-    rpl = popwin(struct_df["dst"].values, struct_df["time"].values, freeze_t, tmin, 0.40, num_entity)
+    rps = popwin(
+        struct_df["dst"].values, struct_df["time"].values, freeze_t, tmin, 0.05, num_entity
+    )
+    rpl = popwin(
+        struct_df["dst"].values, struct_df["time"].values, freeze_t, tmin, 0.40, num_entity
+    )
     bprs = [np.load(d / "bpr_emb.npy") for d in bpr_dirs]
     emb = ep.load_embedding(line_dir, expected_rows=num_entity)
     emb_n = emb / np.maximum(np.linalg.norm(emb, axis=1, keepdims=True), 1e-8)
     tl.build_sim_cache(emb, need_srcs)
-    srcs = [s for s, _, _ in queries]; cands = [c for _, _, c in queries]
+    srcs = [s for s, _, _ in queries]
+    cands = [c for _, _, c in queries]
     collab_rows = ep.grouped_collab(cache_mat, srcs, cands)
     log(f"build_features: caches ready, per-query loop over {len(queries)} queries")
     X = []
     for i, (src, t, cc_) in enumerate(queries):
         if i and i % 20000 == 0:
             log(f"  featurize {i}/{len(queries)}")
-        cc = np.clip(cc_, 0, num_entity - 1); m = len(cc_)
+        cc = np.clip(cc_, 0, num_entity - 1)
+        m = len(cc_)
         hist_d, _ = tl.get_hist_before_time(int(src), freeze_t + 1)
-        f_collab = tl.rownorm(collab_rows[i].astype(np.float64)); f_rpop = tl.rownorm(rpop[cc])
-        f_icfm = np.zeros(m); f_icf3 = np.zeros(m)
+        f_collab = tl.rownorm(collab_rows[i].astype(np.float64))
+        f_rpop = tl.rownorm(rpop[cc])
+        f_icfm = np.zeros(m)
+        f_icf3 = np.zeros(m)
         if len(hist_d) > 0:
             hvec = emb_n[np.clip(hist_d, 0, num_entity - 1)]
             sim = np.sort(emb_n[cc] @ hvec.T, axis=1)
             f_icfm = tl.rownorm(np.maximum(sim.mean(axis=1), 0.0))
-            kk = min(3, sim.shape[1]); f_icf3 = tl.rownorm(np.maximum(sim[:, -kk:].mean(axis=1), 0.0))
+            kk = min(3, sim.shape[1])
+            f_icf3 = tl.rownorm(np.maximum(sim[:, -kk:].mean(axis=1), 0.0))
         f_bpr = np.zeros(m)
         for be in bprs:
             f_bpr += tl.rownorm(np.maximum(be[cc] @ be[min(int(src), be.shape[0] - 1)], 0.0))
         f_bpr /= len(bprs)
-        blend = (W["collab"] * f_collab + W["rpop"] * f_rpop + W["icfm"] * f_icfm
-                 + W["icf3"] * f_icf3 + W["bpr"] * f_bpr)
+        blend = (
+            W["collab"] * f_collab
+            + W["rpop"] * f_rpop
+            + W["icfm"] * f_icfm
+            + W["icf3"] * f_icf3
+            + W["bpr"] * f_bpr
+        )
         hm = np.isin(cc_, hist_d)
-        rs = tl.rownorm(rps[cc]); rl = tl.rownorm(rpl[cc])
-        f_cfreq = tl.rownorm(cfreq_log[cc]); f_popratio = tl.rownorm(dst_pop_raw[cc] / (freq_cand[cc] + 1.0))
-        X.append(np.column_stack([f_collab, f_rpop, f_icfm, f_icf3, f_bpr, blend, gr[cc], dst_pop_log[cc],
-                                  np.full(m, len(hist_d)), hm.astype(float), seen[cc],
-                                  np.full(m, (t - freeze_t) / YEAR), np.full(m, m), rs, rl, rs - rl,
-                                  f_cfreq, f_popratio]))
+        rs = tl.rownorm(rps[cc])
+        rl = tl.rownorm(rpl[cc])
+        f_cfreq = tl.rownorm(cfreq_log[cc])
+        f_popratio = tl.rownorm(dst_pop_raw[cc] / (freq_cand[cc] + 1.0))
+        X.append(
+            np.column_stack(
+                [
+                    f_collab,
+                    f_rpop,
+                    f_icfm,
+                    f_icf3,
+                    f_bpr,
+                    blend,
+                    gr[cc],
+                    dst_pop_log[cc],
+                    np.full(m, len(hist_d)),
+                    hm.astype(float),
+                    seen[cc],
+                    np.full(m, (t - freeze_t) / YEAR),
+                    np.full(m, m),
+                    rs,
+                    rl,
+                    rs - rl,
+                    f_cfreq,
+                    f_popratio,
+                ]
+            )
+        )
     return X
 
 
@@ -233,7 +298,8 @@ def reciprocal_ranks(score_list):
     rr = np.empty(len(score_list))
     for i, s in enumerate(score_list):
         s = np.asarray(s, np.float64)
-        pos = s[-1]; neg = s[:-1]
+        pos = s[-1]
+        neg = s[:-1]
         rr[i] = 1.0 / (1 + int((neg > pos).sum()) + int((neg == pos).sum()))
     return rr
 
@@ -258,8 +324,9 @@ def top1(score_list):
     return np.array([int(np.argmax(s)) for s in score_list])
 
 
-def cache_spec(feat: Path, tag: str, max_queries: int, num_entity: int,
-               geometry: dict | None = None) -> sc.StageSpec:
+def cache_spec(
+    feat: Path, tag: str, max_queries: int, num_entity: int, geometry: dict | None = None
+) -> sc.StageSpec:
     """The completion contract for one train-feature cache file.
 
     Everything in ``CACHE_DIGEST_KEYS`` is knowable before the stage runs, so it
@@ -271,8 +338,8 @@ def cache_spec(feat: Path, tag: str, max_queries: int, num_entity: int,
         "cut": CUT,
         "negatives_per_sample": int(ep.NEG_PER_SAMPLE),
         "max_queries": int(max_queries or 0),
-        "negative_sampling_seed": 42,      # module-level RNG that draws the negatives
-        "subsample_seed": 20260726,        # only reached when max_queries is set
+        "negative_sampling_seed": 42,  # module-level RNG that draws the negatives
+        "subsample_seed": 20260726,  # only reached when max_queries is set
         "num_entity": int(num_entity),
         "npz_keys": list(CACHE_KEYS),
         "tag": tag,
@@ -287,8 +354,11 @@ def cache_spec(feat: Path, tag: str, max_queries: int, num_entity: int,
         # The cache has no command line of its own: it is built in-process by
         # build_or_load_features, whose only production caller is the MF pack.
         # The record names that caller rather than inventing an entry point.
-        command=["<in-process>", "ds2_basket_featurizer.build_or_load_features",
-                 f"via {sys.executable} src/ds2_mf_basket_pack.py --geom MF"],
+        command=[
+            "<in-process>",
+            "ds2_basket_featurizer.build_or_load_features",
+            f"via {sys.executable} src/ds2_mf_basket_pack.py --geom MF",
+        ],
         env={"DATASET": "dataset2", "DATA_PACK": os.environ.get("DATA_PACK", "data_A")},
         output=feat,
         inputs=[tl.train_csv, tl.test_csv],
@@ -318,13 +388,19 @@ def build_or_load_features(force, max_queries):
     tag = "all" if not max_queries else f"q{max_queries}"
     feat = CACHE / f"train_features_{tag}.npz"
 
-    df_raw = pd.read_csv(tl.train_csv).drop_duplicates(subset=["src", "dst", "time"]).reset_index(drop=True)
-    df_raw["src"] = df_raw["src"].astype(np.int64); df_raw["dst"] = df_raw["dst"].astype(np.int64)
+    df_raw = (
+        pd.read_csv(tl.train_csv)
+        .drop_duplicates(subset=["src", "dst", "time"])
+        .reset_index(drop=True)
+    )
+    df_raw["src"] = df_raw["src"].astype(np.int64)
+    df_raw["dst"] = df_raw["dst"].astype(np.int64)
     df_raw["time"] = df_raw["time"].astype(float)
     test_df = pd.read_csv(tl.test_csv)[["src", "time"] + tl.c_cols].copy()
     test_df["src"] = test_df["src"].astype(np.int64)
     num_entity = int(max(df_raw.src.max(), df_raw.dst.max())) + 1
-    warm_full = np.zeros(num_entity, bool); warm_full[df_raw["dst"].values.astype(np.int64)] = True
+    warm_full = np.zeros(num_entity, bool)
+    warm_full[df_raw["dst"].values.astype(np.int64)] = True
     split0 = df_raw[df_raw["time"] <= CUT].reset_index(drop=True)
 
     spec = cache_spec(feat, tag, max_queries, num_entity)
@@ -334,8 +410,9 @@ def build_or_load_features(force, max_queries):
         # and the superseded artifact remains available as evidence.
         stale = [p for p in (feat, sc.record_path(feat), sc.part_path(feat)) if p.exists()]
         if stale:
-            slot = sc.quarantine(stale, outputs_root=tl.outputs_root(),
-                                 reason=f"--force rebuild of {spec.stage_id}")
+            slot = sc.quarantine(
+                stale, outputs_root=tl.outputs_root(), reason=f"--force rebuild of {spec.stage_id}"
+            )
             log(f"--force: quarantined the previous cache to {slot}")
     else:
         decision = sc.evaluate(spec, repo=REPO)
@@ -343,24 +420,47 @@ def build_or_load_features(force, max_queries):
             raise sc.StageContractError(
                 f"{spec.stage_id}: {decision.code}. {decision.detail}\n"
                 + json.dumps(decision.mismatches, indent=2, default=str)
-                + f"\nInspect it, then either quarantine {feat} or rebuild with --force.")
+                + f"\nInspect it, then either quarantine {feat} or rebuild with --force."
+            )
         if decision.action == "REUSE":
-            log(f"reusing cached features {feat} "
-                f"(record from commit {decision.record['producing_commit'][:12]})")
+            log(
+                f"reusing cached features {feat} "
+                f"(record from commit {decision.record['producing_commit'][:12]})"
+            )
             # The record proves the bytes; this re-proves the internal geometry,
             # which is what a truncated or mis-shaped NPZ fails.
-            reused = cache_spec(feat, tag, max_queries, num_entity, geometry={
-                key: decision.record["config"][key] for key in CACHE_GEOMETRY_KEYS})
+            reused = cache_spec(
+                feat,
+                tag,
+                max_queries,
+                num_entity,
+                geometry={key: decision.record["config"][key] for key in CACHE_GEOMETRY_KEYS},
+            )
             sc.validate_npz_cache(reused, feat)
             z = np.load(feat, allow_pickle=False)
-            Xf = z["Xf"]; yf = z["yf"]; lens = z["lens"]
-            qsrc_tr = z["qsrc_tr"]; qt_tr = z["qt_tr"]; qorig_tr = z["qorig_tr"]
+            Xf = z["Xf"]
+            yf = z["yf"]
+            lens = z["lens"]
+            qsrc_tr = z["qsrc_tr"]
+            qt_tr = z["qt_tr"]
+            qorig_tr = z["qorig_tr"]
             cands_concat = z["cands_concat"]
             off = np.concatenate([[0], np.cumsum(lens)])
-            cands_tr = [cands_concat[off[i]:off[i + 1]] for i in range(len(lens))]
-            return dict(df_raw=df_raw, split0=split0, num_entity=num_entity, warm_full=warm_full,
-                        Xf=Xf, yf=yf, lens=lens, off=off, qsrc_tr=qsrc_tr, qt_tr=qt_tr,
-                        qorig_tr=qorig_tr, cands_tr=cands_tr)
+            cands_tr = [cands_concat[off[i] : off[i + 1]] for i in range(len(lens))]
+            return dict(
+                df_raw=df_raw,
+                split0=split0,
+                num_entity=num_entity,
+                warm_full=warm_full,
+                Xf=Xf,
+                yf=yf,
+                lens=lens,
+                off=off,
+                qsrc_tr=qsrc_tr,
+                qt_tr=qt_tr,
+                qorig_tr=qorig_tr,
+                cands_tr=cands_tr,
+            )
 
     _allcand = np.clip(test_df[tl.c_cols].values.astype(np.int64).ravel(), 0, num_entity - 1)
     freq_cand = np.bincount(_allcand, minlength=num_entity).astype(np.float64)
@@ -375,7 +475,8 @@ def build_or_load_features(force, max_queries):
     train_q, qorig_tr = [], []
     for row in lab.itertuples(index=False):
         src, dst, t = int(row.src), int(row.dst), float(row.time)
-        pool = pools.get(src); negs = sorted(pool - {dst, src}) if pool else []
+        pool = pools.get(src)
+        negs = sorted(pool - {dst, src}) if pool else []
         if not negs:
             continue
         if len(negs) > ep.NEG_PER_SAMPLE:
@@ -400,15 +501,23 @@ def build_or_load_features(force, max_queries):
     # run had left in the default tree. The helpers resolve to byte-identical
     # paths under the default root; the identity is pinned by
     # tests/strategies/test_ds2_output_root_contract.py.
-    Xtr = build_features(split0, CUT, train_q,
-                         [tl.bpr_run_dir("dataset2", seed=s, time_max=CUT) for s in SEEDS],
-                         tl.line_run_dir("dataset2", time_max=CUT),
-                         np.unique(np.array([s for s, _, _ in train_q], dtype=np.int64)),
-                         num_entity, freq_cand, cfreq_log)
+    Xtr = build_features(
+        split0,
+        CUT,
+        train_q,
+        [tl.bpr_run_dir("dataset2", seed=s, time_max=CUT) for s in SEEDS],
+        tl.line_run_dir("dataset2", time_max=CUT),
+        np.unique(np.array([s for s, _, _ in train_q], dtype=np.int64)),
+        num_entity,
+        freq_cand,
+        cfreq_log,
+    )
     lens = np.array([len(q[2]) for q in train_q])
     off = np.concatenate([[0], np.cumsum(lens)])
-    Xf = np.vstack(Xtr).astype(np.float32); del Xtr
-    yf = np.zeros(off[-1], np.float32); yf[off[1:] - 1] = 1.0
+    Xf = np.vstack(Xtr).astype(np.float32)
+    del Xtr
+    yf = np.zeros(off[-1], np.float32)
+    yf[off[1:] - 1] = 1.0
     qsrc_tr = np.array([q[0] for q in train_q], np.int64)
     qt_tr = np.array([q[1] for q in train_q], np.float64)
     cands_concat = np.concatenate([q[2] for q in train_q]).astype(np.int64)
@@ -421,49 +530,89 @@ def build_or_load_features(force, max_queries):
         # np.savez appends .npz unless the name already ends in it, which the
         # .part suffix would otherwise defeat.
         with staged.open("wb") as handle:
-            np.savez(handle, Xf=Xf, yf=yf, lens=lens, qsrc_tr=qsrc_tr, qt_tr=qt_tr,
-                     qorig_tr=qorig_tr, cands_concat=cands_concat,
-                     num_entity=np.array([num_entity]))
-    built = cache_spec(feat, tag, max_queries, num_entity, geometry={
-        "queries": int(len(lens)), "feature_width": int(Xf.shape[1])})
-    sc.complete_stage(built, repo=REPO, exit_code=0, started_at=started,
-                      completed_at=sc.utc_now())
+            np.savez(
+                handle,
+                Xf=Xf,
+                yf=yf,
+                lens=lens,
+                qsrc_tr=qsrc_tr,
+                qt_tr=qt_tr,
+                qorig_tr=qorig_tr,
+                cands_concat=cands_concat,
+                num_entity=np.array([num_entity]),
+            )
+    built = cache_spec(
+        feat,
+        tag,
+        max_queries,
+        num_entity,
+        geometry={"queries": int(len(lens)), "feature_width": int(Xf.shape[1])},
+    )
+    sc.complete_stage(built, repo=REPO, exit_code=0, started_at=started, completed_at=sc.utc_now())
     log(f"cache completion record -> {sc.record_path(feat).name}")
     cands_tr = [q[2] for q in train_q]
-    return dict(df_raw=df_raw, split0=split0, num_entity=num_entity, warm_full=warm_full,
-                Xf=Xf, yf=yf, lens=lens, off=off, qsrc_tr=qsrc_tr, qt_tr=qt_tr,
-                qorig_tr=qorig_tr, cands_tr=cands_tr)
+    return dict(
+        df_raw=df_raw,
+        split0=split0,
+        num_entity=num_entity,
+        warm_full=warm_full,
+        Xf=Xf,
+        yf=yf,
+        lens=lens,
+        off=off,
+        qsrc_tr=qsrc_tr,
+        qt_tr=qt_tr,
+        qorig_tr=qorig_tr,
+        cands_tr=cands_tr,
+    )
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--members", type=int, default=4)
-    ap.add_argument("--pass1-only", action="store_true",
-                    help="fast base-ranker gate (18 base features); no 3-pass basket feedback")
-    ap.add_argument("--max-queries", type=int, default=0,
-                    help="subsample train queries (pass1-only ONLY; corrupts basket structure otherwise)")
+    ap.add_argument(
+        "--pass1-only",
+        action="store_true",
+        help="fast base-ranker gate (18 base features); no 3-pass basket feedback",
+    )
+    ap.add_argument(
+        "--max-queries",
+        type=int,
+        default=0,
+        help="subsample train queries (pass1-only ONLY; corrupts basket structure otherwise)",
+    )
     ap.add_argument("--force", action="store_true", help="rebuild cached features")
     ap.add_argument("--out", type=Path, default=METRICS)
     args = ap.parse_args()
     if args.max_queries and not args.pass1_only:
-        ap.error("--max-queries is only valid with --pass1-only (it breaks basket sibling structure)")
+        ap.error(
+            "--max-queries is only valid with --pass1-only (it breaks basket sibling structure)"
+        )
     M = args.members
-    member_seeds = list(SEEDS[:M]) if M <= len(SEEDS) else \
-        list(SEEDS) + [1_000 + i for i in range(M - len(SEEDS))]
+    member_seeds = (
+        list(SEEDS[:M])
+        if M <= len(SEEDS)
+        else list(SEEDS) + [1_000 + i for i in range(M - len(SEEDS))]
+    )
 
     D = build_or_load_features(args.force, args.max_queries)
     Xf, yf, lens, off = D["Xf"], D["yf"], D["lens"], D["off"]
     qsrc_tr, qt_tr, qorig_tr, cands_tr = D["qsrc_tr"], D["qt_tr"], D["qorig_tr"], D["cands_tr"]
     num_entity, warm_full, split0 = D["num_entity"], D["warm_full"], D["split0"]
     Q = len(lens)
-    log(f"features ready: Q={Q}  Xf={Xf.shape}  members={M} seeds={member_seeds}  pass1_only={args.pass1_only}")
+    log(
+        f"features ready: Q={Q}  Xf={Xf.shape}  members={M} seeds={member_seeds}  pass1_only={args.pass1_only}"
+    )
 
     rng2 = np.random.default_rng(7)
-    usrc = np.unique(qsrc_tr).copy(); rng2.shuffle(usrc)
-    half = set(usrc[:len(usrc) // 2].tolist())
+    usrc = np.unique(qsrc_tr).copy()
+    rng2.shuffle(usrc)
+    half = set(usrc[: len(usrc) // 2].tolist())
     fold = np.array([0 if s in half else 1 for s in qsrc_tr])
-    rows_of = {f: np.concatenate([np.arange(off[i], off[i + 1]) for i in np.flatnonzero(fold == f)])
-               for f in (0, 1)}
+    rows_of = {
+        f: np.concatenate([np.arange(off[i], off[i + 1]) for i in np.flatnonzero(fold == f)])
+        for f in (0, 1)
+    }
     qidx_of = {f: np.flatnonzero(fold == f) for f in (0, 1)}
 
     def poisson_row_weights(seed):
@@ -471,19 +620,25 @@ def main():
         return np.repeat(wq, lens), float(wq.mean())
 
     def fit_oof(Z, seed, colsample, row_w):
-        params = dict(PARAMS); params["random_state"] = int(seed)
+        params = dict(PARAMS)
+        params["random_state"] = int(seed)
         if colsample is not None:
-            params.update(colsample_bytree=float(colsample), feature_fraction_seed=int(seed),
-                          bagging_seed=int(seed))
+            params.update(
+                colsample_bytree=float(colsample),
+                feature_fraction_seed=int(seed),
+                bagging_seed=int(seed),
+            )
         s_out = [None] * Q
         for f in (0, 1):
             tr_rows, te_rows = rows_of[1 - f], rows_of[f]
             w = row_w[tr_rows] if row_w is not None else None
             mdl = lgb.LGBMRanker(**params)
             mdl.fit(Z[tr_rows], yf[tr_rows], group=lens[qidx_of[1 - f]].tolist(), sample_weight=w)
-            pb = mdl.predict(Z[te_rows]); pos = 0
+            pb = mdl.predict(Z[te_rows])
+            pos = 0
             for i in qidx_of[f]:
-                s_out[i] = pb[pos:pos + lens[i]]; pos += lens[i]
+                s_out[i] = pb[pos : pos + lens[i]]
+                pos += lens[i]
         return s_out
 
     def member_disagreement(member_s):
@@ -502,17 +657,21 @@ def main():
         boot_members, wq_means = [], []
         for s in member_seeds:
             rw, wqm = poisson_row_weights(s)
-            boot_members.append(fit_oof(Xf, s, FEATURE_FRACTION, rw)); wq_means.append(wqm)
+            boot_members.append(fit_oof(Xf, s, FEATURE_FRACTION, rw))
+            wq_means.append(wqm)
         boot_c = consensus(boot_members)
         seed_disagree = member_disagreement(seed_members)
         boot_disagree = member_disagreement(boot_members)
         # Dump OOF per-query scores so the confidence-gate sweep is instant
         # (no refits). Concatenated in query order; lens + fold reconstruct.
-        np.savez(CACHE / "pass1_oof_scores.npz",
-                 base=np.concatenate([np.asarray(s, np.float64) for s in base_c]),
-                 seed=np.concatenate([np.asarray(s, np.float64) for s in seed_c]),
-                 boot=np.concatenate([np.asarray(s, np.float64) for s in boot_c]),
-                 lens=lens, fold=fold)
+        np.savez(
+            CACHE / "pass1_oof_scores.npz",
+            base=np.concatenate([np.asarray(s, np.float64) for s in base_c]),
+            seed=np.concatenate([np.asarray(s, np.float64) for s in seed_c]),
+            boot=np.concatenate([np.asarray(s, np.float64) for s in boot_c]),
+            lens=lens,
+            fold=fold,
+        )
         log(f"dumped pass1 OOF scores -> {CACHE / 'pass1_oof_scores.npz'}")
     else:
         P_tr = item_profiles(split0, num_entity)
@@ -523,11 +682,15 @@ def main():
         def run_arm(members):
             m1 = [fit_oof(Xf, mm["seed"], mm["colsample"], mm["row_w"]) for mm in members]
             c1 = consensus(m1)
-            f1max, f1mean = fb_features(qsrc_tr, qt_tr, cands_tr, c1, P_tr, num_entity, labels=train_labels)
+            f1max, f1mean = fb_features(
+                qsrc_tr, qt_tr, cands_tr, c1, P_tr, num_entity, labels=train_labels
+            )
             Z2 = np.hstack([Xf, np.concatenate(f1max)[:, None], np.concatenate(f1mean)[:, None]])
             m2 = [fit_oof(Z2, mm["seed"], mm["colsample"], mm["row_w"]) for mm in members]
             c2 = consensus(m2)
-            f2max, f2mean = fb_features(qsrc_tr, qt_tr, cands_tr, c2, P_tr, num_entity, labels=train_labels)
+            f2max, f2mean = fb_features(
+                qsrc_tr, qt_tr, cands_tr, c2, P_tr, num_entity, labels=train_labels
+            )
             Z3 = np.hstack([Xf, np.concatenate(f2max)[:, None], np.concatenate(f2mean)[:, None]])
             m3 = [fit_oof(Z3, mm["seed"], mm["colsample"], mm["row_w"]) for mm in members]
             return consensus(m3), m3
@@ -537,12 +700,15 @@ def main():
         log("3-PASS: identical ...")
         ident_c, _ = run_arm([dict(seed=42, colsample=None, row_w=None) for _ in range(M)])
         log("3-PASS: seedonly ...")
-        seed_c, seed_members = run_arm([dict(seed=s, colsample=FEATURE_FRACTION, row_w=None) for s in member_seeds])
+        seed_c, seed_members = run_arm(
+            [dict(seed=s, colsample=FEATURE_FRACTION, row_w=None) for s in member_seeds]
+        )
         log("3-PASS: bootstrap ...")
         boot_specs, wq_means = [], []
         for s in member_seeds:
             rw, wqm = poisson_row_weights(s)
-            boot_specs.append(dict(seed=s, colsample=FEATURE_FRACTION, row_w=rw)); wq_means.append(wqm)
+            boot_specs.append(dict(seed=s, colsample=FEATURE_FRACTION, row_w=rw))
+            wq_means.append(wqm)
         boot_c, boot_members = run_arm(boot_specs)
         seed_disagree = member_disagreement(seed_members)
         boot_disagree = member_disagreement(boot_members)
@@ -555,8 +721,14 @@ def main():
     mrr_seed, mrr_boot = float(rr_seed.mean()), float(rr_boot.mean())
     ident_ok = bool((top1(ident_c) == base_t1).all())
 
-    base_truth_rank = np.array([1 + int((np.asarray(s)[:-1] > np.asarray(s)[-1]).sum())
-                                + int((np.asarray(s)[:-1] == np.asarray(s)[-1]).sum()) for s in base_c])
+    base_truth_rank = np.array(
+        [
+            1
+            + int((np.asarray(s)[:-1] > np.asarray(s)[-1]).sum())
+            + int((np.asarray(s)[:-1] == np.asarray(s)[-1]).sum())
+            for s in base_c
+        ]
+    )
     low = (base_truth_rank >= 2) & (base_truth_rank <= 10)
 
     d_base = mrr_boot - mrr_base
@@ -566,34 +738,54 @@ def main():
         "bootstrap_beats_seedonly_by_0.002": bool(d_seed >= 0.002),
         "bootstrap_beats_base_by_0.006": bool(d_base >= 0.006),
         "bootstrap_beats_base_by_0.010": bool(d_base >= 0.010),
-        "decision": ("BUILD-AUX-PACK" if d_base >= 0.010 and d_seed >= 0.002 else
-                     "EXPAND-TO-8" if d_base >= 0.006 and d_seed >= 0.002 else "STOP"),
+        "decision": (
+            "BUILD-AUX-PACK"
+            if d_base >= 0.010 and d_seed >= 0.002
+            else "EXPAND-TO-8"
+            if d_base >= 0.006 and d_seed >= 0.002
+            else "STOP"
+        ),
     }
     reports = {
         "mode": "pass1-only" if args.pass1_only else "full-3-pass",
-        "queries": Q, "members": M, "seeds": member_seeds, "feature_fraction": FEATURE_FRACTION,
+        "queries": Q,
+        "members": M,
+        "seeds": member_seeds,
+        "feature_fraction": FEATURE_FRACTION,
         "arms": {
             "base": {"mrr": mrr_base},
             "identical": {"mrr": mrr_ident, "top1_identical_to_base": ident_ok},
-            "seedonly": {"mrr": mrr_seed, "delta_vs_base": mrr_seed - mrr_base,
-                         "member_top1_disagreement": seed_disagree},
-            "bootstrap": {"mrr": mrr_boot, "delta_vs_base": d_base, "delta_vs_seedonly": d_seed,
-                          "member_top1_disagreement": boot_disagree,
-                          "top1_changed_vs_base": int((top1(boot_c) != base_t1).sum()),
-                          "poisson_weight_mean_per_member": wq_means},
+            "seedonly": {
+                "mrr": mrr_seed,
+                "delta_vs_base": mrr_seed - mrr_base,
+                "member_top1_disagreement": seed_disagree,
+            },
+            "bootstrap": {
+                "mrr": mrr_boot,
+                "delta_vs_base": d_base,
+                "delta_vs_seedonly": d_seed,
+                "member_top1_disagreement": boot_disagree,
+                "top1_changed_vs_base": int((top1(boot_c) != base_t1).sum()),
+                "poisson_weight_mean_per_member": wq_means,
+            },
         },
         "low_confidence_subset": {
-            "definition": "base truth rank in [2,10]", "n": int(low.sum()),
+            "definition": "base truth rank in [2,10]",
+            "n": int(low.sum()),
             "base_mrr": float(rr_base[low].mean()) if low.any() else None,
             "bootstrap_mrr": float(rr_boot[low].mean()) if low.any() else None,
-            "bootstrap_delta": float(rr_boot[low].mean() - rr_base[low].mean()) if low.any() else None,
+            "bootstrap_delta": float(rr_boot[low].mean() - rr_base[low].mean())
+            if low.any()
+            else None,
         },
         "verdict": verdict,
     }
     args.out.write_text(json.dumps(reports, indent=2), encoding="utf-8")
-    log(f"base {mrr_base:.6f} | ident {mrr_ident:.6f}(ok={ident_ok}) | "
+    log(
+        f"base {mrr_base:.6f} | ident {mrr_ident:.6f}(ok={ident_ok}) | "
         f"seed {mrr_seed:.6f}({mrr_seed - mrr_base:+.6f}) | boot {mrr_boot:.6f}"
-        f"(vs_base {d_base:+.6f}, vs_seed {d_seed:+.6f})")
+        f"(vs_base {d_base:+.6f}, vs_seed {d_seed:+.6f})"
+    )
     log(f"VERDICT: {verdict['decision']}  ; wrote {args.out}")
 
 

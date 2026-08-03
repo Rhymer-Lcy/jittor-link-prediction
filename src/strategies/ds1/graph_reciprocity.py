@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""dataset1 rank-2 test-graph reciprocity (strategy id ``test_graph_reciprocity``).
+"""Dataset-1 rank-2 test-graph reciprocity (strategy id ``graph_reciprocity``).
 
 Status
 ------
@@ -60,7 +60,7 @@ from ..shared.frozen_ops import (
     stable_rank_order,
 )
 
-STRATEGY_ID = "test_graph_reciprocity"
+STRATEGY_ID = "graph_reciprocity"
 DATASET = "dataset1"
 
 #: Row/action anchors of the accepted deployment, asserted by the tracked tests.
@@ -76,16 +76,18 @@ def exposure_graph(sources: np.ndarray, candidates: np.ndarray, num_entity: int)
     return np.unique(pair_keys(cell_src, candidates.ravel(), num_entity))
 
 
-def reverse_edge_mask(sources: np.ndarray, candidates: np.ndarray, edges: np.ndarray,
-                      num_entity: int) -> np.ndarray:
+def reverse_edge_mask(
+    sources: np.ndarray, candidates: np.ndarray, edges: np.ndarray, num_entity: int
+) -> np.ndarray:
     """``True`` where the reverse edge ``candidate -> query source`` exists."""
     rows, cols = candidates.shape
     cell_src = np.repeat(np.asarray(sources, np.int64), cols)
-    return membership(edges, pair_keys(candidates.ravel(), cell_src, num_entity)).reshape(rows, cols)
+    return membership(edges, pair_keys(candidates.ravel(), cell_src, num_entity)).reshape(
+        rows, cols
+    )
 
 
-def apply(scores: np.ndarray, test: pd.DataFrame, train: pd.DataFrame
-          ) -> tuple[np.ndarray, dict]:
+def apply(scores: np.ndarray, test: pd.DataFrame, train: pd.DataFrame) -> tuple[np.ndarray, dict]:
     """Apply the frozen rule to a dataset1 score matrix.
 
     Returns ``(treatment, info)``; ``treatment`` is a new max-normalised matrix.
@@ -104,10 +106,10 @@ def apply(scores: np.ndarray, test: pd.DataFrame, train: pd.DataFrame
     c1, c2 = order[:, 0], order[:, 1]
     rows = np.arange(scores.shape[0])
     acted = (
-        ~is_history[rows, c1]                       # 1. incumbent non-historical
-        & ~is_history[rows, c2]                     # 2. runner-up non-historical
-        & has_reverse[rows, c2]                     # 3. runner-up is reciprocated
-        & ~has_reverse[rows, c1]                    # 4. incumbent is not
+        ~is_history[rows, c1]  # 1. incumbent non-historical
+        & ~is_history[rows, c2]  # 2. runner-up non-historical
+        & has_reverse[rows, c2]  # 3. runner-up is reciprocated
+        & ~has_reverse[rows, c1]  # 4. incumbent is not
     )
 
     treatment = scores.copy()

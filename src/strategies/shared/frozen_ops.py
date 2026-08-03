@@ -46,8 +46,9 @@ def read_score_matrix(path: str | Path) -> np.ndarray:
     return scores
 
 
-def validate_submission_matrix(scores: np.ndarray,
-                               expected_shape: tuple[int, int] | None = None) -> None:
+def validate_submission_matrix(
+    scores: np.ndarray, expected_shape: tuple[int, int] | None = None
+) -> None:
     """Final-member gate. Raise ``ValueError`` on anything unsubmittable.
 
     The competition format requires one value per supplied candidate, every value
@@ -65,12 +66,13 @@ def validate_submission_matrix(scores: np.ndarray,
     elif expected_shape is not None and scores.shape != tuple(expected_shape):
         problems.append(f"shape {scores.shape} != expected {tuple(expected_shape)}")
     if scores.size and not np.isfinite(scores).all():
-        problems.append(f"non-finite values: {int(np.isnan(scores).sum())} NaN, "
-                        f"{int(np.isposinf(scores).sum())} +Inf, "
-                        f"{int(np.isneginf(scores).sum())} -Inf")
+        problems.append(
+            f"non-finite values: {int(np.isnan(scores).sum())} NaN, "
+            f"{int(np.isposinf(scores).sum())} +Inf, "
+            f"{int(np.isneginf(scores).sum())} -Inf"
+        )
     elif scores.size and (scores.min() < 0.0 or scores.max() > 1.0):
-        problems.append(f"values outside [0, 1]: range "
-                        f"[{scores.min():.6g}, {scores.max():.6g}]")
+        problems.append(f"values outside [0, 1]: range [{scores.min():.6g}, {scores.max():.6g}]")
     if problems:
         raise ValueError("submission matrix rejected: " + "; ".join(problems))
 
@@ -141,16 +143,16 @@ def membership(sorted_keys: np.ndarray, query: np.ndarray) -> np.ndarray:
     return (pos < len(sorted_keys)) & (sorted_keys[safe] == query)
 
 
-def history_mask(train, sources: np.ndarray, candidates: np.ndarray,
-                 num_entity: int) -> np.ndarray:
+def history_mask(train, sources: np.ndarray, candidates: np.ndarray, num_entity: int) -> np.ndarray:
     """``True`` where a candidate is a historical (training) partner of its query source.
 
     History is directed: only ``train.src -> train.dst`` edges count, matching the
     definition frozen in both shipped dataset1 postprocessors.
     """
     rows, cols = candidates.shape
-    hist = np.unique(pair_keys(train["src"].to_numpy(np.int64),
-                               train["dst"].to_numpy(np.int64), num_entity))
+    hist = np.unique(
+        pair_keys(train["src"].to_numpy(np.int64), train["dst"].to_numpy(np.int64), num_entity)
+    )
     cell_src = np.repeat(np.asarray(sources, np.int64), cols)
     return membership(hist, pair_keys(cell_src, candidates.ravel(), num_entity)).reshape(rows, cols)
 
@@ -195,13 +197,12 @@ def row_max_normalise(scores: np.ndarray) -> np.ndarray:
     """
     row_max = scores.max(axis=1, keepdims=True)
     defined = row_max > 1e-12
-    if defined.all():                       # the frozen path, untouched
+    if defined.all():  # the frozen path, untouched
         return scores / np.maximum(row_max, 1e-12)
 
     shifted = scores - scores.min(axis=1, keepdims=True)
     shifted_max = shifted.max(axis=1, keepdims=True)
-    repaired = np.where(shifted_max > 1e-12,
-                        shifted / np.maximum(shifted_max, 1e-12), 0.5)
+    repaired = np.where(shifted_max > 1e-12, shifted / np.maximum(shifted_max, 1e-12), 0.5)
     return np.where(defined, scores / np.maximum(row_max, 1e-12), repaired)
 
 

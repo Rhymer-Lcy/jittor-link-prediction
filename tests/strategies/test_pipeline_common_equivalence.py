@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """`pipeline_common` must stay byte-for-byte equivalent to its historical source.
 
-`src/pipeline_common.py` was extracted verbatim from `src/train_line.py` so that
+`src/pipeline_common.py` was extracted verbatim from `reference/pytorch/train_line.py` so that
 the canonical ranking stages could stop importing a PyTorch-coupled module. The
 historical trainer keeps its own copies because it mutates several of these
 symbols as module globals, so the two definitions could drift apart.
@@ -21,12 +21,19 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 SRC = REPO / "src"
+PYTORCH_REFERENCE = REPO / "reference" / "pytorch"
 sys.path.insert(0, str(SRC))
 
 #: Extracted verbatim; their source must remain identical in both modules.
 VERBATIM = [
-    "rownorm", "build_history_index", "get_hist_before_time", "count_in_history",
-    "build_cooc", "cooc_scores", "cache_dict_to_matrix", "batch_sim_score",
+    "rownorm",
+    "build_history_index",
+    "get_hist_before_time",
+    "count_in_history",
+    "build_cooc",
+    "cooc_scores",
+    "cache_dict_to_matrix",
+    "batch_sim_score",
     "split_train_val_by_tail",
 ]
 
@@ -34,15 +41,22 @@ VERBATIM = [
 REIMPLEMENTED = ["build_sim_cache"]
 
 #: Constants that must agree exactly.
-CONSTANTS = ["TOP_N_FIRST", "TOP_N_SECOND", "DECAY_W1", "DECAY_W2",
-             "RPOP_TIME_QUANTILE", "VAL_PER_SRC_TAIL"]
+CONSTANTS = [
+    "TOP_N_FIRST",
+    "TOP_N_SECOND",
+    "DECAY_W1",
+    "DECAY_W2",
+    "RPOP_TIME_QUANTILE",
+    "VAL_PER_SRC_TAIL",
+]
 
 
 def function_sources(path: Path) -> dict[str, str]:
     text = path.read_text(encoding="utf-8")
     tree = ast.parse(text, filename=str(path))
-    return {n.name: ast.get_source_segment(text, n)
-            for n in tree.body if isinstance(n, ast.FunctionDef)}
+    return {
+        n.name: ast.get_source_segment(text, n) for n in tree.body if isinstance(n, ast.FunctionDef)
+    }
 
 
 def constant_values(path: Path) -> dict[str, str]:
@@ -59,7 +73,7 @@ def constant_values(path: Path) -> dict[str, str]:
 
 class PipelineCommonMatchesHistoricalSource(unittest.TestCase):
     def setUp(self):
-        self.historical = SRC / "train_line.py"
+        self.historical = PYTORCH_REFERENCE / "train_line.py"
         self.neutral = SRC / "pipeline_common.py"
         if not self.historical.exists():
             self.skipTest("historical train_line.py not present")
@@ -87,8 +101,11 @@ class PipelineCommonMatchesHistoricalSource(unittest.TestCase):
         text = (self.neutral).read_text(encoding="utf-8")
         for name in REIMPLEMENTED:
             self.assertIn(name, text)
-        self.assertIn("NumPy implementation", text,
-                      "the re-implemented build_sim_cache must say so in the source")
+        self.assertIn(
+            "NumPy implementation",
+            text,
+            "the re-implemented build_sim_cache must say so in the source",
+        )
 
     def test_neutral_module_imports_no_framework(self):
         tree = ast.parse(self.neutral.read_text(encoding="utf-8"))
@@ -99,8 +116,7 @@ class PipelineCommonMatchesHistoricalSource(unittest.TestCase):
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported.add(node.module.split(".")[0])
         for framework in ("torch", "jittor"):
-            self.assertNotIn(framework, imported,
-                             f"pipeline_common must not import {framework}")
+            self.assertNotIn(framework, imported, f"pipeline_common must not import {framework}")
 
 
 class SimCacheNumericalEquivalence(unittest.TestCase):
@@ -137,14 +153,16 @@ class SimCacheNumericalEquivalence(unittest.TestCase):
             t_neigh = idx.numpy().astype(np.int64)
             t_w = vals.numpy()
             mask = np.full(pc.TOP_N_SECOND, pc.DECAY_W2, dtype=np.float32)
-            mask[:pc.TOP_N_FIRST] = pc.DECAY_W1
+            mask[: pc.TOP_N_FIRST] = pc.DECAY_W1
             t_w = t_w * mask
             t_w[t_w < 1e-8] = 0.0
         finally:
             pc.TOP_N_FIRST, pc.TOP_N_SECOND = saved
 
         # Neighbour ORDER is what the ranking consumes and must match exactly.
-        self.assertTrue((np_neigh == t_neigh).all(), "neighbour ids differ from the torch reference")
+        self.assertTrue(
+            (np_neigh == t_neigh).all(), "neighbour ids differ from the torch reference"
+        )
         # Weights may differ by a single float32 ULP: numpy and torch use
         # different BLAS reduction orders for the matmul.
         self.assertLess(float(np.abs(np_w - t_w.astype(np.float32)).max()), 1e-6)

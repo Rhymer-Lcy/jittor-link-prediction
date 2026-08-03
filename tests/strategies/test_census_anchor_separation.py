@@ -38,14 +38,15 @@ COLUMNS = 6
 ROWS = 900
 
 
-def synthetic_test_frame(seed: int = 3, rows: int = ROWS,
-                         columns: int = COLUMNS) -> pd.DataFrame:
+def synthetic_test_frame(seed: int = 3, rows: int = ROWS, columns: int = COLUMNS) -> pd.DataFrame:
     """A dataset2-shaped test frame dense enough to produce real violations."""
     rng = np.random.default_rng(seed)
-    frame = pd.DataFrame({
-        "src": rng.integers(0, 40, rows),
-        "time": rng.integers(0, 12, rows) * 100,
-    })
+    frame = pd.DataFrame(
+        {
+            "src": rng.integers(0, 40, rows),
+            "time": rng.integers(0, 12, rows) * 100,
+        }
+    )
     slates = rng.integers(500, 530, size=(rows, columns))
     for i in range(columns):
         frame[f"c{i + 1}"] = slates[:, i]
@@ -64,14 +65,16 @@ def write_base(path: Path, scores: np.ndarray) -> None:
 
 
 def run_builder(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, str(BUILDER), *args],
-                          capture_output=True, text=True, cwd=str(REPO))
+    return subprocess.run(
+        [sys.executable, str(BUILDER), *args], capture_output=True, text=True, cwd=str(REPO)
+    )
 
 
 class KeySetTest(unittest.TestCase):
     def test_the_two_key_sets_partition_the_anchors(self):
-        self.assertEqual(xte.STRUCTURAL_ANCHOR_KEYS | xte.SCORE_DEPENDENT_ANCHOR_KEYS,
-                         set(xte.CENSUS_ANCHORS))
+        self.assertEqual(
+            xte.STRUCTURAL_ANCHOR_KEYS | xte.SCORE_DEPENDENT_ANCHOR_KEYS, set(xte.CENSUS_ANCHORS)
+        )
         self.assertFalse(xte.STRUCTURAL_ANCHOR_KEYS & xte.SCORE_DEPENDENT_ANCHOR_KEYS)
 
     def test_structural_keys_are_exactly_the_score_independent_ones(self):
@@ -91,11 +94,11 @@ class KeySetTest(unittest.TestCase):
         self.assertEqual(xte.census_mismatches(census), {})
         census["planned_action_rows"] += 1
         self.assertEqual(set(xte.census_mismatches(census)), {"planned_action_rows"})
-        self.assertEqual(
-            xte.census_mismatches(census, keys=xte.STRUCTURAL_ANCHOR_KEYS), {})
+        self.assertEqual(xte.census_mismatches(census, keys=xte.STRUCTURAL_ANCHOR_KEYS), {})
         self.assertEqual(
             set(xte.census_mismatches(census, keys=xte.SCORE_DEPENDENT_ANCHOR_KEYS)),
-            {"planned_action_rows"})
+            {"planned_action_rows"},
+        )
 
 
 class StructuralValidationTest(unittest.TestCase):
@@ -166,8 +169,9 @@ class CommandLineTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_retraining_completes_the_official_cli(self):
-        done = run_builder("--base", str(self.base), "--test", str(self.test_csv),
-                           "--output", str(self.output))
+        done = run_builder(
+            "--base", str(self.base), "--test", str(self.test_csv), "--output", str(self.output)
+        )
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertTrue(self.output.is_file())
         self.assertIn("structural census entries agree", done.stdout)
@@ -176,13 +180,21 @@ class CommandLineTest(unittest.TestCase):
         self.assertIn("score-dependent census", done.stdout)
 
     def test_the_written_member_keeps_the_base_byte_length(self):
-        run_builder("--base", str(self.base), "--test", str(self.test_csv),
-                    "--output", str(self.output))
+        run_builder(
+            "--base", str(self.base), "--test", str(self.test_csv), "--output", str(self.output)
+        )
         self.assertEqual(self.output.stat().st_size, self.base.stat().st_size)
 
     def test_frozen_reference_verification_still_enforces_the_anchors(self):
-        done = run_builder("--base", str(self.base), "--test", str(self.test_csv),
-                           "--output", str(self.output), "--verify")
+        done = run_builder(
+            "--base",
+            str(self.base),
+            "--test",
+            str(self.test_csv),
+            "--output",
+            str(self.output),
+            "--verify",
+        )
         self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
         self.assertIn("census", done.stdout)
         self.assertIn("VERIFY FAILED", done.stdout)
@@ -193,30 +205,35 @@ class CommandLineTest(unittest.TestCase):
         # own shape guard fires; the command must not write a member.
         narrow = self.base.parent / "narrow.csv"
         write_base(narrow, self.scores[:, :-1])
-        done = run_builder("--base", str(narrow), "--test", str(self.test_csv),
-                           "--output", str(self.output))
+        done = run_builder(
+            "--base", str(narrow), "--test", str(self.test_csv), "--output", str(self.output)
+        )
         self.assertNotEqual(done.returncode, 0)
         self.assertFalse(self.output.exists())
 
     def test_row_count_violation_still_fails_the_cli(self):
         short = self.base.parent / "short.csv"
         write_base(short, self.scores[:-7])
-        done = run_builder("--base", str(short), "--test", str(self.test_csv),
-                           "--output", str(self.output))
+        done = run_builder(
+            "--base", str(short), "--test", str(self.test_csv), "--output", str(self.output)
+        )
         self.assertNotEqual(done.returncode, 0)
         self.assertFalse(self.output.exists())
 
     def test_cli_and_direct_internal_decode_agree_byte_for_byte(self):
-        done = run_builder("--base", str(self.base), "--test", str(self.test_csv),
-                           "--output", str(self.output))
+        done = run_builder(
+            "--base", str(self.base), "--test", str(self.test_csv), "--output", str(self.output)
+        )
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
 
         payload = self.base.read_bytes()
         _, info = xte.apply(self.scores, self.frame)
-        direct = xte.swap_score_tokens(payload, info["action_rows"], info["c1_col"],
-                                       info["c2_col"], info["census"]["columns"])
-        self.assertEqual(hashlib.sha256(self.output.read_bytes()).hexdigest(),
-                         hashlib.sha256(direct).hexdigest())
+        direct = xte.swap_score_tokens(
+            payload, info["action_rows"], info["c1_col"], info["c2_col"], info["census"]["columns"]
+        )
+        self.assertEqual(
+            hashlib.sha256(self.output.read_bytes()).hexdigest(), hashlib.sha256(direct).hexdigest()
+        )
 
     def test_the_decode_actually_acted_on_this_fixture(self):
         # Guards the suite against becoming vacuous: if the fixture stopped

@@ -4,7 +4,7 @@
 Status
 ------
 Active. It is the FIRST of the two frozen dataset1 postprocessors and runs
-underneath :mod:`src.strategies.ds1.test_graph_reciprocity`, which reads the
+underneath :mod:`src.strategies.ds1.graph_reciprocity`, which reads the
 matrix this module produces. The order is load-bearing; see
 :mod:`src.strategies.registry`.
 
@@ -82,8 +82,9 @@ def slate_recurrence(sources: np.ndarray, candidates: np.ndarray, num_entity: in
     return (counts[inverse] - 1).reshape(rows, cols).astype(np.int64)
 
 
-def action_mask(scores: np.ndarray, recurrence: np.ndarray, is_history: np.ndarray
-                ) -> tuple[np.ndarray, np.ndarray]:
+def action_mask(
+    scores: np.ndarray, recurrence: np.ndarray, is_history: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     """Resolve the frozen rule into ``(acted, winner_column)``.
 
     ``winner_column`` is -1 on rows that do not act.
@@ -95,8 +96,8 @@ def action_mask(scores: np.ndarray, recurrence: np.ndarray, is_history: np.ndarr
 
     for q in range(rows):
         if is_history[q, control_top[q]]:
-            continue                                    # 1. row gate
-        eligible = np.flatnonzero(~is_history[q])       # 2. eligibility
+            continue  # 1. row gate
+        eligible = np.flatnonzero(~is_history[q])  # 2. eligibility
         if eligible.size == 0:
             continue
         values = recurrence[q, eligible]
@@ -104,20 +105,19 @@ def action_mask(scores: np.ndarray, recurrence: np.ndarray, is_history: np.ndarr
         best = int(order[-1])
         best_value = int(values[best])
         second_value = int(values[order[-2]]) if order.size > 1 else -1
-        if best_value < MINIMUM_OTHER_SLATES:           # 4. support
+        if best_value < MINIMUM_OTHER_SLATES:  # 4. support
             continue
         if order.size > 1 and best_value == second_value:
-            continue                                    # 3. uniqueness
+            continue  # 3. uniqueness
         col = int(eligible[best])
         if col == int(control_top[q]):
-            continue                                    # already top-1: no action
+            continue  # already top-1: no action
         acted[q] = True
         winner[q] = col
     return acted, winner
 
 
-def apply(scores: np.ndarray, test: pd.DataFrame, train: pd.DataFrame
-          ) -> tuple[np.ndarray, dict]:
+def apply(scores: np.ndarray, test: pd.DataFrame, train: pd.DataFrame) -> tuple[np.ndarray, dict]:
     """Apply the frozen rule to a dataset1 score matrix.
 
     Parameters
@@ -144,7 +144,7 @@ def apply(scores: np.ndarray, test: pd.DataFrame, train: pd.DataFrame
 
     treatment = scores.copy()
     for q in np.flatnonzero(acted):
-        treatment[q, winner[q]] = promoted_value(treatment[q])   # 5. action
+        treatment[q, winner[q]] = promoted_value(treatment[q])  # 5. action
     treatment = row_max_normalise(treatment)
 
     control_top = scores.argmax(axis=1)
@@ -163,5 +163,6 @@ def apply(scores: np.ndarray, test: pd.DataFrame, train: pd.DataFrame
         "action_coverage": float(acted.mean()),
         "minimum_other_slates": MINIMUM_OTHER_SLATES,
         "winner_min_other_slates": int(recurrence[acted, winner[acted]].min())
-        if acted.any() else None,
+        if acted.any()
+        else None,
     }

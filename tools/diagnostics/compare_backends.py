@@ -9,7 +9,8 @@ resulting embeddings. Nothing here is on the canonical path.
 Why it is a separate file
 -------------------------
 ``main.py`` used to carry ``--framework {jittor,torch}``, which selected
-``src/train_line.py`` and ``src/train_bpr.py`` instead of the Jittor trainers.
+``reference/pytorch/train_line.py`` and ``reference/pytorch/train_bpr.py``
+instead of the Jittor trainers.
 That put a PyTorch execution path inside the organiser-facing interface of a
 Jittor-mandated competition -- an ambiguity in the submission, not a feature.
 The selection was removed from ``main.py`` rather than deleted from the
@@ -51,7 +52,10 @@ REPO = Path(__file__).resolve().parents[2]
 #: The historical PyTorch trainers. Reachable from here and from nowhere on the
 #: canonical path. Kept in the repository for provenance; excluded from the
 #: official package.
-TORCH_TRAINERS = {"line": "src/train_line.py", "bpr": "src/train_bpr.py"}
+TORCH_TRAINERS = {
+    "line": "reference/pytorch/train_line.py",
+    "bpr": "reference/pytorch/train_bpr.py",
+}
 #: The mandated Jittor trainers -- the canonical implementations.
 JITTOR_TRAINERS = {"line": "src/train_line_jt.py", "bpr": "src/train_bpr_jt.py"}
 
@@ -72,36 +76,53 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--dataset", choices=("dataset1", "dataset2"), required=True)
     ap.add_argument("--model", choices=("line", "bpr"), required=True)
-    ap.add_argument("--jittor-suffix", default="-jtdiag",
-                    help="output-directory suffix for the Jittor arm")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="print both commands and execute neither")
+    ap.add_argument(
+        "--jittor-suffix",
+        default="-jittor-diagnostic",
+        help="output-directory suffix for the Jittor arm",
+    )
+    ap.add_argument(
+        "--pytorch-suffix",
+        default="-pytorch-diagnostic",
+        help="output-directory suffix for the PyTorch arm",
+    )
+    ap.add_argument(
+        "--dry-run", action="store_true", help="print both commands and execute neither"
+    )
     args = ap.parse_args(argv)
 
     print(BANNER)
     torch_script = REPO / TORCH_TRAINERS[args.model]
     jittor_script = REPO / JITTOR_TRAINERS[args.model]
 
-    arms = [("jittor", jittor_script, args.jittor_suffix),
-            ("torch", torch_script, "-torchdiag")]
-    for name, script, suffix in arms:
-        print(f"\n[{name}] DATASET={args.dataset} JT_OUT_SUFFIX={suffix} "
-              f"python {script.relative_to(REPO).as_posix()}")
+    arms = [
+        ("jittor", jittor_script, {"JT_OUT_SUFFIX": args.jittor_suffix}),
+        ("pytorch", torch_script, {"PYTORCH_OUT_SUFFIX": args.pytorch_suffix}),
+    ]
+    for name, script, overrides in arms:
+        rendered_env = " ".join(f"{key}={value}" for key, value in overrides.items())
+        print(
+            f"\n[{name}] DATASET={args.dataset} {rendered_env} "
+            f"python {script.relative_to(REPO).as_posix()}"
+        )
 
     if args.dry_run:
         print("\n(dry run: neither arm executed)")
         return 0
 
     if not torch_available():
-        print("\nFAIL PyTorch is not installed. It is deliberately absent from the "
-              "official environment specification; install the CPU wheel to run this "
-              "diagnostic:\n  pip install torch --index-url "
-              "https://download.pytorch.org/whl/cpu", file=sys.stderr)
+        print(
+            "\nFAIL PyTorch is not installed. It is deliberately absent from the "
+            "official environment specification; install the CPU wheel to run this "
+            "diagnostic:\n  pip install torch --index-url "
+            "https://download.pytorch.org/whl/cpu",
+            file=sys.stderr,
+        )
         return 2
 
     status = 0
-    for name, script, suffix in arms:
-        env = dict(os.environ, DATASET=args.dataset, JT_OUT_SUFFIX=suffix)
+    for name, script, overrides in arms:
+        env = dict(os.environ, DATASET=args.dataset, **overrides)
         print(f"\n===== {name} arm =====")
         code = subprocess.call([sys.executable, str(script)], cwd=str(REPO), env=env)
         if code != 0:

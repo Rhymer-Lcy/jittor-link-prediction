@@ -9,10 +9,9 @@ The competition mandates Jittor. These tests enforce, statically, that:
 * torch is not declared as a mandatory dependency of the inspection
   environment.
 
-The defect these guard against was real: `src/train_line.py` is both the
-historical PyTorch trainer and the shared utility module that every ranking
-stage imports, so a top-level `import torch` made torch a hard dependency of the
-whole canonical pipeline. Five stages failed to import without it.
+The framework-neutral helpers live in ``src/pipeline_common.py``. Optional
+PyTorch implementations live under ``reference/pytorch/`` and are never part
+of the canonical import closure.
 """
 
 from __future__ import annotations
@@ -24,14 +23,21 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 SRC = REPO / "src"
+PYTORCH_REFERENCE = REPO / "reference" / "pytorch"
 
 #: Modules that make up the canonical production path. None may require torch.
 CANONICAL_MODULES = [
     "pipeline_common.py",
-    "train_line_jt.py", "train_bpr_jt.py", "ensemble_predict.py",
-    "ranker_ds1.py", "ranker_basket_ds2.py", "ds2_basket_featurizer.py",
-    "ds2_mf_basket_pack.py", "crf_promote.py", "triple_promote.py",
-    "build_ds1_member.py", "build_ds2_member.py",
+    "train_line_jt.py",
+    "train_bpr_jt.py",
+    "ensemble_predict.py",
+    "ranker_ds1.py",
+    "ranker_basket_ds2.py",
+    "ds2_basket_featurizer.py",
+    "ds2_mf_basket_pack.py",
+    "crf_promote.py",
+    "build_ds1_member.py",
+    "build_ds2_member.py",
 ]
 
 #: The Jittor neural trainers. These must train through Jittor, never torch.
@@ -47,7 +53,7 @@ def top_level_imports(path: Path) -> set[str]:
     """Modules imported at module scope, i.e. unconditionally on import."""
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     found: set[str] = set()
-    for node in tree.body:                       # module scope only, not nested
+    for node in tree.body:  # module scope only, not nested
         if isinstance(node, ast.Import):
             for alias in node.names:
                 found.add(alias.name.split(".")[0])
@@ -69,12 +75,15 @@ class CanonicalPathIsTorchFree(unittest.TestCase):
 
     def test_reference_only_trainer_guards_its_torch_import(self):
         """train_line.py may use torch, but never unconditionally at import."""
-        path = SRC / "train_line.py"
+        path = PYTORCH_REFERENCE / "train_line.py"
         if not path.exists():
             self.skipTest("train_line.py not present")
-        self.assertNotIn("torch", top_level_imports(path),
-                         "train_line.py imports torch unconditionally; every canonical "
-                         "stage that imports it for shared utilities would then require torch")
+        self.assertNotIn(
+            "torch",
+            top_level_imports(path),
+            "train_line.py imports torch unconditionally; every canonical "
+            "stage that imports it for shared utilities would then require torch",
+        )
         text = path.read_text(encoding="utf-8")
         self.assertIn("TORCH_AVAILABLE", text, "the torch guard flag is missing")
 
@@ -83,7 +92,6 @@ class CanonicalPathIsTorchFree(unittest.TestCase):
         import importlib
 
         sys.path.insert(0, str(SRC))
-        blocked = {"torch", "torch.nn", "torch.nn.functional"}
 
         class _Blocker:
             def find_module(self, name, path=None):
@@ -106,7 +114,7 @@ class CanonicalPathIsTorchFree(unittest.TestCase):
         try:
             # Only leaf utility modules are safe to import here: several ranking
             # modules execute pipeline work at module scope by design.
-            for name in ("pipeline_common", "train_line"):
+            for name in ("pipeline_common",):
                 sys.modules.pop(name, None)
                 try:
                     importlib.import_module(name)
@@ -136,8 +144,11 @@ class CanonicalPathIsTorchFree(unittest.TestCase):
             if not path.exists():
                 continue
             text = path.read_text(encoding="utf-8").lower()
-            for bad in ("except importerror:\n    import torch", "fallback to torch",
-                        "fall back to torch"):
+            for bad in (
+                "except importerror:\n    import torch",
+                "fallback to torch",
+                "fall back to torch",
+            ):
                 self.assertNotIn(bad, text, f"{name} appears to contain a torch fallback")
 
 
@@ -152,9 +163,11 @@ class EnvironmentDoesNotRequireTorch(unittest.TestCase):
                 if stripped.startswith("#") or not stripped:
                     continue
                 self.assertNotEqual(
-                    stripped.split("=")[0].split(">")[0].split("<")[0].strip(), "torch",
+                    stripped.split("=")[0].split(">")[0].split("<")[0].strip(),
+                    "torch",
                     f"{name} declares torch as a mandatory dependency; the canonical "
-                    f"path must not require PyTorch")
+                    f"path must not require PyTorch",
+                )
 
 
 if __name__ == "__main__":

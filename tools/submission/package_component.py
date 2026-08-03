@@ -205,8 +205,10 @@ def parse_matrix(raw: bytes, rep: Report, label: str, spec: dict) -> np.ndarray 
     lines = text.replace("\r\n", "\n").split("\n")
     if lines and lines[-1] == "":
         lines.pop()
-    rep.emit(f"    {label}: {len(lines)} lines, eol={'CRLF' if crlf else 'LF'}, "
-             f"trailing_newline={trailing_nl}")
+    rep.emit(
+        f"    {label}: {len(lines)} lines, eol={'CRLF' if crlf else 'LF'}, "
+        f"trailing_newline={trailing_nl}"
+    )
 
     if len(lines) != spec["rows"]:
         rep.fail(f"{label} row count", f"expected {spec['rows']}, found {len(lines)}")
@@ -215,11 +217,14 @@ def parse_matrix(raw: bytes, rep: Report, label: str, spec: dict) -> np.ndarray 
 
     widths = {ln.count(",") + 1 for ln in lines}
     if widths != {spec["cols"]}:
-        rep.fail(f"{label} candidate-column count",
-                 f"expected all rows = {spec['cols']}, found widths {sorted(widths)[:6]}")
+        rep.fail(
+            f"{label} candidate-column count",
+            f"expected all rows = {spec['cols']}, found widths {sorted(widths)[:6]}",
+        )
         return None
-    rep.ok(f"{label} candidate-column count",
-           f"all {spec['rows']} rows have {spec['cols']} columns")
+    rep.ok(
+        f"{label} candidate-column count", f"all {spec['rows']} rows have {spec['cols']} columns"
+    )
 
     try:
         arr = pd.read_csv(io.BytesIO(raw), header=None, dtype=np.float64).to_numpy()
@@ -260,8 +265,10 @@ def validate_values(arr: np.ndarray, rep: Report, dataset: str, allow_range: boo
     stats["degenerate_rows"] = n_degen
     stats["all_zero_rows"] = int((arr == 0).all(axis=1).sum())
     if n_degen:
-        rep.fail("degenerate rows",
-                 f"{n_degen} fully tied rows (they score the 100-way tie baseline ~0.0519)")
+        rep.fail(
+            "degenerate rows",
+            f"{n_degen} fully tied rows (they score the 100-way tie baseline ~0.0519)",
+        )
     else:
         rep.ok("degenerate rows", "none -- every row discriminates")
 
@@ -271,9 +278,11 @@ def validate_values(arr: np.ndarray, rep: Report, dataset: str, allow_range: boo
     expect = spec["expect_rowmax_one"]
     if expect is not None:
         if n_norm / spec["rows"] < expect:
-            rep.warn("row max-normalisation",
-                     f"{n_norm}/{spec['rows']} rows peak at exactly 1.0; "
-                     f"every accepted {dataset} row does")
+            rep.warn(
+                "row max-normalisation",
+                f"{n_norm}/{spec['rows']} rows peak at exactly 1.0; "
+                f"every accepted {dataset} row does",
+            )
         else:
             rep.ok("row max-normalisation", f"{n_norm}/{spec['rows']} rows peak at exactly 1.0")
     else:
@@ -285,8 +294,14 @@ def validate_values(arr: np.ndarray, rep: Report, dataset: str, allow_range: boo
     return stats
 
 
-def diff_against_baseline(trt: np.ndarray, base: np.ndarray, trt_raw: bytes, base_raw: bytes,
-                          rep: Report, inversions: bool) -> dict:
+def diff_against_baseline(
+    trt: np.ndarray,
+    base: np.ndarray,
+    trt_raw: bytes,
+    base_raw: bytes,
+    rep: Report,
+    inversions: bool,
+) -> dict:
     """Row/cell/top-1/order deltas versus the accepted member."""
     d = {}
 
@@ -316,7 +331,7 @@ def diff_against_baseline(trt: np.ndarray, base: np.ndarray, trt_raw: bytes, bas
             inv = tie = 0
             iu = np.triu_indices(base.shape[1], k=1)
             for i in range(0, rows.size, 500):
-                blk = rows[i:i + 500]
+                blk = rows[i : i + 500]
                 db = (base[blk][:, :, None] - base[blk][:, None, :])[:, iu[0], iu[1]]
                 dt = (trt[blk][:, :, None] - trt[blk][:, None, :])[:, iu[0], iu[1]]
                 inv += int((((db > 0) & (dt < 0)) | ((db < 0) & (dt > 0))).sum())
@@ -331,18 +346,24 @@ def diff_against_baseline(trt: np.ndarray, base: np.ndarray, trt_raw: bytes, bas
     rep.emit(f"    order-changed rows    : {d['order_changed_rows']}")
     if inversions:
         rep.emit(f"    strict inversions     : {d['strict_inversions']}")
-        rep.emit(f"    pairs collapsed to tie: {d['pairs_collapsed_to_tie']} "
-                 f"(%.6f quantisation, expected)")
+        rep.emit(
+            f"    pairs collapsed to tie: {d['pairs_collapsed_to_tie']} "
+            f"(%.6f quantisation, expected)"
+        )
 
     if d["changed_rows_text"] != d["changed_rows_numeric"]:
-        rep.warn("text/numeric row-change agreement",
-                 f"{d['changed_rows_text']} text vs {d['changed_rows_numeric']} numeric")
+        rep.warn(
+            "text/numeric row-change agreement",
+            f"{d['changed_rows_text']} text vs {d['changed_rows_numeric']} numeric",
+        )
     else:
         rep.ok("text/numeric row-change agreement", f"{d['changed_rows_text']} rows")
 
     if d["changed_cells"] == 0:
-        rep.warn("treatment differs from baseline",
-                 "IDENTICAL to the accepted member -- this measures nothing new")
+        rep.warn(
+            "treatment differs from baseline",
+            "IDENTICAL to the accepted member -- this measures nothing new",
+        )
     else:
         rep.ok("treatment differs from baseline", f"{d['changed_cells']} cells")
     return d
@@ -372,9 +393,15 @@ def write_zip(out: Path, members: list[tuple[str, bytes]], rep: Report) -> dict:
             z.writestr(entry, data, compresslevel=COMPRESS_LEVEL)
 
     size = out.stat().st_size
-    info = {"zip_path": str(out), "zip_sha256": sha256_file(out), "zip_bytes": size,
-            "compress_method": int(COMPRESS_METHOD), "compress_level": COMPRESS_LEVEL,
-            "members": [], "member_sha256": {}}
+    info = {
+        "zip_path": str(out),
+        "zip_sha256": sha256_file(out),
+        "zip_bytes": size,
+        "compress_method": int(COMPRESS_METHOD),
+        "compress_level": COMPRESS_LEVEL,
+        "members": [],
+        "member_sha256": {},
+    }
 
     with zipfile.ZipFile(out, "r") as z:
         bad = z.testzip()
@@ -434,15 +461,19 @@ def size_policy(size: int, rep: Report) -> str:
     """
     mb = size / 1e6
     if size >= SIZE_REVIEW:
-        rep.fail("archive size policy",
-                 f"{size} B ({mb:.2f} MB) at or above the {SIZE_REVIEW} review line. "
-                 f"Archives this large HAVE been accepted (largest {LARGEST_ACCEPTED} B), but a "
-                 f"65,363,753 B pack was also rejected unexplained -- get explicit review.")
+        rep.fail(
+            "archive size policy",
+            f"{size} B ({mb:.2f} MB) at or above the {SIZE_REVIEW} review line. "
+            f"Archives this large HAVE been accepted (largest {LARGEST_ACCEPTED} B), but a "
+            f"65,363,753 B pack was also rejected unexplained -- get explicit review.",
+        )
         return "REVIEW-REQUIRED"
     if size > SIZE_WARN:
-        rep.warn("archive size policy",
-                 f"{size} B ({mb:.2f} MB) above the {SIZE_WARN} target; within the accepted range "
-                 f"but with little margin.")
+        rep.warn(
+            "archive size policy",
+            f"{size} B ({mb:.2f} MB) above the {SIZE_WARN} target; within the accepted range "
+            f"but with little margin.",
+        )
         return "ACCEPTABLE-NO-MARGIN"
     rep.ok("archive size policy", f"{size} B ({mb:.2f} MB) at or below the {SIZE_TARGET} target")
     return "OK"
@@ -463,8 +494,10 @@ def mode_component(args, dataset: str) -> int:
 
     rep.emit(f"=== {dataset} component :: {exp} ===")
     rep.emit(f"    treatment : {args.csv}")
-    rep.emit(f"    baseline  : {GOLD_ZIP.name}::{spec['member']} "
-             f"(component score {spec['baseline_score']!r})")
+    rep.emit(
+        f"    baseline  : {GOLD_ZIP.name}::{spec['member']} "
+        f"(component score {spec['baseline_score']!r})"
+    )
     rep.emit("")
 
     src = Path(args.csv).resolve()
@@ -495,13 +528,18 @@ def mode_component(args, dataset: str) -> int:
     zinfo = write_zip(zip_path, [(spec["member"], trt_raw)], rep)
 
     payload = {
-        "experiment": exp, "dataset": dataset, "mode": dataset,
+        "experiment": exp,
+        "dataset": dataset,
+        "mode": dataset,
         "source_csv_path": str(src),
         "baseline_csv_sha256": spec["baseline_sha256"],
         "treatment_csv_sha256": trt_sha,
-        "zip_path": zinfo["zip_path"], "zip_sha256": zinfo["zip_sha256"],
-        "member_names": zinfo["members"], "member_sha256": zinfo["member_sha256"],
-        "rows": spec["rows"], "cols": spec["cols"],
+        "zip_path": zinfo["zip_path"],
+        "zip_sha256": zinfo["zip_sha256"],
+        "member_names": zinfo["members"],
+        "member_sha256": zinfo["member_sha256"],
+        "rows": spec["rows"],
+        "cols": spec["cols"],
         "changed_rows": diff["changed_rows_text"],
         "changed_rows_numeric": diff["changed_rows_numeric"],
         "changed_cells": diff["changed_cells"],
@@ -510,11 +548,14 @@ def mode_component(args, dataset: str) -> int:
         "strict_inversions": diff["strict_inversions"],
         "pairs_collapsed_to_tie": diff["pairs_collapsed_to_tie"],
         "validation": {**stats, "checks": rep.checks, "verdict": rep.verdict()},
-        "compress_method": zinfo["compress_method"], "compress_level": zinfo["compress_level"],
-        "archive_bytes": zinfo["zip_bytes"], "size_verdict": zinfo["size_verdict"],
+        "compress_method": zinfo["compress_method"],
+        "compress_level": zinfo["compress_level"],
+        "archive_bytes": zinfo["zip_bytes"],
+        "size_verdict": zinfo["size_verdict"],
         "baseline_component_score": spec["baseline_score"],
         "frozen_other_component_score": spec["other_score"],
-        "treatment_component_score": None, "component_delta": None,
+        "treatment_component_score": None,
+        "component_delta": None,
         "predicted_combined_total": None,
         "accepted_total_reference": ACCEPTED_TOTAL,
         "created_utc": stamp(),
@@ -533,7 +574,9 @@ def mode_component(args, dataset: str) -> int:
 
 def mode_main(args) -> int:
     exp = args.experiment
-    out_dir = Path(args.out_dir) if args.out_dir else REPO / "outputs" / "submissions" / "round22_main"
+    out_dir = (
+        Path(args.out_dir) if args.out_dir else REPO / "outputs" / "submissions" / "round22_main"
+    )
     zip_path = out_dir / f"{exp}_main_d9.zip"
     rep = Report(LOG_DIR / f"{exp}_main.log")
     rep.emit(f"=== combined main pack :: {exp} ===")
@@ -573,19 +616,27 @@ def mode_main(args) -> int:
     gold_cmp = compare_with_gold(zip_path, rep)
 
     payload = {
-        "experiment": exp, "dataset": "combined", "mode": "main",
+        "experiment": exp,
+        "dataset": "combined",
+        "mode": "main",
         "source_csv_path": srcs,
         "baseline_csv_sha256": {d: SPEC[d]["baseline_sha256"] for d in ("ds1", "ds2")},
         "treatment_csv_sha256": zinfo["member_sha256"],
-        "zip_path": zinfo["zip_path"], "zip_sha256": zinfo["zip_sha256"],
-        "member_names": zinfo["members"], "member_sha256": zinfo["member_sha256"],
-        "rows": {d: SPEC[d]["rows"] for d in ("ds1", "ds2")}, "cols": 100,
-        "compress_method": zinfo["compress_method"], "compress_level": zinfo["compress_level"],
-        "archive_bytes": zinfo["zip_bytes"], "size_verdict": zinfo["size_verdict"],
+        "zip_path": zinfo["zip_path"],
+        "zip_sha256": zinfo["zip_sha256"],
+        "member_names": zinfo["members"],
+        "member_sha256": zinfo["member_sha256"],
+        "rows": {d: SPEC[d]["rows"] for d in ("ds1", "ds2")},
+        "cols": 100,
+        "compress_method": zinfo["compress_method"],
+        "compress_level": zinfo["compress_level"],
+        "archive_bytes": zinfo["zip_bytes"],
+        "size_verdict": zinfo["size_verdict"],
         "gold_comparison": gold_cmp,
         "validation": {"checks": rep.checks, "verdict": rep.verdict()},
         "baseline_component_score": {d: SPEC[d]["baseline_score"] for d in ("ds1", "ds2")},
-        "treatment_component_score": None, "component_delta": None,
+        "treatment_component_score": None,
+        "component_delta": None,
         "predicted_combined_total": None,
         "accepted_total_reference": ACCEPTED_TOTAL,
         "created_utc": stamp(),
@@ -613,13 +664,23 @@ def compare_with_gold(zip_path: Path, rep: Report) -> dict:
             out[f"{name}_bytes_identical"] = same
             (rep.ok if same else rep.warn)(
                 f"{name} vs accepted",
-                "byte-identical" if same else "differs (expected for a treatment member)")
+                "byte-identical" if same else "differs (expected for a treatment member)",
+            )
             out[f"{name}_gold_compress_size"] = gi[name].compress_size
             out[f"{name}_new_compress_size"] = ni[name].compress_size
-            rep.emit(f"    {name}: compressed {gi[name].compress_size} (accepted) vs "
-                     f"{ni[name].compress_size} (new)")
-        for field in ("create_system", "create_version", "extract_version", "flag_bits",
-                      "external_attr", "internal_attr", "compress_type"):
+            rep.emit(
+                f"    {name}: compressed {gi[name].compress_size} (accepted) vs "
+                f"{ni[name].compress_size} (new)"
+            )
+        for field in (
+            "create_system",
+            "create_version",
+            "extract_version",
+            "flag_bits",
+            "external_attr",
+            "internal_attr",
+            "compress_type",
+        ):
             gvals = {getattr(i, field) for i in g.infolist()}
             nvals = {getattr(i, field) for i in n.infolist()}
             out[f"field_{field}"] = {"gold": sorted(gvals), "new": sorted(nvals)}
@@ -628,8 +689,9 @@ def compare_with_gold(zip_path: Path, rep: Report) -> dict:
         rep.ok("zip container fields", "match the accepted archive (timestamps excepted)")
         gsize, nsize = GOLD_ZIP.stat().st_size, zip_path.stat().st_size
         out.update(gold_bytes=gsize, new_bytes=nsize, delta_bytes=nsize - gsize)
-        rep.emit(f"    archive size      : accepted {gsize} | new {nsize} | "
-                 f"delta {nsize - gsize:+d}")
+        rep.emit(
+            f"    archive size      : accepted {gsize} | new {nsize} | delta {nsize - gsize:+d}"
+        )
     return out
 
 
@@ -660,9 +722,14 @@ def mode_score(args) -> int:
         print(f"frozen other component  : {other!r}")
         print(f"predicted combined total: {total!r}")
         print(f"vs accepted {ACCEPTED_TOTAL!r}: {total - ACCEPTED_TOTAL:+.16f}")
-        print("\nverdict: " + ("GAIN -- an isolated component pass; a main pack may now be built"
-                               if delta > 0 else
-                               "NO GAIN -- do not build a main pack from this component"))
+        print(
+            "\nverdict: "
+            + (
+                "GAIN -- an isolated component pass; a main pack may now be built"
+                if delta > 0
+                else "NO GAIN -- do not build a main pack from this component"
+            )
+        )
     payload["submitted"] = True
     payload["scored_utc"] = stamp()
     payload.setdefault("score_command_line", " ".join([sys.executable, *sys.argv]))
@@ -679,8 +746,10 @@ def mode_verify(args) -> int:
         rep.ok("testzip", str(z.testzip()))
         for i in z.infolist():
             raw = z.read(i.filename)
-            rep.emit(f"    {i.filename}: method {i.compress_type}, raw {i.file_size}, "
-                     f"sha256 {sha256_bytes(raw)}")
+            rep.emit(
+                f"    {i.filename}: method {i.compress_type}, raw {i.file_size}, "
+                f"sha256 {sha256_bytes(raw)}"
+            )
             dataset = {"dataset1.csv": "ds1", "dataset2.csv": "ds2"}.get(i.filename)
             if dataset:
                 spec = SPEC[dataset]
@@ -704,10 +773,16 @@ def main() -> int:
             p.add_argument("--csv", required=True, help="treatment CSV path")
         p.add_argument("--experiment", required=True, help="short experiment name")
         p.add_argument("--out-dir", default=None)
-        p.add_argument("--inversions", action="store_true",
-                       help="also count strict pair inversions on changed rows (slower)")
-        p.add_argument("--allow-range-extension", action="store_true",
-                       help="downgrade an out-of-[0,1] range FAIL to a warning")
+        p.add_argument(
+            "--inversions",
+            action="store_true",
+            help="also count strict pair inversions on changed rows (slower)",
+        )
+        p.add_argument(
+            "--allow-range-extension",
+            action="store_true",
+            help="downgrade an out-of-[0,1] range FAIL to a warning",
+        )
         p.add_argument("--force", action="store_true", help="package even if a check FAILs")
 
     add_common(sub.add_parser("ds1", help="validate + package a dataset1 treatment"))

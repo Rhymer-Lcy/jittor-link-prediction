@@ -109,8 +109,9 @@ STRUCTURAL_ANCHOR_KEYS = frozenset({"rows", "columns", "sources"})
 SCORE_DEPENDENT_ANCHOR_KEYS = frozenset(CENSUS_ANCHORS) - STRUCTURAL_ANCHOR_KEYS
 
 
-def derive_actions(scores: np.ndarray, candidates: np.ndarray, sources: np.ndarray,
-                   times: np.ndarray) -> dict:
+def derive_actions(
+    scores: np.ndarray, candidates: np.ndarray, sources: np.ndarray, times: np.ndarray
+) -> dict:
     """Resolve the frozen rule into an action set plus the full physical census.
 
     Parameters
@@ -141,8 +142,8 @@ def derive_actions(scores: np.ndarray, candidates: np.ndarray, sources: np.ndarr
     top2 = candidates[rows, c2_col]
     margin = scores[rows, c1_col] - scores[rows, c2_col]
 
-    gid, n_groups = dense_group_ids(sources, top1)      # 1. (source, top-1 candidate)
-    ctid, n_clusters = dense_group_ids(gid, times)       # 3. exact timestamp clusters
+    gid, n_groups = dense_group_ids(sources, top1)  # 1. (source, top-1 candidate)
+    ctid, n_clusters = dense_group_ids(gid, times)  # 3. exact timestamp clusters
 
     group_size = np.bincount(gid, minlength=n_groups)
     cluster_size = np.bincount(ctid, minlength=n_clusters)
@@ -164,17 +165,16 @@ def derive_actions(scores: np.ndarray, candidates: np.ndarray, sources: np.ndarr
     keeper = np.full(n_groups, -1, np.int64)
     keeper[first_gid] = eligible_idx[first_pos]
 
-    violation_group = distinct_times >= MINIMUM_DISTINCT_TIMES    # 2. eligibility
+    violation_group = distinct_times >= MINIMUM_DISTINCT_TIMES  # 2. eligibility
     in_violation = violation_group[gid]
-    acted = in_violation & (ctid != keeper[gid])                  # 5. action set
+    acted = in_violation & (ctid != keeper[gid])  # 5. action set
 
     # The guaranteed-wrong lower bound keeps the LARGEST cluster by row count.
     # That is a different quantity from the treatment's best-margin keeper and is
     # reported for the census only; it never drives an action.
     largest_cluster = np.zeros(n_groups, np.int64)
     np.maximum.at(largest_cluster, cluster_gid, cluster_size)
-    guaranteed_wrong = int((group_size[violation_group]
-                            - largest_cluster[violation_group]).sum())
+    guaranteed_wrong = int((group_size[violation_group] - largest_cluster[violation_group]).sum())
 
     sizes = group_size[violation_group]
     census = {
@@ -201,7 +201,8 @@ def derive_actions(scores: np.ndarray, candidates: np.ndarray, sources: np.ndarr
     induced_cluster_gid = np.zeros(int(induced_ctid.max()) + 1, np.int64)
     induced_cluster_gid[induced_ctid] = induced_gid
     census["violation_groups_after_one_pass"] = int(
-        (np.bincount(induced_cluster_gid, minlength=induced_n) >= MINIMUM_DISTINCT_TIMES).sum())
+        (np.bincount(induced_cluster_gid, minlength=induced_n) >= MINIMUM_DISTINCT_TIMES).sum()
+    )
 
     return {
         "acted": acted,
@@ -214,8 +215,9 @@ def derive_actions(scores: np.ndarray, candidates: np.ndarray, sources: np.ndarr
     }
 
 
-def census_mismatches(census: dict, anchors: dict | None = None,
-                      keys: frozenset | set | None = None) -> dict:
+def census_mismatches(
+    census: dict, anchors: dict | None = None, keys: frozenset | set | None = None
+) -> dict:
     """Census entries that disagree with the accepted-deployment anchors.
 
     ``keys`` restricts the comparison to a subset of anchor names. The default,
@@ -224,8 +226,11 @@ def census_mismatches(census: dict, anchors: dict | None = None,
     anchors = CENSUS_ANCHORS if anchors is None else anchors
     if keys is not None:
         anchors = {key: want for key, want in anchors.items() if key in keys}
-    return {key: {"expected": want, "observed": census.get(key)}
-            for key, want in anchors.items() if census.get(key) != want}
+    return {
+        key: {"expected": want, "observed": census.get(key)}
+        for key, want in anchors.items()
+        if census.get(key) != want
+    }
 
 
 def structural_mismatches(census: dict, test: pd.DataFrame) -> dict:
@@ -243,15 +248,21 @@ def structural_mismatches(census: dict, test: pd.DataFrame) -> dict:
         "columns": int(len(columns)),
         "sources": int(pd.unique(test["src"]).size),
     }
-    if set(expected) != set(STRUCTURAL_ANCHOR_KEYS):       # keeps the two in step
-        raise AssertionError("structural key sets have diverged: "
-                             f"{sorted(expected)} != {sorted(STRUCTURAL_ANCHOR_KEYS)}")
-    return {key: {"expected": want, "observed": census.get(key)}
-            for key, want in expected.items() if census.get(key) != want}
+    if set(expected) != set(STRUCTURAL_ANCHOR_KEYS):  # keeps the two in step
+        raise AssertionError(
+            "structural key sets have diverged: "
+            f"{sorted(expected)} != {sorted(STRUCTURAL_ANCHOR_KEYS)}"
+        )
+    return {
+        key: {"expected": want, "observed": census.get(key)}
+        for key, want in expected.items()
+        if census.get(key) != want
+    }
 
 
-def apply(scores: np.ndarray, test: pd.DataFrame, train: pd.DataFrame | None = None
-          ) -> tuple[np.ndarray, dict]:
+def apply(
+    scores: np.ndarray, test: pd.DataFrame, train: pd.DataFrame | None = None
+) -> tuple[np.ndarray, dict]:
     """Apply the frozen decode to a dataset2 score matrix.
 
     Parameters
@@ -271,7 +282,7 @@ def apply(scores: np.ndarray, test: pd.DataFrame, train: pd.DataFrame | None = N
     that this path re-serialises floats if written with a float format -- use
     :func:`swap_score_tokens` when byte identity with the shipped member matters.
     """
-    del train                       # documented above: the decode is training-free
+    del train  # documented above: the decode is training-free
     candidates = candidate_matrix(test)
     sources = test["src"].to_numpy(np.int64)
     times = test["time"].to_numpy(np.int64)
@@ -283,7 +294,9 @@ def apply(scores: np.ndarray, test: pd.DataFrame, train: pd.DataFrame | None = N
     treatment = np.asarray(scores, np.float64).copy()
     a, b = c1_col[acted_rows], c2_col[acted_rows]
     treatment[acted_rows, a], treatment[acted_rows, b] = (
-        treatment[acted_rows, b].copy(), treatment[acted_rows, a].copy())
+        treatment[acted_rows, b].copy(),
+        treatment[acted_rows, a].copy(),
+    )
 
     before = stable_rank_order(scores)[:, 0]
     after = stable_rank_order(treatment)[:, 0]
@@ -339,8 +352,9 @@ def candidate_matrix(test: pd.DataFrame) -> np.ndarray:
     return test[columns].to_numpy(np.int64)
 
 
-def swap_score_tokens(payload: bytes, acted_rows: np.ndarray, c1_col: np.ndarray,
-                      c2_col: np.ndarray, columns: int) -> bytes:
+def swap_score_tokens(
+    payload: bytes, acted_rows: np.ndarray, c1_col: np.ndarray, c2_col: np.ndarray, columns: int
+) -> bytes:
     """Rewrite only the two score tokens of each acted row; copy every other byte.
 
     This is what makes the rebuilt member byte-identical to the online-scored one:

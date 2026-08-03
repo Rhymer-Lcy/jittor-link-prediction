@@ -2,7 +2,7 @@
   "production_status": "ACCEPTED",
   "accepted_total_score": 1.576996059163449,
   "accepted_total_score_exact_decimal": "1.5769960591634492",
-  "score_model": "total = dataset1_MRR + dataset2_MRR (strictly additive; the Round-30 total was predicted from two separately observed components and then confirmed online)",
+  "score_model": "total = dataset1_MRR + dataset2_MRR; the Round-30 total was predicted from two separately observed components and then confirmed online",
   "accepted_archive": {
     "path": "outputs/submissions/round30_final/r30_xte_final.zip",
     "sha256": "efe790a56a715ec451a809a560f25ac6d3ecb0cde1d71a46e4de7fcdb6a4a536",
@@ -46,6 +46,14 @@
     ],
     "line_ending": "CRLF",
     "float_format": "%.6f",
+    "accepted_embedding_provenance": {
+      "framework": "PyTorch",
+      "implementations": [
+        "reference/pytorch/train_line.py",
+        "reference/pytorch/train_bpr.py"
+      ],
+      "scope": "historical accepted artifacts only; the canonical pipeline uses Jittor"
+    },
     "chain_input": {
       "path": "outputs/dataset1-ensemble/result_ranker.csv",
       "sha256": "cb4964ea21dcefdecb2a34f13ca8500adcc54120684f10052f78a87df88da16b",
@@ -59,8 +67,8 @@
         "implementation": "src/ranker_ds1.py",
         "role": "base score matrix (cut-split LambdaRank, train-cut / infer-full)",
         "upstream": [
-          "src/train_line.py",
-          "src/train_bpr.py",
+          "src/train_line_jt.py",
+          "src/train_bpr_jt.py",
           "src/ensemble_predict.py"
         ]
       },
@@ -79,8 +87,8 @@
       },
       {
         "order": 2,
-        "strategy_id": "test_graph_reciprocity",
-        "implementation": "src/strategies/ds1/test_graph_reciprocity.py",
+        "strategy_id": "graph_reciprocity",
+        "implementation": "src/strategies/ds1/graph_reciprocity.py",
         "actions": 1365,
         "top1_changes": 1365,
         "action_coverage": 0.0224,
@@ -112,6 +120,14 @@
     ],
     "line_ending": "LF",
     "float_format": "%.6f",
+    "accepted_embedding_provenance": {
+      "framework": "PyTorch",
+      "implementations": [
+        "reference/pytorch/train_line.py",
+        "reference/pytorch/train_bpr.py"
+      ],
+      "scope": "historical accepted artifacts only; the canonical pipeline uses Jittor"
+    },
     "unchanged_since": "2026-07-30 (Round-30 XTE graduation). The pre-XTE member dc6928c266190c5bab97ec4426bc647b526f8717dc589d6381cb60b1dee18a99 held from 2026-07-28 to 2026-07-29 at component 0.6789511047001768.",
     "strategy_chain": [
       {
@@ -120,8 +136,8 @@
         "implementation": "src/ranker_basket_ds2.py",
         "role": "18-feature LambdaRank + 3-pass basket feedback",
         "upstream": [
-          "src/train_line.py",
-          "src/train_bpr.py",
+          "src/train_line_jt.py",
+          "src/train_bpr_jt.py",
           "src/ensemble_predict.py"
         ]
       },
@@ -157,7 +173,7 @@
     ],
     "build_command": "python src/build_ds2_member.py --verify",
     "base_build_command": "see docs/CURRENT_PRODUCTION.md -- the dataset2 base matrix is rebuilt from src/ds2_mf_basket_pack.py then src/crf_promote.py",
-    "reproduction_risk": "PARTIAL: the final decoder stage reproduces the accepted member byte for byte from the hash-pinned base matrix (python src/build_ds2_member.py --verify). The BASE matrix itself has not been rebuilt end-to-end since 2026-07-28; see ambiguity A1 in docs/maintenance/repository-reorganisation-ambiguities.md",
+    "reproduction_risk": "EXECUTABLE_NOT_BYTE_DETERMINISTIC: the raw-data-to-final Jittor chain completed successfully in the target environment on 2026-08-01 and 2026-08-02 with every stage validated. A fresh neural retraining run is not expected to reproduce the historically accepted PyTorch-derived member byte for byte because framework random streams and optimiser trajectories differ.",
     "component_score_evidence_class": "ONLINE_OBSERVED",
     "decoder_input": {
       "path": "outputs/submissions/round22_main/r22_rgr_main_d9.zip",
@@ -218,10 +234,7 @@
     "consolidated_utc": "2026-07-29",
     "strategy_inventory": "docs/strategy_inventory.json",
     "registry": "src/strategies/registry.py",
-    "round_history": [
-      "docs/rounds/round-21.md",
-      "docs/rounds/round-22.md"
-    ]
+    "history": "preserved in Git; strategy decisions are normalised in docs/strategy_inventory.json"
   },
   "accepted_total_score_evidence_class": "ONLINE_OBSERVED",
   "superseded_archives": [

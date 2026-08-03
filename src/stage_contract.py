@@ -83,8 +83,16 @@ QUARANTINE_DIRNAME = "_quarantine"
 
 #: Packages whose versions are recorded as the environment identity. Read from
 #: installed metadata, never imported: importing jittor compiles kernels.
-ENVIRONMENT_PACKAGES = ("jittor", "numpy", "pandas", "scipy", "scikit-learn",
-                        "lightgbm", "tqdm", "jittor_geometric")
+ENVIRONMENT_PACKAGES = (
+    "jittor",
+    "numpy",
+    "pandas",
+    "scipy",
+    "scikit-learn",
+    "lightgbm",
+    "tqdm",
+    "jittor_geometric",
+)
 
 
 class StageContractError(RuntimeError):
@@ -94,6 +102,7 @@ class StageContractError(RuntimeError):
 # --------------------------------------------------------------------------
 # identity primitives
 # --------------------------------------------------------------------------
+
 
 def sha256_file(path: str | Path, *, block: int = 8 << 20) -> str:
     digest = hashlib.sha256()
@@ -105,8 +114,9 @@ def sha256_file(path: str | Path, *, block: int = 8 << 20) -> str:
 
 def canonical_json(payload) -> str:
     """Deterministic JSON: sorted keys, no incidental whitespace."""
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"),
-                      ensure_ascii=True, default=_jsonable)
+    return json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=_jsonable
+    )
 
 
 def _jsonable(value):
@@ -128,8 +138,7 @@ def file_identity(path: str | Path, *, root: Path | None = None) -> dict:
     path = Path(path)
     if not path.is_file():
         raise StageContractError(f"cannot identify a file that does not exist: {path}")
-    return {"path": _relative(path, root), "size": path.stat().st_size,
-            "sha256": sha256_file(path)}
+    return {"path": _relative(path, root), "size": path.stat().st_size, "sha256": sha256_file(path)}
 
 
 def _relative(path: Path, root: Path | None) -> str:
@@ -165,7 +174,10 @@ def git_commit(repo: Path) -> str:
     try:
         completed = subprocess.run(
             ["git", "-C", str(repo), "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=30)
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
     except (OSError, subprocess.SubprocessError):
         return "UNKNOWN"
     if completed.returncode != 0:
@@ -188,8 +200,7 @@ def environment_identity() -> dict:
             except Exception:  # noqa: BLE001 - absence is the normal case
                 version = "ABSENT"
         packages[name] = version
-    return {"python": sys.version.split()[0], "platform": sys.platform,
-            "packages": packages}
+    return {"python": sys.version.split()[0], "platform": sys.platform, "packages": packages}
 
 
 def utc_now() -> str:
@@ -199,6 +210,7 @@ def utc_now() -> str:
 # --------------------------------------------------------------------------
 # atomic publication
 # --------------------------------------------------------------------------
+
 
 @contextmanager
 def atomic_output(path: str | Path):
@@ -235,6 +247,7 @@ def part_path(output: str | Path) -> Path:
 # --------------------------------------------------------------------------
 # the stage specification
 # --------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class StageSpec:
@@ -275,8 +288,7 @@ class StageSpec:
             return digest_of(self.config)
         missing = [k for k in self.digest_keys if k not in self.config]
         if missing:
-            raise StageContractError(
-                f"{self.stage_id}: digest keys absent from config: {missing}")
+            raise StageContractError(f"{self.stage_id}: digest keys absent from config: {missing}")
         return digest_of({k: self.config[k] for k in self.digest_keys})
 
 
@@ -284,9 +296,9 @@ class StageSpec:
 class Decision:
     """What to do about a stage, and the evidence for it."""
 
-    action: str          # "RUN" | "REUSE" | "STOP"
-    code: str            # machine-readable reason slug
-    detail: str          # operator-facing explanation
+    action: str  # "RUN" | "REUSE" | "STOP"
+    code: str  # machine-readable reason slug
+    detail: str  # operator-facing explanation
     record: dict | None = None
     mismatches: list = field(default_factory=list)
 
@@ -297,6 +309,7 @@ class Decision:
 # --------------------------------------------------------------------------
 # reuse evaluation
 # --------------------------------------------------------------------------
+
 
 def evaluate(spec: StageSpec, *, repo: Path) -> Decision:
     """Decide whether ``spec`` may be reused, must run, or must stop the pipeline.
@@ -309,45 +322,61 @@ def evaluate(spec: StageSpec, *, repo: Path) -> Decision:
     leftover = part_path(output)
 
     if leftover.exists():
-        return Decision("STOP", "STALE_PART_FILE",
-                        f"a leftover partial file is present: {leftover}. A previous "
-                        f"run of {spec.stage_id} died mid-write. Quarantine or remove "
-                        f"it deliberately before continuing.")
+        return Decision(
+            "STOP",
+            "STALE_PART_FILE",
+            f"a leftover partial file is present: {leftover}. A previous "
+            f"run of {spec.stage_id} died mid-write. Quarantine or remove "
+            f"it deliberately before continuing.",
+        )
 
     if not output.exists() and not record_file.exists():
         return Decision("RUN", "CLEAN_SLATE", f"{spec.stage_id} has no output and no record")
 
     if output.exists() and not record_file.exists():
-        return Decision("STOP", "MISSING_COMPLETION_RECORD",
-                        f"{output} exists but has no completion record. Its provenance "
-                        f"cannot be established, so it is not proof that "
-                        f"{spec.stage_id} completed. This is exactly the condition that "
-                        f"made the old driver report a false success.")
+        return Decision(
+            "STOP",
+            "MISSING_COMPLETION_RECORD",
+            f"{output} exists but has no completion record. Its provenance "
+            f"cannot be established, so it is not proof that "
+            f"{spec.stage_id} completed. This is exactly the condition that "
+            f"made the old driver report a false success.",
+        )
 
     if record_file.exists() and not output.exists():
-        return Decision("STOP", "MISSING_OUTPUT",
-                        f"{record_file} claims {spec.stage_id} completed but its output "
-                        f"{output} is absent.")
+        return Decision(
+            "STOP",
+            "MISSING_OUTPUT",
+            f"{record_file} claims {spec.stage_id} completed but its output {output} is absent.",
+        )
 
     try:
         record = json.loads(record_file.read_text(encoding="utf-8"))
     except (OSError, ValueError) as problem:
-        return Decision("STOP", "MALFORMED_RECORD",
-                        f"{record_file} is not readable JSON: {problem}")
+        return Decision(
+            "STOP", "MALFORMED_RECORD", f"{record_file} is not readable JSON: {problem}"
+        )
     if not isinstance(record, dict):
-        return Decision("STOP", "MALFORMED_RECORD",
-                        f"{record_file} does not contain a JSON object")
+        return Decision("STOP", "MALFORMED_RECORD", f"{record_file} does not contain a JSON object")
 
     version = record.get("schema_version")
     if version not in SUPPORTED_SCHEMA_VERSIONS:
-        return Decision("STOP", "UNSUPPORTED_SCHEMA",
-                        f"{record_file} declares schema_version {version!r}; this build "
-                        f"understands {list(SUPPORTED_SCHEMA_VERSIONS)}.", record)
+        return Decision(
+            "STOP",
+            "UNSUPPORTED_SCHEMA",
+            f"{record_file} declares schema_version {version!r}; this build "
+            f"understands {list(SUPPORTED_SCHEMA_VERSIONS)}.",
+            record,
+        )
 
     missing = [key for key in REQUIRED_RECORD_KEYS if key not in record]
     if missing:
-        return Decision("STOP", "INCOMPLETE_RECORD",
-                        f"{record_file} is missing required fields: {missing}", record)
+        return Decision(
+            "STOP",
+            "INCOMPLETE_RECORD",
+            f"{record_file} is missing required fields: {missing}",
+            record,
+        )
 
     mismatches: list[dict] = []
 
@@ -371,8 +400,7 @@ def evaluate(spec: StageSpec, *, repo: Path) -> Decision:
     except StageContractError as problem:
         return Decision("STOP", "CODE_IDENTITY_UNAVAILABLE", str(problem), record)
     if record["code_identity"]["digest"] != current_code["digest"]:
-        note("code_identity.digest", record["code_identity"]["digest"],
-             current_code["digest"])
+        note("code_identity.digest", record["code_identity"]["digest"], current_code["digest"])
 
     if record["config_digest"] != spec.config_digest():
         note("config_digest", record["config_digest"], spec.config_digest())
@@ -410,20 +438,41 @@ def evaluate(spec: StageSpec, *, repo: Path) -> Decision:
             note("output sha256", record["output"]["sha256"], actual_sha)
 
     if mismatches:
-        return Decision("STOP", "IDENTITY_MISMATCH",
-                        f"{spec.stage_id} has a completion record that does not describe "
-                        f"the current state; {len(mismatches)} properties differ.",
-                        record, mismatches)
+        return Decision(
+            "STOP",
+            "IDENTITY_MISMATCH",
+            f"{spec.stage_id} has a completion record that does not describe "
+            f"the current state; {len(mismatches)} properties differ.",
+            record,
+            mismatches,
+        )
 
-    return Decision("REUSE", "VALIDATED_COMPLETION_RECORD",
-                    f"{spec.stage_id} was completed by commit {record['producing_commit'][:12]} "
-                    f"from identical inputs and configuration.", record)
+    return Decision(
+        "REUSE",
+        "VALIDATED_COMPLETION_RECORD",
+        f"{spec.stage_id} was completed by commit {record['producing_commit'][:12]} "
+        f"from identical inputs and configuration.",
+        record,
+    )
 
 
 REQUIRED_RECORD_KEYS = (
-    "schema_version", "stage_id", "dataset", "artifact_kind", "producing_commit",
-    "code_identity", "command", "environment", "inputs", "config", "config_digest",
-    "output", "validation", "exit_code", "started_at", "completed_at",
+    "schema_version",
+    "stage_id",
+    "dataset",
+    "artifact_kind",
+    "producing_commit",
+    "code_identity",
+    "command",
+    "environment",
+    "inputs",
+    "config",
+    "config_digest",
+    "output",
+    "validation",
+    "exit_code",
+    "started_at",
+    "completed_at",
 )
 
 
@@ -431,9 +480,18 @@ REQUIRED_RECORD_KEYS = (
 # publication
 # --------------------------------------------------------------------------
 
-def build_record(spec: StageSpec, *, repo: Path, exit_code: int, started_at: str,
-                 completed_at: str, achieved_units: int | None,
-                 validation: dict, output_detail: dict | None = None) -> dict:
+
+def build_record(
+    spec: StageSpec,
+    *,
+    repo: Path,
+    exit_code: int,
+    started_at: str,
+    completed_at: str,
+    achieved_units: int | None,
+    validation: dict,
+    output_detail: dict | None = None,
+) -> dict:
     """Assemble the completion document. Never writes anything."""
     output = Path(spec.output)
     record = {
@@ -473,11 +531,13 @@ def publish_record(spec: StageSpec, record: dict) -> Path:
     if record.get("exit_code") != 0:
         raise StageContractError(
             f"refusing to publish a completion record for {spec.stage_id} with "
-            f"exit_code {record.get('exit_code')!r}")
+            f"exit_code {record.get('exit_code')!r}"
+        )
     if record.get("validation", {}).get("status") != "PASS":
         raise StageContractError(
             f"refusing to publish a completion record for {spec.stage_id} whose "
-            f"validation status is {record.get('validation', {}).get('status')!r}")
+            f"validation status is {record.get('validation', {}).get('status')!r}"
+        )
     target = record_path(spec.output)
     tmp = target.with_name(target.name + PART_SUFFIX)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -490,8 +550,15 @@ def publish_record(spec: StageSpec, record: dict) -> Path:
     return target
 
 
-def complete_stage(spec: StageSpec, *, repo: Path, exit_code: int, started_at: str,
-                   completed_at: str, log_text: str = "") -> dict:
+def complete_stage(
+    spec: StageSpec,
+    *,
+    repo: Path,
+    exit_code: int,
+    started_at: str,
+    completed_at: str,
+    log_text: str = "",
+) -> dict:
     """Validate a finished stage and publish its record, in the fail-closed order.
 
     Order is load-bearing: a non-zero exit is rejected before anything else; the
@@ -501,15 +568,14 @@ def complete_stage(spec: StageSpec, *, repo: Path, exit_code: int, started_at: s
     """
     if exit_code != 0:
         raise StageContractError(
-            f"{spec.stage_id} exited {exit_code}; no completion record written")
+            f"{spec.stage_id} exited {exit_code}; no completion record written"
+        )
     output = Path(spec.output)
     if not output.is_file():
-        raise StageContractError(
-            f"{spec.stage_id} exited 0 but produced no output at {output}")
+        raise StageContractError(f"{spec.stage_id} exited 0 but produced no output at {output}")
     leftover = part_path(output)
     if leftover.exists():
-        raise StageContractError(
-            f"{spec.stage_id} exited 0 but left a partial file at {leftover}")
+        raise StageContractError(f"{spec.stage_id} exited 0 but left a partial file at {leftover}")
 
     achieved = None
     if spec.achieved_units_from_log is not None:
@@ -518,17 +584,27 @@ def complete_stage(spec: StageSpec, *, repo: Path, exit_code: int, started_at: s
         raise StageContractError(
             f"{spec.stage_id} reported {achieved} of {spec.requested_units} "
             f"{spec.unit_name or 'units'} in its log; the stage is incomplete and no "
-            f"completion record was written")
+            f"completion record was written"
+        )
 
     detail: dict = {}
     if spec.validator is not None:
         detail = spec.validator(spec, output) or {}
-    validation = {"status": "PASS", "validator": getattr(spec.validator, "__name__", None),
-                  "detail": detail}
+    validation = {
+        "status": "PASS",
+        "validator": getattr(spec.validator, "__name__", None),
+        "detail": detail,
+    }
 
-    record = build_record(spec, repo=repo, exit_code=exit_code, started_at=started_at,
-                          completed_at=completed_at, achieved_units=achieved,
-                          validation=validation)
+    record = build_record(
+        spec,
+        repo=repo,
+        exit_code=exit_code,
+        started_at=started_at,
+        completed_at=completed_at,
+        achieved_units=achieved,
+        validation=validation,
+    )
     publish_record(spec, record)
     return record
 
@@ -536,6 +612,7 @@ def complete_stage(spec: StageSpec, *, repo: Path, exit_code: int, started_at: s
 # --------------------------------------------------------------------------
 # the explicit operator escape hatch
 # --------------------------------------------------------------------------
+
 
 def quarantine(paths: Iterable[str | Path], *, outputs_root: Path, reason: str) -> Path:
     """Move unusable artifacts into ``outputs/_quarantine/NNN/`` and say why.
@@ -558,14 +635,17 @@ def quarantine(paths: Iterable[str | Path], *, outputs_root: Path, reason: str) 
         os.replace(path, target)
         moved.append(target.name)
     (slot / "QUARANTINE.json").write_text(
-        json.dumps({"reason": reason, "moved": moved, "quarantined_at": utc_now()},
-                   indent=2) + "\n", encoding="utf-8")
+        json.dumps({"reason": reason, "moved": moved, "quarantined_at": utc_now()}, indent=2)
+        + "\n",
+        encoding="utf-8",
+    )
     return slot
 
 
 # --------------------------------------------------------------------------
 # achieved-unit extractors and stage validators
 # --------------------------------------------------------------------------
+
 
 def epochs_from_log(pattern: str) -> Callable[[str], int | None]:
     """Build a reader for a trainer's own ``epoch N/M`` progress lines.
@@ -603,12 +683,10 @@ def validate_embedding_csv(spec: StageSpec, path: Path) -> dict:
         raise StageContractError(f"{path} does not start with the node_id header")
     width = header.count(b",") + 1
     if width != expected_width:
-        raise StageContractError(
-            f"{path} header has {width} fields, expected {expected_width}")
+        raise StageContractError(f"{path} header has {width} fields, expected {expected_width}")
     rows = _count_lines(path) - 1
     if expected_rows is not None and rows != int(expected_rows):
-        raise StageContractError(
-            f"{path} holds {rows} embedding rows, expected {expected_rows}")
+        raise StageContractError(f"{path} holds {rows} embedding rows, expected {expected_rows}")
     return {"rows": rows, "width": width}
 
 
@@ -621,12 +699,10 @@ def validate_embedding_npy(spec: StageSpec, path: Path) -> dict:
         raise StageContractError(f"{path} has dtype {array.dtype}, expected float32")
     expected_rows = spec.config.get("num_entity")
     if expected_rows is not None and array.shape[0] != int(expected_rows):
-        raise StageContractError(
-            f"{path} has {array.shape[0]} rows, expected {expected_rows}")
+        raise StageContractError(f"{path} has {array.shape[0]} rows, expected {expected_rows}")
     expected_dim = spec.config.get("dim")
     if expected_dim is not None and array.shape[1] != int(expected_dim):
-        raise StageContractError(
-            f"{path} has width {array.shape[1]}, expected {expected_dim}")
+        raise StageContractError(f"{path} has width {array.shape[1]}, expected {expected_dim}")
     if not np.isfinite(np.asarray(array)).all():
         raise StageContractError(f"{path} contains non-finite values")
     return {"shape": [int(x) for x in array.shape], "dtype": str(array.dtype)}
@@ -645,17 +721,14 @@ def validate_score_matrix_csv(spec: StageSpec, path: Path) -> dict:
     rows = spec.config.get("rows")
     columns = int(spec.config.get("columns", 100))
     if matrix.ndim != 2 or matrix.shape[1] != columns:
-        raise StageContractError(
-            f"{path} is {matrix.shape}, expected (rows, {columns})")
+        raise StageContractError(f"{path} is {matrix.shape}, expected (rows, {columns})")
     if rows is not None and matrix.shape[0] != int(rows):
-        raise StageContractError(
-            f"{path} has {matrix.shape[0]} rows, expected {rows}")
+        raise StageContractError(f"{path} has {matrix.shape[0]} rows, expected {rows}")
     if not np.isfinite(matrix).all():
         raise StageContractError(f"{path} contains non-finite scores")
     lo, hi = float(matrix.min()), float(matrix.max())
     if lo < 0.0 or hi > 1.0:
-        raise StageContractError(
-            f"{path} has scores outside [0, 1]: range [{lo:.6g}, {hi:.6g}]")
+        raise StageContractError(f"{path} has scores outside [0, 1]: range [{lo:.6g}, {hi:.6g}]")
     return {"shape": [int(x) for x in matrix.shape], "min": lo, "max": hi}
 
 
@@ -683,44 +756,49 @@ def validate_npz_cache(spec: StageSpec, path: Path) -> dict:
         missing = [k for k in expected_keys if k not in present]
         if missing:
             raise StageContractError(f"{path} is missing arrays {missing}")
-        arrays = {key: bundle[key] for key in present}      # forces a real read
+        arrays = {key: bundle[key] for key in present}  # forces a real read
 
     lens = arrays["lens"]
     queries = int(spec.config["queries"])
     if lens.shape != (queries,):
-        raise StageContractError(
-            f"{path}: lens is {lens.shape}, expected ({queries},)")
+        raise StageContractError(f"{path}: lens is {lens.shape}, expected ({queries},)")
     for key in ("qsrc_tr", "qt_tr", "qorig_tr"):
         if arrays[key].shape != (queries,):
-            raise StageContractError(
-                f"{path}: {key} is {arrays[key].shape}, expected ({queries},)")
+            raise StageContractError(f"{path}: {key} is {arrays[key].shape}, expected ({queries},)")
     total = int(lens.sum())
     for key in ("Xf", "yf"):
         if arrays[key].shape[0] != total:
             raise StageContractError(
-                f"{path}: {key} has {arrays[key].shape[0]} rows against "
-                f"lens.sum() = {total}")
+                f"{path}: {key} has {arrays[key].shape[0]} rows against lens.sum() = {total}"
+            )
     if arrays["cands_concat"].shape != (total,):
         raise StageContractError(
-            f"{path}: cands_concat is {arrays['cands_concat'].shape}, expected ({total},)")
+            f"{path}: cands_concat is {arrays['cands_concat'].shape}, expected ({total},)"
+        )
     width = int(spec.config["feature_width"])
     if arrays["Xf"].shape[1] != width:
         raise StageContractError(
-            f"{path}: Xf has {arrays['Xf'].shape[1]} columns, expected {width}")
+            f"{path}: Xf has {arrays['Xf'].shape[1]} columns, expected {width}"
+        )
     num_entity = int(np.asarray(arrays["num_entity"]).ravel()[0])
     if num_entity != int(spec.config["num_entity"]):
-        raise StageContractError(
-            f"{path}: num_entity {num_entity} != {spec.config['num_entity']}")
+        raise StageContractError(f"{path}: num_entity {num_entity} != {spec.config['num_entity']}")
     offsets = np.concatenate([[0], np.cumsum(lens)])
     positives = np.flatnonzero(arrays["yf"] > 0)
     if not np.array_equal(positives, offsets[1:] - 1):
         raise StageContractError(
-            f"{path}: label positives do not land at the last row of every query")
+            f"{path}: label positives do not land at the last row of every query"
+        )
     for key in ("Xf", "yf"):
         if not np.isfinite(arrays[key]).all():
             raise StageContractError(f"{path}: {key} contains non-finite values")
-    return {"queries": queries, "rows": total, "feature_width": width,
-            "num_entity": num_entity, "keys": sorted(present)}
+    return {
+        "queries": queries,
+        "rows": total,
+        "feature_width": width,
+        "num_entity": num_entity,
+        "keys": sorted(present),
+    }
 
 
 def _count_lines(path: Path, *, block: int = 8 << 20) -> int:

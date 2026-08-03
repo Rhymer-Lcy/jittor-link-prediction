@@ -9,8 +9,8 @@ official raw competition data to the submission member:
 
 The official pipeline is Jittor-only. There is no backend argument and no
 environment-variable switch: the graph in ``src/canonical_pipeline.py`` names
-the Jittor trainers and nothing else can be substituted. No alternative backend
-is included or required.
+the Jittor trainers and nothing else can be substituted. Optional reference
+implementations live outside the canonical runtime under ``reference/``.
 
 Every stage is gated by a completion record (``<output>.done.json``), not by its
 output file existing. A stage is reused only when a record proves it ran to
@@ -56,22 +56,32 @@ def load_production(path: Path) -> dict:
 def run(command: list[str]) -> int:
     """Echo a command and run it with the current interpreter."""
     print(f"\n$ {' '.join(command)}")
-    return subprocess.call([sys.executable, *command[1:]] if command[0] == "python"
-                           else command, cwd=REPO)
+    return subprocess.call(
+        [sys.executable, *command[1:]] if command[0] == "python" else command, cwd=REPO
+    )
 
 
 # --------------------------------------------------------------------------
 # run / plan -- the canonical graph
 # --------------------------------------------------------------------------
 
+
 def contexts(args: argparse.Namespace, datasets: tuple[str, ...]) -> list:
     from canonical_pipeline import RunContext
 
-    return [RunContext(dataset=dataset, data_root=args.data_root,
-                       outputs_root=args.output_root, log_dir=args.log_dir,
-                       data_pack=args.data_pack, resume=not args.fresh,
-                       ds1_member=args.ds1_member, repo=REPO)
-            for dataset in datasets]
+    return [
+        RunContext(
+            dataset=dataset,
+            data_root=args.data_root,
+            outputs_root=args.output_root,
+            log_dir=args.log_dir,
+            data_pack=args.data_pack,
+            resume=not args.fresh,
+            ds1_member=args.ds1_member,
+            repo=REPO,
+        )
+        for dataset in datasets
+    ]
 
 
 def stage_run(args: argparse.Namespace, datasets: tuple[str, ...]) -> int:
@@ -97,6 +107,7 @@ def stage_plan(args: argparse.Namespace, datasets: tuple[str, ...]) -> int:
 # describe
 # --------------------------------------------------------------------------
 
+
 def stage_describe(config: dict, datasets: tuple[str, ...]) -> int:
     print(f"accepted total score : {config['accepted_total_score']}")
     print(f"score model          : {config['score_model'].split(';')[0]}")
@@ -104,9 +115,11 @@ def stage_describe(config: dict, datasets: tuple[str, ...]) -> int:
     print(f"                       sha256 {config['accepted_archive']['sha256']}")
     for dataset in datasets:
         block = config[dataset]
-        print(f"\n=== {dataset} -- component {block['component_score']} "
-              f"({block['shape'][0]} rows x {block['shape'][1]} candidates, "
-              f"{block['line_ending']}, {block['float_format']}) ===")
+        print(
+            f"\n=== {dataset} -- component {block['component_score']} "
+            f"({block['shape'][0]} rows x {block['shape'][1]} candidates, "
+            f"{block['line_ending']}, {block['float_format']}) ==="
+        )
         for stage in block["strategy_chain"]:
             upstream = stage.get("upstream")
             print(f"  [{stage['order']}] {stage['strategy_id']}")
@@ -114,20 +127,26 @@ def stage_describe(config: dict, datasets: tuple[str, ...]) -> int:
             if upstream:
                 print(f"      upstream       : {', '.join(upstream)}")
             if "actions" in stage:
-                print(f"      actions        : {stage['actions']} "
-                      f"({100 * stage.get('action_coverage', 0):.2f}% of rows)")
+                print(
+                    f"      actions        : {stage['actions']} "
+                    f"({100 * stage.get('action_coverage', 0):.2f}% of rows)"
+                )
             if "online_delta" in stage:
                 print(f"      online delta   : +{stage['online_delta']}")
         decoder = block.get("final_decoder")
         if decoder:
             print(f"  [final] {decoder['strategy_id']}")
             print(f"      implementation : {decoder.get('implementation', 'NOT TRACKED')}")
-            print(f"      status         : {decoder['implementation_status']}, "
-                  f"{decoder['operational_lifecycle']}, "
-                  f"historically {decoder['historical_lifecycle']}")
-            print(f"      online gain    : +{decoder['online_observed_gain']} "
-                  f"(gate {decoder['original_locked_gate']}, "
-                  f"shortfall {decoder['shortfall_from_original_gate']})")
+            print(
+                f"      status         : {decoder['implementation_status']}, "
+                f"{decoder['operational_lifecycle']}, "
+                f"historically {decoder['historical_lifecycle']}"
+            )
+            print(
+                f"      online gain    : +{decoder['online_observed_gain']} "
+                f"(gate {decoder['original_locked_gate']}, "
+                f"shortfall {decoder['shortfall_from_original_gate']})"
+            )
         print(f"  member sha256    : {block['member_sha256']}")
         print(f"  build            : {block['build_command']}")
     print("\nrebuild the whole chain from official raw data with:")
@@ -139,6 +158,7 @@ def stage_describe(config: dict, datasets: tuple[str, ...]) -> int:
 # --------------------------------------------------------------------------
 # preprocess
 # --------------------------------------------------------------------------
+
 
 def stage_preprocess(args: argparse.Namespace, datasets: tuple[str, ...]) -> int:
     import numpy as np
@@ -183,6 +203,7 @@ def stage_preprocess(args: argparse.Namespace, datasets: tuple[str, ...]) -> int
 # postprocess -- the stage that is proven byte-exact
 # --------------------------------------------------------------------------
 
+
 def stage_postprocess(datasets: tuple[str, ...], verify: bool) -> int:
     status = 0
     builders = {"dataset1": "src/build_ds1_member.py", "dataset2": "src/build_ds2_member.py"}
@@ -199,48 +220,88 @@ def stage_postprocess(datasets: tuple[str, ...], verify: bool) -> int:
 # package
 # --------------------------------------------------------------------------
 
+
 def stage_package(config: dict, verify: bool) -> int:
     archive = config["accepted_archive"]["path"]
     if not verify:
-        print("packaging a NEW archive is a submission action and is deliberately not "
-              "wired into main.py; see docs/SUBMISSION_PROTOCOL.md")
+        print(
+            "packaging a NEW archive is a submission action and is deliberately not "
+            "wired into main.py; see docs/SUBMISSION_PROTOCOL.md"
+        )
         return 0
-    return run(["python", "tools/submission/package_component.py", "verify",
-                "--zip", archive])
+    return run(["python", "tools/submission/package_component.py", "verify", "--zip", archive])
 
 
 # --------------------------------------------------------------------------
+
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description=__doc__.split("\n")[0],
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Stages: " + ", ".join(STAGES)
-               + "\nBackend: Jittor, fixed. This entrypoint cannot select another.")
-    ap.add_argument("--dataset", choices=(*DATASETS, "all"), default="all",
-                    help="scenario to operate on (default: all, dataset1 first)")
-    ap.add_argument("--stage", choices=STAGES, default="run",
-                    help="what to do (default: run the canonical graph)")
-    ap.add_argument("--data-root", type=Path, default=REPO / "data",
-                    help="root holding the official data packs (default: <repo>/data)")
-    ap.add_argument("--data-pack", default="data_A",
-                    help="data pack under --data-root (default: data_A)")
-    ap.add_argument("--output-root", type=Path, default=REPO / "outputs",
-                    help="root for every run artifact (default: <repo>/outputs)")
-    ap.add_argument("--log-dir", type=Path, default=None,
-                    help="stage logs (default: <output-root>/_logs)")
-    ap.add_argument("--config", type=Path, default=DEFAULT_CONFIG,
-                    help="production configuration to describe and verify against")
-    ap.add_argument("--fresh", action="store_true",
-                    help="refuse to reuse any completed stage; every stage must be "
-                         "absent, so an existing run has to be quarantined deliberately")
-    ap.add_argument("--ds1-member", type=Path, default=None,
-                    help="dataset1 member whose bytes crf_promote carries through; "
-                         "must carry a valid completion record")
-    ap.add_argument("--verify", action="store_true",
-                    help="assert artifact hashes against the production configuration")
-    ap.add_argument("--quiet", action="store_true",
-                    help="do not echo stage output to the console (logs are still written)")
+        epilog="Stages: "
+        + ", ".join(STAGES)
+        + "\nBackend: Jittor, fixed. This entrypoint cannot select another.",
+    )
+    ap.add_argument(
+        "--dataset",
+        choices=(*DATASETS, "all"),
+        default="all",
+        help="scenario to operate on (default: all, dataset1 first)",
+    )
+    ap.add_argument(
+        "--stage",
+        choices=STAGES,
+        default="run",
+        help="what to do (default: run the canonical graph)",
+    )
+    ap.add_argument(
+        "--data-root",
+        type=Path,
+        default=REPO / "data",
+        help="root holding the official data packs (default: <repo>/data)",
+    )
+    ap.add_argument(
+        "--data-pack", default="data_A", help="data pack under --data-root (default: data_A)"
+    )
+    ap.add_argument(
+        "--output-root",
+        type=Path,
+        default=REPO / "outputs",
+        help="root for every run artifact (default: <repo>/outputs)",
+    )
+    ap.add_argument(
+        "--log-dir", type=Path, default=None, help="stage logs (default: <output-root>/_logs)"
+    )
+    ap.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_CONFIG,
+        help="production configuration to describe and verify against",
+    )
+    ap.add_argument(
+        "--fresh",
+        action="store_true",
+        help="refuse to reuse any completed stage; every stage must be "
+        "absent, so an existing run has to be quarantined deliberately",
+    )
+    ap.add_argument(
+        "--ds1-member",
+        type=Path,
+        default=None,
+        help="dataset1 member whose bytes crf_promote carries through; "
+        "must carry a valid completion record",
+    )
+    ap.add_argument(
+        "--verify",
+        action="store_true",
+        help="assert artifact hashes against the production configuration",
+    )
+    ap.add_argument(
+        "--quiet",
+        action="store_true",
+        help="do not echo stage output to the console (logs are still written)",
+    )
     return ap
 
 

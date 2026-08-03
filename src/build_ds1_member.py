@@ -2,7 +2,7 @@
 """Rebuild the accepted dataset1 submission member from the ranker output.
 
 Runs the ordered, frozen dataset1 postprocessor chain
-(``source_slate_recurrence`` -> ``test_graph_reciprocity``) over the LambdaRank
+(``source_slate_recurrence`` -> ``graph_reciprocity``) over the LambdaRank
 ranker's score CSV and writes the submission member. With ``--verify`` it also
 checks the SHA256 of every stage against the accepted anchors in
 ``configs/production.json``, so a clean checkout can prove it reproduces the
@@ -52,15 +52,26 @@ def load_anchors() -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--control", type=Path, default=DEFAULT_CONTROL,
-                    help="dataset1 ranker score CSV (chain input)")
+    ap.add_argument(
+        "--control",
+        type=Path,
+        default=DEFAULT_CONTROL,
+        help="dataset1 ranker score CSV (chain input)",
+    )
     ap.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     ap.add_argument("--test", type=Path, default=DEFAULT_TEST)
     ap.add_argument("--train", type=Path, default=DEFAULT_TRAIN)
-    ap.add_argument("--verify", action="store_true",
-                    help="assert every stage hash against configs/production.json")
-    ap.add_argument("--stage-dir", type=Path, default=None,
-                    help="optional directory to write each intermediate stage CSV")
+    ap.add_argument(
+        "--verify",
+        action="store_true",
+        help="assert every stage hash against configs/production.json",
+    )
+    ap.add_argument(
+        "--stage-dir",
+        type=Path,
+        default=None,
+        help="optional directory to write each intermediate stage CSV",
+    )
     args = ap.parse_args()
 
     started = time.time()
@@ -78,8 +89,7 @@ def main() -> int:
     print(f"control : {args.control}")
     control_sha = sha256_file(args.control)
     if anchors:
-        check("control sha256", control_sha,
-              anchors["dataset1"]["chain_input"]["sha256"])
+        check("control sha256", control_sha, anchors["dataset1"]["chain_input"]["sha256"])
     else:
         print(f"  control sha256 {control_sha}")
 
@@ -91,12 +101,15 @@ def main() -> int:
     stage_hashes = {}
     for stage_index, (sid, module, apply_fn) in enumerate(DS1_POSTPROCESSOR_CHAIN, start=1):
         scores, info = apply_fn(scores, test, train)
-        print(f"[{stage_index}] {sid}: {info['actions']} actions, "
-              f"{info['top1_changes']} top-1 changes "
-              f"({100 * info['action_coverage']:.2f}% of rows)")
+        print(
+            f"[{stage_index}] {sid}: {info['actions']} actions, "
+            f"{info['top1_changes']} top-1 changes "
+            f"({100 * info['action_coverage']:.2f}% of rows)"
+        )
         if anchors:
-            want = next((s for s in anchors["dataset1"]["strategy_chain"]
-                         if s["strategy_id"] == sid), {})
+            want = next(
+                (s for s in anchors["dataset1"]["strategy_chain"] if s["strategy_id"] == sid), {}
+            )
             if "actions" in want and info["actions"] != want["actions"]:
                 failures.append(f"{sid} action count")
                 print(f"  [FAIL] {sid} actions: {info['actions']} != {want['actions']}")
@@ -110,14 +123,13 @@ def main() -> int:
     # Mandatory final gate: never serialise a matrix that is not submittable.
     # It reports and aborts; it does not clamp or otherwise repair the values.
     try:
-        validate_submission_matrix(
-            scores, tuple(anchors["dataset1"]["shape"]) if anchors else None)
+        validate_submission_matrix(scores, tuple(anchors["dataset1"]["shape"]) if anchors else None)
     except ValueError as problem:
         print(f"  [FAIL] {problem}")
         print(f"\nelapsed {time.time() - started:.1f}s")
         print("OUTPUT GATE REJECTED the final matrix; no CSV was written")
         return 1
-    print(f"  [OK  ] output gate: shape, finite values and [0, 1] range")
+    print("  [OK  ] output gate: shape, finite values and [0, 1] range")
 
     output_sha = write_score_matrix(scores, args.output)
     print(f"output  : {args.output}")
