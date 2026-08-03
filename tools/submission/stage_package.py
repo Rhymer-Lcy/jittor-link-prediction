@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """Deterministically stage the official submission tree, and audit what it holds.
 
-This builds a DRAFT. It does not create an archive, does not name anything
-``提交说明文档.pdf`` and makes no claim of final readiness.
+This builds a DRAFT. It does not create an archive and still stages the English
+working PDF under its English name. The approved final Chinese PDF is held in
+the cold archive and is introduced only by the separate freeze step.
 
 Everything staged is copied from tracked files at the current commit, so the
 package cannot contain a file that exists only in a worktree, in a scratch
@@ -35,8 +36,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 
-#: The archive name the organiser requires, with the team name still a
-#: placeholder. It is NOT guessed from project history; the owner supplies it.
+#: The archive-name template used by this draft builder. The approved team name
+#: is deliberately applied only by the separate final-freeze step.
 INTENDED_ARCHIVE_NAME = "contest1_<TEAM_NAME>_003.zip"
 #: Windows rejects '<' and '>' in path components, so the staging directory uses
 #: a filesystem-safe token instead. The token is a placeholder in exactly the
@@ -106,9 +107,9 @@ CODE_MEMBERS: list[tuple[str, str, str]] = [
 #: Copied to the archive root, beside code/.
 ROOT_MEMBERS = ["requirements.txt", "environment.yaml"]
 
-#: The reviewer document. Staged under its English working name: the official
-#: filename 提交说明文档.pdf is only taken once the Chinese rendering exists and
-#: the owner has approved it, which has not happened.
+#: The draft reviewer document, intentionally staged under its English working
+#: name. The approved Chinese rendering now exists in the cold archive, but this
+#: draft builder does not perform the final freeze or introduce that artifact.
 REVIEW_DOCUMENT = ("docs/submission/submission_document_en.pdf",
                    "submission_document_en.pdf")
 
@@ -429,7 +430,10 @@ def main() -> int:
 
     print(f"staging root : {root}")
     print(f"intended zip : {INTENDED_ARCHIVE_NAME}  (draft; NOT built)")
-    print(f"placeholder  : {DIRECTORY_PLACEHOLDER} -> awaiting the owner's team name")
+    print(
+        f"placeholder  : {DIRECTORY_PLACEHOLDER} "
+        "-> replace with approved team name at freeze"
+    )
     print(f"source commit: {report['source_commit']}")
     print(f"files        : {len(manifest)} ({report['code_file_count']} under code/)")
     print(f"total bytes  : {total:,}")
