@@ -477,8 +477,8 @@ Cards that were tested and refuted are listed here so they are not retried:
   they do not encode recency). And every positive lands on the repeat block (already
   MRR 0.930, worth ~0 online); on the **non-repeat** block — dataset1's entire
   remaining headroom — B is exactly 0.0000 by construction and C/D are **negative**
-  (-0.0017, -0.0071). Git recovery also corrects the record: commit `3e04382` (reverted
-  in `ab55de6`, online 0.803 -> 0.7905) already *was* decay inside the aggregation
+  (-0.0017, -0.0071). Git recovery also corrects the record: commit `e0a2453` (reverted
+  in `c44a1f7`, online 0.803 -> 0.7905) already *was* decay inside the aggregation
   (`decayed_count_in_history`, half-life 1% of span), not merely an appended recency
   column — though that submission was confounded (it bundled `COOC_GAMMA` 1 -> 5 and
   `RPOP_TIME_QUANTILE` 0.98 -> 0.8), so the online number never adjudicated the decay.
@@ -830,7 +830,7 @@ resume).
   census fix to validation control flow. **Ambiguity A1** in
   `docs/maintenance/repository-reorganisation-ambiguities.md` — the ds2 base matrix had never been
   re-executed end-to-end — is therefore **closed in execution**. Five commits landed
-  (`7d72660`, `0748fa8`, `0c23789`, `64c32e8`, `880e6c3`); the suite grew 112 → 177 tests and both
+  (`d4f3aa0`, `dfcf2fc`, `dc2877e`, `6878ea6`, `ee60fd3`); the suite grew 112 → 177 tests and both
   accepted A-board members still reproduce byte-exactly. **Dataset1 remains BLOCKED at the ranker
   score-domain contract**: the frozen A-board ranker artifact lies in `[0, 1]`, while the retrained
   ranker carries **negative values in 99.95% of rows (61,018 / 61,051)**. Scheme C (repair
@@ -849,8 +849,8 @@ resume).
   dataset2. The P1 root cause was a **`MISSING_PERSISTENCE_TRANSFORM`**: the frozen ranker artifact
   carries a per-row **min-max** fingerprint (all 61,051 rows have minimum exactly 0 *and* maximum
   exactly 1) that `rownorm` cannot produce. The restoration was validated and integrated as
-  **`1479f64`**, which is the **artifact-producing commit**; the later test and audit commits
-  (`b75c2c6`…`48f9205`) changed no production code and produced no artifact — the two identities
+  **`b3d530a`**, which is the **artifact-producing commit**; the later test and audit commits
+  (`4b55c53`…`9cd4b6b`) changed no production code and produced no artifact — the two identities
   must not be conflated. Clean run: LINE 2309 s + 1802 s, 12 BPR runs, ranker, member; every stage
   exit 0, ranker contract PASS (61,051/61,051 rows min 0 / max 1), member PASS through the
   final-output gate. The clean-run member (`395338ed…`) is a **valid reconstruction, NOT the

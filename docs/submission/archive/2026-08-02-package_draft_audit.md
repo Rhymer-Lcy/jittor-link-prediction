@@ -36,7 +36,7 @@ python tools/submission/stage_package.py --audit  # audit an existing tree
 |---|---|
 | Staging root | `submission_staging/contest1_TEAM_NAME_PLACEHOLDER_003/` (git-ignored) |
 | Intended archive name | `contest1_<TEAM_NAME>_003.zip` |
-| Source commit | `c6322346c09641430aaaea2fa4fd7ecdb9257f9b` |
+| Source commit | `9a7ccf621aa0779df7cc7c1451435166ce8236fa` |
 | Files | 28 (25 under `code/`) |
 | Total size | 466,062 bytes |
 | Final archive built | **no** |
@@ -209,7 +209,7 @@ seven placeholders present, and no occurrence of `autodl-tmp`, `seetacloud`, a W
 `src/ds2_basket_featurizer.py:413-416` and `src/ds2_mf_basket_pack.py:183-187` resolved the
 Dataset-2 embedding directories from a literal `<project>/outputs/...`, so `OUTPUTS_ROOT` never
 reached them and `--output-root` was honoured by the driver but ignored by those consumers. Fixed in
-`b4776a2` by calling `tl.bpr_run_dir` / `tl.line_run_dir`, plus removal of one dead
+`cf7be28` by calling `tl.bpr_run_dir` / `tl.line_run_dir`, plus removal of one dead
 `tdir = tl.PROJECT_ROOT / "outputs"` assignment in `ranker_basket_ds2.py` whose two call arguments
 already used the helpers.
 
@@ -221,7 +221,7 @@ members byte for byte.
 
 `tests/strategies/test_ds2_output_root_contract.py` adds 14 tests. They evaluate the **actual source
 expressions**, extracted from the AST rather than retyped, so they cannot pass against a copy of the
-fix while the shipped code still holds a literal. Against the pre-fix tree at `6d2ff15`, **10 of the
+fix while the shipped code still holds a literal. Against the pre-fix tree at `c56b93e`, **10 of the
 14 fail** — including the stale-default-tree trap, the isolated-root routing, the real
 `build_or_load_features` subprocess check and both static guards.
 

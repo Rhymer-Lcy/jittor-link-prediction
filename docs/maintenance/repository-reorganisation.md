@@ -7,7 +7,7 @@ What changed, why, and what was deliberately left alone. Companion document:
 
 | item | value |
 |---|---|
-| HEAD | `8a2c922f0687b105fd2ba020873a337b150169e0` |
+| HEAD | `c3552ef758d8a1f5aca9b65d142192af7f810e71` |
 | branch | `main` (clean working tree, in sync with `origin/main`) |
 | tracked files | 17 — `README.md`, `docs/data-b-runbook.md`, `requirements.txt`, 13 × `src/*.py` |
 | ignored trees | `data/` 261 MB, `outputs/` 25.8 GB, `scratchpad/` 21 GB, `docs_local/` 79 MB |

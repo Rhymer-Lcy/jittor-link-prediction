@@ -364,7 +364,7 @@ Not started. The instance is powered off and was not contacted during this phase
 **Prerequisite.** Sync the remote to the merge commit of this work by the established
 credential-free bundle workflow (`git bundle create` → `scp -P` → `git fetch <bundle>
 main:refs/bundle/N` → `git merge --ff-only` → delete the ref and the file). The remote is at
-`d5fc39a`, four commits behind before this work.
+`e0f2b9c`, four commits behind before this work.
 
 **Phase A — contract validation, ~1 h GPU, ~1 h wall.**
 

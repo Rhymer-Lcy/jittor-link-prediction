@@ -8,9 +8,9 @@ dataset2, **the dataset1 contract is already correct and no repair is needed**:
 ``ranker_ds1.py`` reads through ``tl.line_run_dir("dataset1")``, so producer and
 consumer cannot disagree. These tests exist to pin that agreement, not to fix it.
 
-The history worth pinning. At ``2d16036`` the ranker hard-coded two different
+The history worth pinning. At ``4ad5b63`` the ranker hard-coded two different
 shapes -- ``outputs/dataset1-novirt-tmax1.1548e+08`` for the cut embedding but a
-bare ``outputs/dataset1`` for the serve embedding. ``7b234e5`` moved both onto
+bare ``outputs/dataset1`` for the serve embedding. ``348f91f`` moved both onto
 the contract, which appends ``-novirt``. A retained local
 ``outputs/dataset1`` therefore predates the contract: it is a legacy artifact
 name, not a directory the contract can produce for the serve embedding, and it
@@ -82,7 +82,7 @@ class DetectorTest(unittest.TestCase):
                 self.assertFalse(owned_by_the_contract(free))
 
     def test_the_detector_finds_the_historical_defect_shape(self):
-        # The exact expression 2d16036 used for the serve embedding. If this
+        # The exact expression 4ad5b63 used for the serve embedding. If this
         # stopped being detected the chain test below would be vacuous.
         tree = ast.parse('REPO / "outputs" / "dataset1"')
         hits = [n.right.value for n in ast.walk(tree)
