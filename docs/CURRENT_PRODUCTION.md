@@ -133,13 +133,21 @@ no score is re-serialised from a float.
 git-ignored provenance tree at `scratchpad/round-23-opus/xte/scripts/build_xte_member.py` and
 production was reproducible only by extraction.
 
-> **Reproduction risk — HIGH (base chain, still open).** `ds2_mf_basket_pack.py` and
-> `ds2_basket_featurizer.py` were graduated from the scratchpad on 2026-07-29 **verbatim but not
-> re-executed**, and the pipeline also needs the cached train features that `build_or_load_features`
-> produces. So the decode above is proven from the base matrix, but **the base matrix itself is not
-> proven reproducible from raw data**. This is ambiguity A1 and it is now the largest open
-> reproducibility item. See
-> [maintenance/repository-reorganisation-ambiguities.md](maintenance/repository-reorganisation-ambiguities.md).
+> **Reproduction status — raw-to-final EXECUTED; byte identity NOT claimed.** Two statements that
+> must not be merged into one:
+>
+> 1. **The chain runs from raw data to a final member.** On 2026-08-01 the complete Dataset-2 chain
+>    was executed on the target host from the official raw data: `ds2_mf_basket_pack.py` produced
+>    the MF base, `crf_promote.py` the CRF container and `build_ds2_member.py` the member, each
+>    validated on exit. The Dataset-1 chain was executed the same way on 2026-08-02. This closes
+>    ambiguity A1, which recorded that the modules had been graduated verbatim but never re-run.
+> 2. **A rerun is not guaranteed to be byte-identical to the accepted member.** Embedding training
+>    is stochastic and the reconstruction differs from the historical producer in the random stream,
+>    the optimiser trajectory and the virtual-edge path. The measured divergence and its causes are
+>    in the cross-version audit; the accepted member remains reproducible **by extraction** from the
+>    hash-pinned archive, and the decoder stage reproduces it byte for byte from that base.
+>
+> See [maintenance/repository-reorganisation-ambiguities.md](maintenance/repository-reorganisation-ambiguities.md).
 
 ## What must not be changed casually
 
@@ -157,7 +165,7 @@ production was reproducible only by extraction.
 ```bash
 git rev-parse HEAD
 python main.py --stage describe                      # every stage, implementation and status
-python -m unittest discover -s tests -t .            # 97 tests; data-dependent ones skip cleanly
+python -m unittest discover -s tests -t .            # data-dependent tests skip cleanly
 python main.py --stage postprocess --verify          # rebuild both members and assert their hashes
 python tools/submission/package_component.py verify \
     --zip outputs/submissions/round30_final/r30_xte_final.zip

@@ -286,7 +286,8 @@ the documentation cannot drift from the code.
   canonical dependency outside the repository, no hard-coded host path, the torch exclusion list
   against a live scan, and the JittorGeometric contract in both directions.
 
-Full suite: **341 tests**, zero failures.
+Full suite: zero failures. The count is not written down here because it drifts; run
+`python -m unittest discover -s tests -t .` (or `pytest`) and read the tally it prints.
 
 ---
 

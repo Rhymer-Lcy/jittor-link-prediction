@@ -105,7 +105,7 @@ item is traced to the English section that will supply it.
 | 4.23 | Known issues | SATISFIED | **§6.3**: target environment, the two required runtime settings, the cuDNN component-probe limitation and the validated response, the Dataset-2 resource envelope, stage-level resume, the absent Dataset-2 end-to-end measurement, and the byte-identity caveat |
 | 4.24 | Reproduction notes | SATISFIED | §3.12 failure and resume; §6.2 resumability; **§2.6** score ownership, no rescoring, no score interval, no byte-identity guarantee and the four-level lineage table; **§3.5** the four verified reasons a reproduction need not match; **§6.3** the same caveat restated where an operator will meet it |
 | 4.25 | JittorGeometric installation and usage status | SATISFIED | §4.1 gives the pinned commit and install step; §3.5 states that **neither trainer imports JittorGeometric** and that no import was added merely to claim usage |
-| 4.26 | Rendered as `提交说明文档.pdf` | **BLOCKED_BY_LATER_TRANSLATION** | the English rendering exists as `docs/submission/submission_document_en.pdf`; the reserved Chinese filename is deliberately unused |
+| 4.26 | Rendered as `提交说明文档.pdf` | **PARTIALLY_SATISFIED** | the final Chinese PDF **exists** at the repository root (`0cd48507…`, 24 pages) and is the document of record. Two things remain: `submission_staging/` still carries the English PDF under a `TEAM_NAME_PLACEHOLDER` directory, and the organiser archive has not been re-staged or frozen against it. Ready as an input; not yet assembled into the final deliverable |
 
 ## 5. Compliance
 

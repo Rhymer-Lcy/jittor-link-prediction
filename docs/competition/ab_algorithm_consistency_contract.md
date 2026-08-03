@@ -276,7 +276,7 @@ python main.py --stage describe                    # every stage, implementation
 python main.py --stage preprocess                  # measured graph type and causal boundary
 python src/build_ds1_member.py --verify            # dataset1 byte-exact reproduction
 python src/build_ds2_member.py --verify            # dataset2 byte-exact reproduction
-python -m unittest discover -s tests -t .          # 97 tests
+python -m unittest discover -s tests -t .          # the suite prints its own tally
 ```
 
 The frozen-rule tests assert that no prohibited knob exists, which is how section 5 is enforced

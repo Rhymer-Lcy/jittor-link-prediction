@@ -4,7 +4,19 @@ Recorded 2026-07-29 during the repository consolidation. Each item is something 
 deliberately did **not** resolve, because a documented legacy path is preferable to a broken
 historical record.
 
-## A1 — dataset2 is tracked but not proven reproducible (HIGH)
+## A1 — dataset2 reproducibility — CLOSED 2026-08-01
+
+> **Closed.** The full Dataset-2 chain was executed from the official raw data on the target
+> host on 2026-08-01 (MF base, CRF container, member; each validated on exit), and the
+> Dataset-1 chain on 2026-08-02. What follows is the original 2026-07-29 record, kept
+> verbatim.
+>
+> Closing A1 asserts only that **the chain executes end to end from raw data**. It does
+> **not** assert that a rerun reproduces the accepted member byte for byte — it does not,
+> and that limitation is documented separately in `docs/CURRENT_PRODUCTION.md` and in the
+> cross-version audit.
+
+### Original record (2026-07-29)
 
 `src/ds2_mf_basket_pack.py` and `src/ds2_basket_featurizer.py` were graduated **verbatim** from
 the scratchpad (only repository-root resolution and the dependency import name changed; the diffs

@@ -1,4 +1,8 @@
-# Submission package — draft audit
+# Submission package — draft audit (ARCHIVED 2026-08-02)
+
+> **Archived.** This is a dated snapshot of the staging state on 2026-08-02, not a statement of
+> the current state. It is kept for provenance. For where the deliverable stands now, read
+> `docs/CURRENT_PRODUCTION.md` and `docs/competition/organiser_requirement_matrix.md`.
 
 > **Editor's note, 2026-08-02.** This is a dated record of the staging state as it stood when the
 > audit ran, and its measurements are left verbatim rather than restated. Two names have since
