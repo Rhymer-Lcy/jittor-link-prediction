@@ -35,3 +35,11 @@ docs/submission/*.docx
 
 # Generated friend-review bundles. Built by tools from tracked sources; never a release source.
 submission_review_bundle_*/
+
+# Tool caches. Regenerated on demand; never part of a deliverable.
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/

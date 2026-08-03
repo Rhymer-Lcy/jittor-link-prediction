@@ -1,0 +1,44 @@
+# Tooling configuration only. This project is not packaged or installed as a
+# distribution: the submission is a source tree executed in place, so there is no
+# [project] table and no build backend.
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+# Collect ONLY the maintained suite. Without this, a bare `pytest` at the
+# repository root also walks outputs/, scratchpad/ and any staging tree, where it
+# finds copies of the packaged modules and a production strategy module whose name
+# begins with `test_` (src/strategies/ds1/test_graph_reciprocity.py -- a frozen
+# postprocessor, not a test).
+testpaths = ["tests"]
+norecursedirs = [
+    "outputs", "data", "scratchpad", "artifacts_durable", "audit_exports",
+    "submission_staging", "submission_review_bundle_*", "submission_code_handoff_*",
+    "docs_local", ".git", "*.egg-info",
+]
+python_files = ["test_*.py"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+# Same exclusions, for the same reason.
+extend-exclude = [
+    "outputs", "data", "scratchpad", "artifacts_durable", "audit_exports",
+    "submission_staging", "docs_local",
+]
+
+[tool.ruff.lint]
+# Deliberately conservative while the submission is frozen. The canonical chain
+# under src/ is byte-pinned against a verified handoff archive, so no autofix or
+# reformat may run against it before the submission is closed. Widening this
+# selection is a post-freeze task.
+select = ["E4", "E7", "E9", "F", "W291", "W292", "W293"]
+ignore = [
+    "E402",  # module-level import after sys.path setup -- required by the stage scripts
+    "E501",  # long lines: many are pinned hashes and recorded commands
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The frozen trainers and strategies are compared byte-for-byte against the
+# packaged archive; they are read-only until the submission closes.
+"src/**" = ["F401", "F841", "E731"]
