@@ -69,7 +69,8 @@ after. A `+0.0017` gain does not close a displayed gap of `0.0115`.
 
 - Accepted production state: [CURRENT_PRODUCTION.md](CURRENT_PRODUCTION.md) and
   [`../configs/production.json`](../configs/production.json).
-- How the final package was assembled and verified: [rounds/round-30.md](rounds/round-30.md).
-- Why the Round-23 gate and the final-board override are both in the record:
-  [rounds/round-23.md](rounds/round-23.md).
-- The failure that made Round 30 necessary: [rounds/round-29.md](rounds/round-29.md).
+- Accepted hashes, components, and reproduction limits:
+  [CURRENT_PRODUCTION.md](CURRENT_PRODUCTION.md).
+- Decoder lifecycle and the final-board operational override:
+  [STRATEGY_REGISTRY.md](STRATEGY_REGISTRY.md).
+- Machine-readable strategy evidence: [strategy_inventory.json](strategy_inventory.json).

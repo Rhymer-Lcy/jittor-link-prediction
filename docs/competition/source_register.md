@@ -310,7 +310,7 @@ The A-board inspection environment governs the reproducibility package.
 Private or locally retained evidence should use a structure equivalent to:
 
 ```text
-docs_local/competition/evidence/
+private-competition-evidence/
 └── 2026-07-30/
     ├── competition_overview/
     ├── track_1_dynamic_recommendation/

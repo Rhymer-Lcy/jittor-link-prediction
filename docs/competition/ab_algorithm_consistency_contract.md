@@ -121,9 +121,9 @@ not asserted: `python main.py --stage preprocess` computes them from the release
 | interactions | 690,848 | 2,261,283 |
 | queries | 61,051 | 153,420 |
 | candidates per query | 100 | 100 |
-| representation | `src/train_line.py` / `src/train_line_jt.py`, `src/train_bpr.py` / `src/train_bpr_jt.py` | same modules, same objectives |
+| representation | `reference/pytorch/train_line.py` / `src/train_line_jt.py`, `reference/pytorch/train_bpr.py` / `src/train_bpr_jt.py` | same modules, same objectives |
 | slate scorer | `src/ranker_ds1.py` | `src/ranker_basket_ds2.py` with `src/ds2_mf_basket_pack.py` |
-| post-processing, in order | `strategies/ds1/source_slate_recurrence.py`, then `strategies/ds1/test_graph_reciprocity.py` | `src/crf_promote.py`, then `strategies/ds2/cross_time_exclusivity.py` |
+| post-processing, in order | `strategies/ds1/source_slate_recurrence.py`, then `strategies/ds1/graph_reciprocity.py` | `src/crf_promote.py`, then `strategies/ds2/cross_time_exclusivity.py` |
 | member builder | `src/build_ds1_member.py` | `src/build_ds2_member.py` |
 | entry point | `python main.py --dataset dataset1` | `python main.py --dataset dataset2` |
 
@@ -208,13 +208,13 @@ an invariant does not hold, the stage is disabled by configuration rather than r
 |---|---|---|---|---|
 | embedding capacity | LINE 400 total, BPR 256 | any dimension | value only | `configs/production.json`, trainer knobs |
 | training length | LINE 400 epochs, BPR 120 | any epoch count | value only | trainer knobs |
-| negative sampling | ratio 5, degree exponent 0.75 | any ratio; the exponent stays 0.75 | ratio value only | `src/train_bpr.py` |
+| negative sampling | ratio 5, degree exponent 0.75 | any ratio; the exponent stays 0.75 | ratio value only | `reference/pytorch/train_bpr.py` |
 | recency weighting | dataset1 0.25, dataset2 0.10 | any fraction, including 0 | value only | `BPR_TAU_FRAC` |
 | seed ensemble | dataset1 10 seeds, dataset2 5 | any count | value only | `ranker_ds1.BPR_SEEDS`, `ranker_basket_ds2.SEEDS` |
 | basket geometry rank | d128 unit-norm SVD | any rank | value only | `src/ds2_mf_basket_pack.py` |
 | equality CRF sharpening | tau 0.20, B 70, W 1 | re-measured per scenario, or disabled | declared parameters, or off | `src/crf_promote.py` |
 | slate recurrence support | at least 2 other slates, uniqueness required | value only; uniqueness stays required | threshold value only | `strategies/ds1/source_slate_recurrence.py` |
-| reciprocity rank depth | 2 | value only | depth value only | `strategies/ds1/test_graph_reciprocity.py` |
+| reciprocity rank depth | 2 | value only | depth value only | `strategies/ds1/graph_reciprocity.py` |
 | cross-time exclusivity | at least 2 distinct timestamps; one pass | nothing tunable; enabled or disabled | on or off only | `strategies/ds2/cross_time_exclusivity.py` |
 | execution settings | single GPU, float32 | device, precision, workers, batch, partition, cache | performance only, no numeric semantics | `environment.yaml` |
 
@@ -228,7 +228,7 @@ structural rule into a swept hyperparameter, which section 5 prohibits.
 prediction. Failure to do so is grounds for invalidation.
 
 **Disclosed fact, not an interpretation.** The accepted A-board embeddings were produced by the
-PyTorch trainers `src/train_line.py` and `src/train_bpr.py`. The Jittor ports
+PyTorch trainers `reference/pytorch/train_line.py` and `reference/pytorch/train_bpr.py`. The Jittor ports
 `src/train_line_jt.py` and `src/train_bpr_jt.py` implement the same models, objectives, knobs and
 output formats, and Jittor owns the model, loss and optimiser in them. Sampling and shuffling run in
 seeded NumPy in both implementations, so the two agree statistically but **not** byte for byte: a

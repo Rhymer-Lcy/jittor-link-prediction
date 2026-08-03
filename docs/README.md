@@ -1,85 +1,39 @@
-# Documentation index
+# Documentation
 
-Start here.
+The documentation is organised by current responsibility rather than by the
+chronology of experimentation.
 
-| document | answers |
+| Document | Purpose |
 |---|---|
-| [CURRENT_PRODUCTION.md](CURRENT_PRODUCTION.md) | What is live right now? Which hashes define it? How do I reproduce it? |
-| [leaderboard_final.md](leaderboard_final.md) | The closing A-board result and this project's final placement |
-| [STRATEGY_REGISTRY.md](STRATEGY_REGISTRY.md) | Every strategy ever tried, with its lifecycle status and evidence |
-| [SUBMISSION_PROTOCOL.md](SUBMISSION_PROTOCOL.md) | How the platform actually scores and ingests a submission |
-| [architecture/pipeline-overview.md](architecture/pipeline-overview.md) | How the two pipelines fit together and why they differ |
-| [naming-standard.md](naming-standard.md) | Conventions for code, docs, strategy ids and run directories |
-| [rounds/](rounds/) | Concise canonical history, one file per round |
-| [maintenance/](maintenance/) | What the consolidation changed, and what it deliberately left alone |
-| [data-b-runbook.md](data-b-runbook.md) | Procedure for when data package B is released |
+| [CURRENT_PRODUCTION.md](CURRENT_PRODUCTION.md) | Accepted scores, hashes, strategy chains, and reproducibility claims |
+| [architecture/pipeline-overview.md](architecture/pipeline-overview.md) | Canonical Jittor pipeline and framework boundary |
+| [architecture/stage-completion-contract.md](architecture/stage-completion-contract.md) | Rules for safe stage reuse and atomic artifact publication |
+| [STRATEGY_REGISTRY.md](STRATEGY_REGISTRY.md) | Human-readable lifecycle summary of evaluated strategies |
+| [strategy_inventory.json](strategy_inventory.json) | Machine-readable strategy lifecycle inventory |
+| [SUBMISSION_PROTOCOL.md](SUBMISSION_PROTOCOL.md) | Submission archive construction and verification |
+| [competition/](competition/) | Official-rule dossier, source register, consistency contract, and package inventory |
+| [submission/submission_document_en.md](submission/submission_document_en.md) | Editable English submission document source |
+| [data-b-runbook.md](data-b-runbook.md) | Controlled procedure for a later data release |
+| [leaderboard_final.md](leaderboard_final.md) | Retained final-board observation and its evidence limits |
+| [naming-standard.md](naming-standard.md) | Naming, language, path, and commit conventions |
 
-Machine-readable companions, both tracked:
+`configs/production.json` is the machine-readable source of truth for accepted
+hashes, scores, strategy order, and package policy. When prose conflicts with
+that file, treat the prose as stale and correct both in one reviewed change.
 
-- [`../configs/production.json`](../configs/production.json) — the accepted state: scores,
-  hashes, the ordered strategy chain, build and verify commands, archive policy. **Source of
-  truth**; if a document disagrees with it, the JSON wins.
-- [`strategy_inventory.json`](strategy_inventory.json) — 65 strategies with lifecycle status,
-  offline and online evidence, implementation paths and prohibited variants, plus
-  `late_round_evidence_index`. `STRATEGY_REGISTRY.md` is generated from it.
+Historical round reports, local conversations, cleanup audits, and large
+experiment records are retained in private verified archives and Git history.
+They are not duplicated in the current public documentation tree.
 
-## Quick answers
+## Documentation requirements
 
-**What is the score?** **1.576996059163449, rank #3, final**, shipped 2026-07-30. It is
-`0.8963013747474597 (dataset1) + 0.6806946844159895 (dataset2)`, whose exact decimal sum is
-`1.5769960591634492` — the platform displays the same quantity one digit shorter. The A board is
-closed; this state is final. The superseded Round-22 state was 1.5752524794476366.
-
-**Am I on the same state as everyone else?**
-
-```bash
-python -m unittest discover -s tests -t .      # 97 tests; local-data tests skip cleanly
-python src/build_ds1_member.py --verify        # needs local artifacts
-```
-
-**What must I not change?** See the "must not be changed casually" section of
-[CURRENT_PRODUCTION.md](CURRENT_PRODUCTION.md), and the prohibited-variants section at the end of
-[STRATEGY_REGISTRY.md](STRATEGY_REGISTRY.md).
-
-## What a collaborator receives, and what they do not
-
-`docs_local/`, `scratchpad/` and `outputs/` are **intentionally git-ignored and always will be.**
-A normal `git pull` does not deliver them, and **nothing in this documentation depends on having
-them.** Every tracked document is written to be complete on its own; where it cites a local
-artifact it does so as provenance, not as a prerequisite.
-
-The production truth travels entirely through tracked paths:
-
-| tracked path | what it carries |
-|---|---|
-| `configs/production.json` | the accepted state: scores, hashes, ordered chain, commands, archive policy |
-| `src/` | every mechanism holding the accepted score, including the two frozen dataset1 postprocessors and the final dataset2 decoder |
-| `tools/` | component validation and submission packaging |
-| `tests/` | 97 tests; those needing local artifacts skip with an explicit reason |
-| `docs/` | production state, strategy lifecycle, submission protocol, round history |
-
-A collaborator can therefore verify they are on the same strategy state, reproduce **both** members
-byte for byte (given the raw data and the two hash-pinned chain inputs), and build a submission —
-without possessing a single historical run directory.
-
-```bash
-python main.py --stage describe              # every stage, implementation and status
-python main.py --stage postprocess --verify  # rebuild both members and assert their hashes
-```
-
-> **What is still not reproducible, stated plainly.** Both members rebuild byte-exactly from their
-> hash-pinned *chain inputs*, verified in the official target environment. Neither is proven
-> reproducible from **raw competition data**: the dataset2 base matrix needs cached features and a
-> multi-hour rebuild that has not been re-executed (ambiguity A1), and the accepted embeddings were
-> produced by the PyTorch trainers rather than the Jittor ports, which agree statistically but not
-> byte for byte. Both gaps are recorded in
-> [maintenance/repository-reorganisation-ambiguities.md](maintenance/repository-reorganisation-ambiguities.md)
-> and in [competition/ab_algorithm_consistency_contract.md](competition/ab_algorithm_consistency_contract.md).
-
-The ignored trees hold **local provenance only**: the conversational record
-(`docs_local/agent_runs/`, indexed by `docs_local/agent_runs_index.json`) and the execution record
-(`scratchpad/`, indexed by `scratchpad/index.json`). Their 2026-07-29 renames and indexes were a
-local hygiene improvement with **no effect on what is delivered**. See
-[naming-standard.md](naming-standard.md) for the ownership rule and
-[maintenance/repository-reorganisation.md](maintenance/repository-reorganisation.md) for the
-record-keeping policy.
+- Write public documentation in formal English, except for official Chinese
+  names and required functional literals.
+- State whether a score is online-observed, derived, or inferred.
+- Distinguish executable reproduction, algorithmic equivalence, and byte
+  identity.
+- Use repository-relative paths in durable records.
+- Do not duplicate test counts, file counts, or mutable status values when a
+  command or configuration file is authoritative.
+- Do not publish personal communications, credentials, host paths, or private
+  archive locations.

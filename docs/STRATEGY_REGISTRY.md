@@ -1,9 +1,9 @@
 # Strategy registry
 
-Generated from [`docs/strategy_inventory.json`](strategy_inventory.json), which is
-reconstructed from the README score ledger, `configs/production.json`, the submission
-artifacts, the round reports under `scratchpad/` and durable agent memory. The JSON is
-the source of truth and carries fuller evidence per record than the tables below.
+Generated from [`docs/strategy_inventory.json`](strategy_inventory.json),
+`configs/production.json`, accepted submission artifacts, and the private
+experiment archive. The JSON is the source of truth and carries fuller evidence
+per record than the tables below.
 
 Lifecycle vocabulary is defined in [`src/strategies/registry.py`](../src/strategies/registry.py).
 
@@ -28,10 +28,9 @@ Lifecycle vocabulary is defined in [`src/strategies/registry.py`](../src/strateg
 > and reproduces the accepted member byte for byte, so the record moved to `SHIPPED_ACTIVE` with both
 > other axes preserved. **It still did not pass its +0.002 gate**; see the entry below.
 
-The twelve records added on 2026-07-30 cover rounds 23 and 26-29 and are listed in
-[rounds/](rounds/). Rounds 24 and 25 were adjudicated in full but their per-strategy records were not
-migrated; see `late_round_evidence_index` in [strategy_inventory.json](strategy_inventory.json) and
-the coverage note in [rounds/README.md](rounds/README.md).
+The twelve records added on 2026-07-30 cover rounds 23 and 26-29. Rounds 24 and
+25 were adjudicated, but their per-strategy records were not migrated; the
+machine-readable inventory records this coverage limitation explicitly.
 
 ## SHIPPED_ACTIVE
 
@@ -39,14 +38,14 @@ Part of the current accepted submission. Changing any of these changes productio
 
 | strategy | dataset | mechanism | evidence | implementation |
 |---|---|---|---|---|
-| `line_embedding` | both | LINE first- + second-order proximity embedding trained on all real edges, exported as cat([emb_first, emb_node]) | present in every accepted submission since 1.4341 | `src/train_line.py` |
-| `bpr_embedding` | both | BPR-MF single node table, pairwise softplus ranking loss, degree^0.75 negatives | ds1 0.8285 -> 0.8508, ds2 0.5607 -> 0.5712 | `src/train_bpr.py` |
-| `multi_seed_bpr_ensemble` | both | rownormed BPR direct scores averaged over independent seeds (ds1 10, ds2 5) | +0.0054 / +0.0018; ds1 ten-seed isolated read 0.8595 -> 0.86000 | `src/train_bpr.py` |
-| `innovation_bpr` | dataset1 | BPR trained only on the FIRST occurrence of each (src,dst) pair, zeroed on history candidates before rownorm | 1.50890 -> 1.51309 (+0.00419 incl. a lineage fix) | `src/train_bpr.py` |
+| `line_embedding` | both | LINE first- + second-order proximity embedding trained on all real edges, exported as cat([emb_first, emb_node]) | present in every accepted submission since 1.4341 | `reference/pytorch/train_line.py` |
+| `bpr_embedding` | both | BPR-MF single node table, pairwise softplus ranking loss, degree^0.75 negatives | ds1 0.8285 -> 0.8508, ds2 0.5607 -> 0.5712 | `reference/pytorch/train_bpr.py` |
+| `multi_seed_bpr_ensemble` | both | rownormed BPR direct scores averaged over independent seeds (ds1 10, ds2 5) | +0.0054 / +0.0018; ds1 ten-seed isolated read 0.8595 -> 0.86000 | `reference/pytorch/train_bpr.py` |
+| `innovation_bpr` | dataset1 | BPR trained only on the FIRST occurrence of each (src,dst) pair, zeroed on history candidates before rownorm | 1.50890 -> 1.51309 (+0.00419 incl. a lineage fix) | `reference/pytorch/train_bpr.py` |
 | `item_cf_blend_terms` | both | cosine between a candidate embedding and the source's historical dst embeddings (mean over all + mean of top-3) | ds1 0.803 -> 0.813, ds2 0.5441 -> 0.5587 | `src/ensemble_predict.py` |
 | `ds1_lambdarank_ranker` | dataset1 | cut-split LambdaRank over 21 columns; features frozen at a 0.75 time-quantile cut for training, full-train frozen at serve | +0.00205 (ds1 0.86000 -> 0.862047); component 0.8619654323294592 before the postprocessors | `src/ranker_ds1.py` |
 | `source_slate_recurrence` | dataset1 | promote the unique maximum-recurrence non-history candidate when it appears in >= 2 other slates of the same source and the control top-1 is non-hi... | isolated auxiliary A/B before shipping: 0.9136871602584966 -> 0.9400134058656336, delta +0.0263262456071370 | `src/strategies/ds1/source_slate_recurrence.py` |
-| `test_graph_reciprocity` | dataset1 | promote the rank-2 candidate when the reverse test-exposure edge candidate->source exists for it and not for rank 1, both being non-historical | isolated auxiliary read 0.8963013747474597 vs baseline 0.8882916779365962, delta +0.0080096968108635 against a +0.0010 gate | `src/strategies/ds1/test_graph_reciprocity.py` |
+| `graph_reciprocity` | dataset1 | promote the rank-2 candidate when the reverse test-exposure edge candidate->source exists for it and not for rank 1, both being non-historical | isolated auxiliary read 0.8963013747474597 vs baseline 0.8882916779365962, delta +0.0080096968108635 against a +0.0010 gate | `src/strategies/ds1/graph_reciprocity.py` |
 | `ds2_basket_lambdarank` | dataset2 | 18-feature LightGBM LambdaRank with 3-pass basket feedback (sibling messages within a (src,time) event) | part of every accepted ds2 member since 1.50890 | `src/ranker_basket_ds2.py` |
 | `mf_basket_geometry` | dataset2 | d128 unit SVD of the split0 src x dst interaction used as the pass-2/3 sibling-MESSAGE geometry, replacing the hand-built item_profiles | single-variable auxiliary A/B: 0.7166850834516475 -> 0.7312368936166302, +0.0145518 (a ~2.2x UPWARD transfer) | `src/ds2_mf_basket_pack.py` |
 | `structural_row_order_crf` | dataset2 | equality CRF (exact sum-product over same-time adjacency chains, pairwise potential 1 + B*delta(answer equality), unaries softmax(rownorm/tau)) plu... | equality-CRF +0.01636 isolated; chain 1.49254 -> 1.50890 | `src/crf_promote.py` |
@@ -63,10 +62,10 @@ Was in an accepted submission and was later replaced. Kept for reproduction of h
 |---|---|---|---|---|
 | `ds1_linear_blend` | dataset1 | hand-tuned linear blend of history count, user-CF, co-occurrence, item-CF and BPR terms | carried ds1 from 0.803 to 0.86000 across many submissions | `src/ensemble_predict.py` |
 | `ds2_linear_blend` | dataset2 | hand-tuned linear blend (user-CF, recent popularity, item-CF, BPR) | ds2 0.5441 -> 0.5787 | `src/ensemble_predict.py` |
-| `temporal_footprint_residual` | dataset2 | 85-column candidate x query-time exposure block distilled into a per-candidate residual added before the shared CRF | shipped at total 1.5264, ds2 isolated MRR 0.6664472907 | `src/footprint_feature.py` |
+| `temporal_footprint_residual` | dataset2 | 85-column candidate x query-time exposure block distilled into a per-candidate residual added before the shared CRF | shipped at total 1.5264, ds2 isolated MRR 0.6664472907 | archived in pre-publication Git history |
 | `pair_promotion` | dataset2 | adjacent same-time different-source rows sharing a warm candidate that is top-1 in one row promote it in the other | shipped for +0.00955; REMOVED for +0.0004173 (1.5145953 -> 1.5149319) | `src/crf_promote.py` |
-| `triple_promote_standalone` | dataset2 | the triple rule applied on its own, without the equality CRF | +0.01775 when first shipped alone | `src/triple_promote.py` |
-| `virtual_edge_self_training` | both | candidates above BACK_FILL_THRESHOLD become virtual edges merged into later LINE training rounds | present in early accepted runs; contribution measured as null | `src/train_line.py` |
+| `triple_promote_standalone` | dataset2 | the triple rule applied on its own, without the equality CRF | +0.01775 when first shipped alone | archived in pre-publication Git history |
+| `virtual_edge_self_training` | both | candidates above BACK_FILL_THRESHOLD become virtual edges merged into later LINE training rounds | present in early accepted runs; contribution measured as null | `reference/pytorch/train_line.py` |
 
 ### The final dataset2 decoder
 
@@ -80,8 +79,8 @@ Three lifecycle axes, all simultaneously true: historically `CLOSED_AT_LOCKED_GA
 axis `ONLINE_VALIDATED`, and operationally `SHIPPED_ACTIVE` in the final A-board package under an
 owner-authorised `FINAL_BOARD_MAXIMISATION_OVERRIDE` scoped to the exact online-observed member bytes.
 The override does not reopen the family for tuning, rescue or reconstruction, and **it does not
-convert the sub-gate result into a gate pass**. See [rounds/round-23.md](rounds/round-23.md) and
-[rounds/round-30.md](rounds/round-30.md).
+convert the sub-gate result into a gate pass**. The machine-readable inventory
+preserves both lifecycle axes.
 
 Graduated into tracked code on 2026-07-30 for the A-board code inspection; `python
 src/build_ds2_member.py --verify` reproduces the accepted member byte for byte.
@@ -106,7 +105,7 @@ Weak-but-positive evidence, deliberately inactive.
 `line_direct_candidate_affinity` is the strongest capacity-clean and null-clean offline gain since the
 ranker itself and was deliberately not promoted on online economics. It became the mandatory second
 control arm for later rounds, where it accounted for the entire apparent gain of all three Round-27
-model families. See [rounds/round-26.md](rounds/round-26.md).
+model families. The full evidence is retained in the private experiment archive.
 
 ## PROBE
 
@@ -170,7 +169,7 @@ inert, since removing the auxiliary yields 103.4% of the gain and equal-count ra
 102.5%. `full_slate_softmax_role_representation` is `CLOSED_ONLINE_FAILURE`: the strongest offline
 evidence the project ever assembled inverted online, at a realised transfer coefficient of `-1.345`
 against an assumed `+0.109`. The 9.1x replay-to-online shrink calibration is retired as a predictor.
-See [rounds/round-28.md](rounds/round-28.md) and [rounds/round-29.md](rounds/round-29.md).
+The full evidence is retained in the private experiment archive.
 
 ## Prohibited variants on active strategies
 
@@ -179,5 +178,4 @@ accepted hashes and the evidence behind them.
 
 **`source_slate_recurrence`** -- threshold tuning; relaxing uniqueness; changing the row gate or history definition; altering the score transform; using candidate column position.
 
-**`test_graph_reciprocity`** -- inspecting ranks below 2; reverse-edge counts or thresholds; widening eligibility; adding recurrence / source-peak / source-role conditions.
-
+**`graph_reciprocity`** -- inspecting ranks below 2; reverse-edge counts or thresholds; widening eligibility; adding recurrence / source-peak / source-role conditions.

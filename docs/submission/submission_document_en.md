@@ -284,7 +284,7 @@ code/
 |       +-- registry.py            the ordered postprocessor chains
 |       +-- shared/frozen_ops.py   output gate, frozen primitives, serialisation
 |       +-- ds1/source_slate_recurrence.py    Dataset-1 postprocessor 1
-|       +-- ds1/test_graph_reciprocity.py     Dataset-1 postprocessor 2
+|       +-- ds1/graph_reciprocity.py     Dataset-1 postprocessor 2
 |       \-- ds2/cross_time_exclusivity.py     Dataset-2 final decoder
 \-- tools/submission/package_component.py     independent member verifier
 ```
@@ -700,7 +700,7 @@ only candidate identities and the training history — never a label.
   **strictly unique** maximum recurrence (ties disqualify the row); require it
   to appear in at least 2 other slates; promote it to strict top-1. Acts on
   3,653 of 61,051 rows.
-* `ds1_test_graph_reciprocity` — with `c1`, `c2` the rank-1 and rank-2
+* `ds1_graph_reciprocity` — with `c1`, `c2` the rank-1 and rank-2
   candidates of the *recurrence-adjusted* matrix, act if and only if neither is
   a historical partner, the reverse test-exposure edge exists for `c2` and does
   not for `c1`; then promote `c2`. Acts on 1,365 rows.
@@ -979,7 +979,7 @@ file, is `PACKAGED_CODE_INVENTORY.csv`.
 | `src/strategies/registry.py` | postprocessing | ordered postprocessor chains | TRANSITIVE | yes (chain constants only) |
 | `src/strategies/shared/frozen_ops.py` | postprocessing | output gate, frozen primitives, serialisation | TRANSITIVE | yes |
 | `src/strategies/ds1/source_slate_recurrence.py` | postprocessing | Dataset-1 postprocessor 1 | TRANSITIVE | yes |
-| `src/strategies/ds1/test_graph_reciprocity.py` | postprocessing | Dataset-1 postprocessor 2 | TRANSITIVE | yes |
+| `src/strategies/ds1/graph_reciprocity.py` | postprocessing | Dataset-1 postprocessor 2 | TRANSITIVE | yes |
 | `src/strategies/ds2/cross_time_exclusivity.py` | postprocessing | Dataset-2 final decoder | TRANSITIVE | yes |
 | `src/strategies/__init__.py` | package marker | package initialiser | TRANSITIVE | yes |
 | `src/strategies/ds1/__init__.py` | package marker | package initialiser | TRANSITIVE | yes |

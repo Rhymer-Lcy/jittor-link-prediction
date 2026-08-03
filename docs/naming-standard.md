@@ -1,98 +1,82 @@
-# Naming standard
+# Repository conventions
 
-Applied 2026-07-29. Where the repository already had a working convention, that convention won.
+These rules apply to source code, tests, configuration, documentation, logs,
+generated artifacts, directories, and Git commits.
+
+## Language and tone
+
+- Use formal English for public code, comments, logs, and documentation.
+- Preserve official Chinese competition names and required Chinese file names.
+- Avoid colloquialisms, decorative symbols, emoji, unsupported certainty, and
+  references to a particular assistant or private conversation.
+- Define acronyms at first use unless they are conventional library names.
 
 ## Python
 
-| item | convention | example |
+Follow PEP 8 naming:
+
+| Element | Convention | Example |
 |---|---|---|
-| modules and files | `snake_case` | `source_slate_recurrence.py` |
-| classes | `PascalCase` | `Report` |
-| functions, variables | `snake_case` | `row_max_normalise` |
-| frozen constants | `UPPER_SNAKE_CASE` | `MINIMUM_OTHER_SLATES` |
+| module | `snake_case.py` | `graph_reciprocity.py` |
+| class | `PascalCase` | `RunContext` |
+| function or variable | `snake_case` | `resolve_output_root` |
+| constant | `UPPER_SNAKE_CASE` | `DATASETS` |
+| test module | `test_<subject>.py` | `test_stage_contract.py` |
 
-## Markdown
+Use descriptive mechanism-oriented strategy identifiers. Do not encode a
+round, assistant name, concrete seed, or temporary version in a strategy ID.
 
-Two tiers, both already present in the repository and both kept:
+## Files and directories
 
-- **root and top-level `docs/` documents that define state**: `SCREAMING_SNAKE_CASE.md` —
-  `README.md`, `CURRENT_PRODUCTION.md`, `STRATEGY_REGISTRY.md`, `SUBMISSION_PROTOCOL.md`.
-- **everything nested**: `kebab-case.md` — `docs/rounds/round-21.md`,
-  `docs/architecture/pipeline-overview.md`, `docs/maintenance/repository-reorganisation.md`.
-  This follows the pre-existing `docs/data-b-runbook.md`, which was **not** renamed.
+- Use lowercase `snake_case` for Python packages and machine-consumed working
+  directories.
+- Use lowercase `kebab-case.md` for nested prose documents.
+- Retain established uppercase names for top-level contracts such as
+  `README.md`, `CURRENT_PRODUCTION.md`, and `SUBMISSION_PROTOCOL.md`.
+- Add a date only to a genuine immutable snapshot or archival record, using
+  `YYYY-MM-DD`.
+- Do not create unexplained roots such as `tmp`, `misc`, `new`, `final2`, or
+  `_work`.
 
-## Strategy ids
+## Paths and configuration
 
-Stable, mechanism-oriented, lowercase `snake_case`. A strategy id must not encode a round number,
-an agent name, a model name, a seed value or a transient hyperparameter — those belong in
-manifests, not in names. `source_slate_recurrence`, not `r21_r2_codex_rule`.
+- Source code must not contain user-specific or host-specific absolute paths.
+- Resolve defaults from the repository or package location, not the caller's
+  current working directory.
+- Expose data and output roots through documented command-line options or a
+  single configuration boundary.
+- Treat accepted prediction matrices and archives as opaque byte artifacts.
 
-The one admitted exception is a mechanism that *is* about seeds: `multi_seed_bpr_ensemble`
-describes seed averaging itself, which the standard treats as scientifically essential.
-`tests/integration/test_strategy_inventory.py` enforces this rule and encodes the exception.
+## Generated artifacts and logs
 
-## Run identifiers
+- Generated data belongs under the configured output root, never beside source
+  modules.
+- A filename must describe its role; do not use subjective suffixes such as
+  `latest`, `best`, or `final` without a corresponding immutable record.
+- Logs must be machine-neutral, avoid secrets and personal data, and state the
+  command, status, and relevant relative artifact path.
+- Temporary test artifacts must be created under an explicit temporary root and
+  removed after the run.
 
-One identifier names a run in **both** local trees, so they cross-reference directly:
+## Documentation
 
+- Prefer one authoritative location for each mutable fact.
+- Link to configuration or commands instead of copying volatile counts.
+- Label observations, calculations, hypotheses, and official requirements
+  distinctly.
+- Use SHA-256 for byte identity and preserve the original line endings of CSV
+  artifacts.
+
+## Git
+
+Use Conventional Commits with an ASCII, imperative, single-line subject:
+
+```text
+type(scope): concise imperative subject
 ```
-round-<NN>[<sub-round letter>]-<agent>
-```
 
-- `NN` zero-padded: `round-03-gpt`, `round-21-codex`, `round-22-opus`
-- agents: `codex`, `fable`, `opus`, `gpt` — the thread that **owns** the artifact (the recipient
-  of a prompt in `docs_local/`, the executor of a run in `scratchpad/`). These can differ for the
-  same round and that is meaningful: `docs_local/agent_runs/round-16-fable` holds the brief that
-  `scratchpad/round-16-opus` executed.
-- the sub-round letter is kept **only where it denotes a real sub-round**: `round-18a-opus`,
-  `round-18b-fable`, `round-18c-opus`, `round-19a-opus`, `round-20a-opus`, `round-21a-opus`.
-  Letters that merely abbreviated the agent — 22**C**odex, 22**F**able, 22**O**pus — are dropped,
-  because the agent is already in the identifier.
-
-The historical label written **inside** each document (for example `ROUND 22F`) is recorded
-verbatim as `document_label` in the indexes and is never rewritten: the historical letters are
-inconsistent, and normalising the text would falsify the record.
-
-**Runs are flat children of their tree**, `scratchpad/round-22-opus/`, not
-`scratchpad/round-22/opus/`. Nesting would add a path component, and several run scripts resolve
-the repository root by counting components (`parents[3]`, `parents[4]`) — the exact off-by-one
-that broke the R2 and RGR migrations. The 2026-07-29 rename preserved depth for that reason;
-`scratchpad/migration/legacy-name-map.csv` and `docs_local/migration/legacy-name-map.csv` map
-every old name to its new one.
-
-## Artifact taxonomy
-
-One canonical name per artifact kind. `brief` and `prompt` are **not** interchangeable: the
-canonical name is `prompt.md`.
-
-| artifact | file | lives in |
-|---|---|---|
-| the exact instruction sent to an agent | `prompt.md` | `docs_local/agent_runs/<run id>/` |
-| the conversational completion returned | `response.md` | `docs_local/agent_runs/<run id>/` |
-| the formal evidence-bearing report | `report.md` | `scratchpad/<run id>/` |
-| machine-readable provenance | `manifest.json` | `scratchpad/<run id>/` |
-| execution artifacts | `scripts/ probes/ artifacts/ logs/ tests/` | `scratchpad/<run id>/` |
-| concise project-level history | `round-NN.md` | `docs/rounds/` (tracked) |
-
-When one run genuinely has several chronological prompts or responses, number them:
-`prompt-01.md`, `response-01.md`. Do not number a single artifact.
-
-A run whose round cannot be identified from the evidence is named **topically** rather than given
-a guessed number — `scratchpad/footprint-ab`, `scratchpad/ds1-offline-reconciliation` — and the
-index records why it has no round.
-
-## Ownership rule
-
-- prompt and conversational response → `docs_local/agent_runs/` (local-only, ignored)
-- formal report, manifest, scripts, probes, artifacts, logs → `scratchpad/<run id>/` (ignored)
-- concise conclusions, production state, strategy lifecycle → `docs/` and `configs/` (**tracked**)
-
-Avoid duplication. If the same report exists in two places, the scratchpad copy is canonical and
-the other should become a reference to it.
-
-## Outputs
-
-`outputs/<dataset>[-<suffix>]/`, one run per directory, non-default knobs appended as a suffix so
-runs never clobber. **These names are load-bearing** — production source reads several by
-hard-coded path. Do not rename one without updating every reference and re-running
-`python src/build_ds1_member.py --verify`.
+Keep commits atomic. Stage explicit paths, inspect the staged diff, and run the
+relevant checks before committing. Do not add generated artifacts, credentials,
+personal contact data, or co-author trailers. Rewriting published history
+requires an explicit reason, a verified backup, a mapping of affected anchors,
+and a lease-protected force push.
