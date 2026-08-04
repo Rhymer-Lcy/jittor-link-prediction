@@ -38,6 +38,20 @@ round, assistant name, concrete seed, or temporary version in a strategy ID.
 - Do not create unexplained roots such as `tmp`, `misc`, `new`, `final2`, or
   `_work`.
 
+### Recorded exceptions
+
+These names predate the rules above and are frozen for the duration of the
+competition. They are listed rather than renamed because documents, tests,
+configuration and sealed archives all reference them, so a rename would break
+references for no operational gain. Renaming is a post-competition task.
+
+| Name | Rule it departs from | Why it is held |
+|---|---|---|
+| `docs/leaderboard_final.md` | nested prose is `kebab-case.md` | referenced by name from the submission document and the archives |
+| `docs/naming-standard.md` neighbours: `official_package_inventory.md`, `official_competition_dossier.md`, `organiser_requirement_matrix.md`, `submission_document_en.md` | nested prose is `kebab-case.md` | each is cited by exact path in the archives and the audit records |
+| `docs/STRATEGY_REGISTRY.md` | uppercase is reserved for the named top-level contracts | it is a contract of the same class as the three listed above; the rule text is narrower than the practice |
+| `line_latest_emb.csv` | no subjective suffix such as `latest` | a frozen production artifact name: the accepted members were produced by a chain that reads this exact filename, and the immutable record is the run directory that contains it |
+
 ## Paths and configuration
 
 - Source code must not contain user-specific or host-specific absolute paths.
