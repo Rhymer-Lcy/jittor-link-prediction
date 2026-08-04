@@ -224,11 +224,14 @@ def stage_postprocess(datasets: tuple[str, ...], verify: bool) -> int:
 def stage_package(config: dict, verify: bool) -> int:
     archive = config["accepted_archive"]["path"]
     if not verify:
+        # Nothing was packaged, so this must not report success: an automated
+        # caller would otherwise treat a refusal as a completed build.
         print(
             "packaging a NEW archive is a submission action and is deliberately not "
-            "wired into main.py; see docs/SUBMISSION_PROTOCOL.md"
+            "wired into main.py; see docs/SUBMISSION_PROTOCOL.md",
+            file=sys.stderr,
         )
-        return 0
+        return 2
     return run(["python", "tools/submission/package_component.py", "verify", "--zip", archive])
 
 

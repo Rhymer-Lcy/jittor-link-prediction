@@ -503,6 +503,18 @@ class JittorOnly(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("unrecognized arguments", result.stderr)
 
+    def test_the_package_stage_refuses_instead_of_reporting_success(self):
+        """Declining to package is a refusal, so it must not exit zero."""
+        result = subprocess.run(
+            [sys.executable, "main.py", "--stage", "package"],
+            cwd=str(REPO),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("deliberately not", result.stderr)
+        self.assertNotIn("deliberately not", result.stdout, "the refusal belongs on stderr")
+
     def test_no_backend_environment_variable_is_consulted(self):
         for path in (REPO / "main.py", SRC / "canonical_pipeline.py"):
             source = path.read_text(encoding="utf-8")
