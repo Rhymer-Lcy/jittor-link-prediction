@@ -301,8 +301,7 @@ def check_staging_root(root: Path, name: str) -> Path:
             raise SystemExit(f"REFUSED: {report_path(candidate)} is a link, not a real directory")
     if root.resolve() != expected.resolve():
         raise SystemExit(
-            f"REFUSED: the staging root must be {report_path(expected)}, "
-            f"not {report_path(root)}"
+            f"REFUSED: the staging root must be {report_path(expected)}, not {report_path(root)}"
         )
     return expected
 
