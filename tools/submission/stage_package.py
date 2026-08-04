@@ -520,8 +520,10 @@ def audit_environment(root: Path, third_party: set[str]) -> tuple[list[str], dic
             "declared_in_requirements_body": "jittor_geometric" in declared,
             "imported_by_staged_code": "jittor_geometric" in needed,
             "note": "installed from a pinned upstream commit documented in the "
-            "comment header of both environment files; not on PyPI, so it "
-            "cannot appear as a requirements line",
+            "comment header of both environment files. It is not on PyPI. A "
+            "requirements file could reference it by VCS URL; it is instead "
+            "declared as a separately documented install step so that the pin "
+            "and its rationale stay readable in one place",
         },
     }
 

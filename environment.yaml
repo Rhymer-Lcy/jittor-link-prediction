@@ -30,8 +30,9 @@
 # Every version below was installed and imported in a clean environment on
 # Ubuntu 22.04 with Python 3.10. Two properties are deliberate:
 #
-#   * The pins are the newest versions that support Python 3.10, which the
-#     official notice requires.
+#   * Every pin is a version validated for Python 3.10, which the official
+#     notice requires. These are the versions this environment was inspected
+#     with, not a claim about what upstream publishes today.
 #   * numpy is held below 2.0. The frozen postprocessors depend on exact
 #     float64 comparison and stable argsort semantics, and the accepted member
 #     hashes were produced under the 1.x behaviour.
