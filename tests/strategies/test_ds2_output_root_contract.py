@@ -360,10 +360,7 @@ class BehaviouralFeaturizerRouting(unittest.TestCase):
                 {
                     "src": rng.integers(0, 20, 12),
                     "time": [1.33e9] * 12,
-                    **{
-                        f"c{column}": rng.integers(20, 120, 12)
-                        for column in range(1, 101)
-                    },
+                    **{f"c{column}": rng.integers(20, 120, 12) for column in range(1, 101)},
                 }
             )
             test.to_csv(data / "test.csv", index=False)
