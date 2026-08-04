@@ -118,10 +118,18 @@ class CanonicalInventory(unittest.TestCase):
             "jlp-p1-int-wt",
             "jlp-schemeC-wt",
         )
+        # The question is where a canonical file sits *inside* the repository,
+        # so the check runs on the repository-relative path. Testing the
+        # absolute path instead would fail for any checkout that merely happens
+        # to live under a directory carrying one of these names.
         for name in CANONICAL_RUNTIME:
-            resolved = (REPO / name).resolve().as_posix()
+            resolved = (REPO / name).resolve()
+            try:
+                relative = resolved.relative_to(REPO.resolve()).as_posix()
+            except ValueError:
+                self.fail(f"{name} resolves outside the repository: {resolved.name}")
             for token in forbidden:
-                self.assertNotIn(f"/{token}/", resolved, f"{name} resolves into {token}")
+                self.assertNotIn(f"{token}/", f"{relative}/", f"{name} resolves into {token}")
 
     def test_no_canonical_file_hardcodes_a_host_absolute_path(self):
         suspicious = ("/root/autodl-tmp", "C:\\\\Users", "/root/jittor", "F:\\\\")
