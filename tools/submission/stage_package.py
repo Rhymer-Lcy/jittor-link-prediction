@@ -17,6 +17,12 @@ Three audits run over the result and all three must pass:
   host paths) survives either a filename or a content scan;
 * every staged file is byte-identical to its tracked source.
 
+The staging root is owned by this tool. It is always
+``submission_staging/contest1_<team>_003``; an existing tree is rebuilt only
+with ``--replace``, and only when it carries the ``STAGING_MANIFEST.json`` that
+proves this tool produced it. Nothing outside that one directory is ever
+removed.
+
     python tools/submission/stage_package.py \
         --team-name TEAM_NAME --document path/to/提交说明文档.pdf
     python tools/submission/stage_package.py --audit --root submission_staging/PACKAGE
@@ -276,9 +282,53 @@ def report_path(path: Path) -> str:
 # --------------------------------------------------------------------------
 
 
-def build(root: Path, document: Path) -> list[dict]:
-    if root.exists():
-        shutil.rmtree(root)
+def staging_root_for(name: str) -> Path:
+    """Return the one directory this tool is permitted to create and delete."""
+    return STAGING_ROOT / name
+
+
+def check_staging_root(root: Path, name: str) -> Path:
+    """Refuse any staging root the tool is not permitted to destroy.
+
+    ``build`` removes the staging root before rebuilding it, so the caller must
+    never be able to aim that removal at an arbitrary directory. A matching
+    basename is not sufficient: the resolved path must be exactly the one
+    location under ``submission_staging`` that this tool owns.
+    """
+    expected = staging_root_for(name)
+    for candidate in (STAGING_ROOT, root):
+        if candidate.is_symlink():
+            raise SystemExit(f"REFUSED: {report_path(candidate)} is a link, not a real directory")
+    if root.resolve() != expected.resolve():
+        raise SystemExit(
+            f"REFUSED: the staging root must be {report_path(expected)}, "
+            f"not {report_path(root)}"
+        )
+    return expected
+
+
+def prepare_staging_root(root: Path, replace: bool) -> None:
+    """Create the staging root, refusing to destroy anything not staged by us."""
+    if not root.exists():
+        root.mkdir(parents=True)
+        return
+    if not replace:
+        raise SystemExit(
+            f"REFUSED: {report_path(root)} already exists; pass --replace to rebuild it"
+        )
+    if not root.is_dir():
+        raise SystemExit(f"REFUSED: {report_path(root)} is not a directory")
+    if not (root / "STAGING_MANIFEST.json").is_file():
+        raise SystemExit(
+            f"REFUSED: {report_path(root)} carries no STAGING_MANIFEST.json, "
+            "so it was not produced by this tool and will not be deleted"
+        )
+    shutil.rmtree(root)
+    root.mkdir(parents=True)
+
+
+def build(root: Path, document: Path, replace: bool = False) -> list[dict]:
+    prepare_staging_root(root, replace)
     (root / "code").mkdir(parents=True)
     tracked = set(git("ls-files").splitlines())
     commit = git("rev-parse", "HEAD")
@@ -486,6 +536,11 @@ def main() -> int:
     ap.add_argument(
         "--audit", action="store_true", help="audit an existing tree instead of rebuilding it"
     )
+    ap.add_argument(
+        "--replace",
+        action="store_true",
+        help="rebuild over an existing staging tree previously produced by this tool",
+    )
     args = ap.parse_args()
 
     if args.audit:
@@ -500,10 +555,8 @@ def main() -> int:
             name = package_name(args.team_name)
         except ValueError as exc:
             ap.error(str(exc))
-        root = args.root or STAGING_ROOT / name
-        if root.name != name:
-            ap.error(f"staging directory must be named {name!r}")
-        manifest = build(root, args.document)
+        root = check_staging_root(args.root or staging_root_for(name), name)
+        manifest = build(root, args.document, replace=args.replace)
 
     name = root.name
     intended_archive_name = f"{name}.zip"
