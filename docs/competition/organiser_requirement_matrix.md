@@ -41,6 +41,14 @@ can still prove, not the state of the delivered archive; they are retained
 because the same checks apply to any archive rebuilt here, including for the
 B-board.
 
+**Changes to packaged members made after that submission.** The repository
+continues to move, so a member may no longer be byte-identical to the copy
+inside the delivered archive. Every such change is recorded here.
+
+| Member | Change | Effect on the production path |
+|---|---|---|
+| `main.py` | `--stage package` without `--verify` now exits 2 and writes its refusal to stderr, instead of exiting 0. Nothing was packaged in either version. | none: the branch performs no work, and `--stage run` is untouched |
+
 ## 1. Archive
 
 | # | Requirement | Verdict | Evidence |
