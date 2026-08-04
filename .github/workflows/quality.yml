@@ -1,0 +1,63 @@
+# Continuous verification of what a hosted runner can honestly verify.
+#
+# Scope is deliberate. This workflow runs the static checks and the maintained
+# test suite. It does NOT train, score, or reproduce an accepted member, and it
+# must never be read as evidence that it did:
+#
+#   * Jittor compiles its own kernels on first import and the production path
+#     needs a GPU, so the framework is not installed here. No test imports it.
+#   * The official datasets and the accepted archives are not public, so the
+#     tests that need them skip. The suite is written to skip rather than fail
+#     when an asset is absent; a skipped assertion proves nothing about it.
+#
+# Reproduction of an accepted member is an external acceptance step performed
+# in the inspected environment on real data. See docs/CURRENT_PRODUCTION.md.
+
+name: quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check --no-cache .
+      - run: ruff format --check --no-cache .
+
+  tests:
+    name: maintained test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install runtime dependencies except the framework
+        # Jittor is excluded on purpose: see the header. Every other pin is
+        # taken from requirements.txt unchanged, so the tests run against the
+        # same numerical stack the reproduction environment specifies.
+        run: |
+          set -euo pipefail
+          grep -v '^jittor==' requirements.txt > /tmp/requirements-ci.txt
+          if grep -q '^jittor==' /tmp/requirements-ci.txt; then
+            echo "jittor was not removed from the CI requirements"; exit 1
+          fi
+          pip install -r /tmp/requirements-ci.txt
+          pip install -r requirements-dev.txt
+      - name: Confirm the framework is absent
+        # The suite must not silently start depending on Jittor.
+        run: python -c "import importlib.util as u; assert u.find_spec('jittor') is None"
+      - run: python -m pytest -ra

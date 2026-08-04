@@ -1,0 +1,11 @@
+# Development and continuous-integration tooling.
+#
+# Role: this file installs the checks that README documents. It is NOT part of
+# the submission environment. requirements.txt and environment.yaml specify the
+# reproduction runtime and are unaffected by anything pinned here; the official
+# code-inspection package contains neither this file nor these tools.
+#
+# The versions below are the ones the maintained suite is verified against.
+
+pytest==9.1.1
+ruff==0.15.22
