@@ -28,9 +28,18 @@ earlier `..._draft_en.md` name is retired.
 
 Artifact locations below reflect the 2026-08-03 repository cleanup. The loose
 final Chinese PDF and the draft staging tree are no longer kept in the
-repository. The PDF remains hash-verified in the cold archive; the final
-organiser archive has not yet been assembled or frozen. Dated audit records
-retain their historical paths and wording.
+repository. The PDF remains hash-verified in the cold archive. Dated audit
+records retain their historical paths and wording.
+
+**Submission status (owner-reported, 2026-08-03).** The organiser archive
+`contest1_皮卡丘_003.zip` was assembled and submitted by a teammate before the
+A-board code-inspection deadline of 2026-08-03 12:00 CST. No copy of that
+archive exists in this repository or in the cold archive, so none of the
+byte-level archive checks below were performed against the submitted file. The
+freeze-time verdicts in sections 1 and 5 therefore record what this repository
+can still prove, not the state of the delivered archive; they are retained
+because the same checks apply to any archive rebuilt here, including for the
+B-board.
 
 ## 1. Archive
 
