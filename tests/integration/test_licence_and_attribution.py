@@ -124,7 +124,12 @@ class SourceProvenanceTest(unittest.TestCase):
             )
 
     def test_the_retired_informal_wording_does_not_return(self):
+        # This module is the definition site of the retired phrases, so it is
+        # the one file allowed to contain them.
+        this_module = Path(__file__).resolve()
         for path in tracked_text_files():
+            if path.resolve() == this_module:
+                continue
             text = path.read_text(encoding="utf-8", errors="replace")
             for phrase in RETIRED_WORDING:
                 self.assertNotIn(
