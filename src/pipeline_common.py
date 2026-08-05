@@ -8,6 +8,12 @@ need:
 2. the framework-neutral data utilities (history indexing, co-occurrence,
    similarity caching, row normalisation, paths and constants).
 
+Provenance: the similarity-cache and collaborative-scoring helpers here
+(`build_sim_cache`, `cache_dict_to_matrix`, the two-band decay weighting and the
+tail-based train/validation split) were factored out of the LINE implementation
+contributed to the competition team by shadiaosjh. The surrounding path
+contracts and the remaining utilities are project work. See NOTICE.
+
 It imports no deep-learning framework at all. That is the point: the canonical
 ranking stages import this module, so nothing on the canonical path pulls in a
 training framework merely to obtain a helper. Neural training lives in the

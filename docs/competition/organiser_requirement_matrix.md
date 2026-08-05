@@ -48,6 +48,8 @@ inside the delivered archive. Every such change is recorded here.
 | Member | Change | Effect on the production path |
 |---|---|---|
 | `main.py` | `--stage package` without `--verify` now exits 2 and writes its refusal to stderr, instead of exiting 0. Nothing was packaged in either version. | none: the branch performs no work, and `--stage run` is untouched |
+| `src/train_line_jt.py` | a provenance paragraph was added to the module docstring, attributing the LINE implementation to the contributor recorded in `NOTICE`. | none: docstring only, no statement changed |
+| `src/pipeline_common.py` | a provenance paragraph was added to the module docstring, attributing the similarity-cache and scoring helpers to the same contributor. | none: docstring only, no statement changed |
 
 ## 1. Archive
 

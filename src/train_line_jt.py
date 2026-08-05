@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 """LINE embedding trainer (Jittor). One of the two neural stages of the pipeline.
 
+Provenance: this is the Jittor port of the LINE implementation contributed to
+the competition team by shadiaosjh. The model formulation, the joint first- and
+second-order objective and the embedding-export format originate in that
+contribution. See NOTICE.
+
 Trains a LINE model on the bidirectional training edges and exports
 `line_latest_emb.csv` in the exact format `ensemble_predict.load_embedding`
 reads (node_id + concat(emb_first, emb_node), rounded to 6 decimals). Three

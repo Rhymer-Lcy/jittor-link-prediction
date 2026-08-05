@@ -7,7 +7,14 @@ build a two-band decayed similar-user cache from cosine similarity -> score the
 scoring and write the submission file -> promote high-confidence candidates to
 virtual edges for the next training round -> evaluate leave-one-out tail MRR.
 
-Historical score note (from the original 1.py header): "21: redo: 0.424".
+Provenance: derived from the initial LINE implementation contributed to the
+competition team by shadiaosjh. The model, the two-band similar-user cache, the
+collaborative scoring and the virtual-edge harvesting originate in that
+contribution; the staging, evaluation, path handling and configuration surfaces
+around them were added by the project. See NOTICE.
+
+Historical score annotation retained from that initial implementation:
+"21: redo: 0.424".
 """
 
 from __future__ import annotations
@@ -90,9 +97,10 @@ assert DATASET in ("dataset1", "dataset2"), f"unknown dataset: {DATASET}"
 # Data package selector for the B-board release, e.g. DATA_PACK=data_B
 DATA_PACK = os.environ.get("DATA_PACK", "data_A")
 DATA_DIR = PROJECT_ROOT / "data" / DATA_PACK / DATASET
-# Staged self-training (teammate's idea): virtual edges are only harvested
-# from test rows whose time falls inside the current stage window, which
-# advances one stage per predict cycle. Scoring/output always covers all rows.
+# Staged self-training, introduced in the implementation contributed by
+# shadiaosjh: virtual edges are only harvested from test rows whose time falls
+# inside the current stage window, which advances one stage per predict cycle.
+# Scoring and output always cover all rows.
 STAGED = os.environ.get("STAGED", "0") == "1"
 N_STAGES = int(os.environ.get("N_STAGES", "5"))
 # Negative-sampling distribution: "uniform" (default) or "pop075" (degree^0.75).
