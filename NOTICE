@@ -1,0 +1,22 @@
+jittor-link-prediction
+Copyright 2026 Rhymer-Lcy and contributors
+
+This product includes original competition-team software contributed by
+shadiaosjh (https://github.com/shadiaosjh), including the initial LINE
+implementation supplied to the project and subsequent modifications to it.
+
+Files that retain material expression from that contribution carry a source-level
+provenance note. They are:
+
+  reference/pytorch/train_line.py   derived from the contributed implementation
+  src/train_line_jt.py              Jittor port of the contributed implementation
+  src/pipeline_common.py            similarity-cache and scoring helpers factored
+                                    out of the contributed implementation
+
+Additional implementation, integration, evaluation, documentation and maintenance
+contributions were made under the project identity Rhymer-Lcy and by other project
+contributors. No single contributor is the exclusive author of the repository as a
+whole.
+
+This work is distributed under the Apache License, Version 2.0. See LICENSE for
+the licence terms.

@@ -207,3 +207,19 @@ retention rules.
 
 Historical experimentation is preserved in Git history and private verified
 archives, not duplicated in the current public documentation tree.
+
+## Licence and attribution
+
+Distributed under the Apache License, Version 2.0; see `LICENSE`.
+
+The repository is the work of more than one contributor. `NOTICE` records who
+contributed what, and files that retain material expression from a contributed
+implementation carry a source-level provenance note naming its origin.
+
+- Project identity: `Rhymer-Lcy`.
+- Contributor: `shadiaosjh` (https://github.com/shadiaosjh), who contributed the
+  initial LINE implementation supplied to the project and later modifications to
+  it, and who permits distribution of that material under the same licence.
+
+Contributors are identified by the public account names they chose. Attribution
+here records authorship of the code; it is not a legal opinion.
